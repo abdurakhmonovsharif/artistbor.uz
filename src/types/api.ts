@@ -1,0 +1,229 @@
+export type Primitive = string | number | boolean | null | undefined;
+
+export type UnknownRecord = Record<string, unknown>;
+
+export type ApiEnvelope<T> = {
+  success?: boolean;
+  message?: string;
+  data?: T;
+  errors?: unknown;
+};
+
+export type PaginationMeta = {
+  totalCount?: number;
+  pageCount?: number;
+  currentPage?: number;
+  perPage?: number;
+  total?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ListResult<T = UnknownRecord> = {
+  items: T[];
+  meta?: PaginationMeta;
+  raw: unknown;
+};
+
+export type User = {
+  id?: number;
+  phone?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  role?: "client" | "artist" | "admin" | "operator" | string;
+  region_id?: number;
+  district_id?: number;
+  status?: number;
+  created_at?: number;
+};
+
+export type ArtistProfile = {
+  id?: number;
+  user_id?: number;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string | null;
+  phone?: string;
+  email?: string | null;
+  region_id?: number | null;
+  district_id?: number | null;
+  role?: number | string;
+  role_label?: string;
+  status?: number | string;
+  status_label?: string;
+  avatar_url?: string | null;
+  created_at?: number;
+  bio?: string;
+  experience_years?: number;
+  is_verified?: boolean;
+  is_top?: boolean;
+  rating?: number;
+  fans_count?: number;
+  albums_count?: number;
+  extra_phone?: string;
+  administrator_name?: string;
+  administrator_phone?: string;
+  badges?: string[];
+  categories?: UnknownRecord[];
+  gallery?: UnknownRecord[];
+};
+
+export type ArtistApplication = {
+  id?: number;
+  user_id?: number;
+  category_ids?: number[];
+  sub_category_ids?: number[];
+  bio?: string;
+  albums_count?: number;
+  extra_phone?: string;
+  administrator_name?: string;
+  administrator_phone?: string;
+  profile_photo_id?: number;
+  profile_photo_url?: string | null;
+  status?: string;
+  rejection_reason?: string;
+  created_at?: number;
+};
+
+export type OrderRecord = UnknownRecord & {
+  id?: number;
+  client_id?: number;
+  artist_id?: number;
+  service_id?: number;
+  sub_service_id?: number | null;
+  date?: string;
+  time?: string;
+  start_time?: string;
+  end_time?: string;
+  status?: string | number;
+  status_code?: number;
+  region_id?: number;
+  district_id?: number;
+  address?: string | null;
+  notes?: string | null;
+  lat?: string | number | null;
+  lng?: string | number | null;
+  long?: string | number | null;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type CommentRecord = UnknownRecord & {
+  id?: number;
+};
+
+export type RatingRecord = UnknownRecord & {
+  id?: number;
+  artist_id?: number;
+  client_id?: number;
+  rating?: number;
+  is_published?: number;
+};
+
+export type ArtistServiceRecord = UnknownRecord & {
+  id?: number;
+  artist_id?: number;
+  service_id?: number;
+  price?: number;
+  duration_minutes?: number;
+  description?: string;
+};
+
+export type ArtistAvailabilityRecord = UnknownRecord & {
+  id?: number;
+  artist_id?: number;
+  date?: string;
+  start_time?: string;
+  end_time?: string;
+  reason?: string;
+};
+
+export type ArtistGalleryRecord = UnknownRecord & {
+  id?: number;
+  artist_id?: number;
+  url?: string;
+  file_url?: string;
+  type?: string;
+};
+
+export type ArtistVideoRecord = UnknownRecord & {
+  id?: number;
+  artist_id?: number;
+  youtube_url?: string;
+  title?: string;
+  title_uz?: string;
+  title_ru?: string;
+  thumbnail_url?: string;
+  embed_url?: string;
+  sort_order?: number;
+  is_active?: boolean | number;
+};
+
+export type NotificationRecord = UnknownRecord & {
+  id?: number;
+  type?: string;
+};
+
+export type TrashRecord = UnknownRecord & {
+  id?: number;
+};
+
+export type Category = {
+  id?: number;
+  parent_id?: number | null;
+  name_uz?: string;
+  name_ru?: string;
+  name_en?: string;
+  slug?: string;
+  icon?: string | null;
+  sort_order?: number;
+  status?: number;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type Service = {
+  id?: number;
+  parent_id?: number | null;
+  name_uz?: string;
+  name_ru?: string;
+  name_en?: string;
+  slug?: string;
+  description_uz?: string | null;
+  description_ru?: string | null;
+  description_en?: string | null;
+  sort_order?: number;
+  status?: number;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type Faq = {
+  id?: number;
+  question_uz?: string;
+  question_ru?: string;
+  question_en?: string;
+  answer_uz?: string;
+  answer_ru?: string;
+  answer_en?: string;
+  sort_order?: number;
+  status?: number;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type Region = {
+  id?: number;
+  name_uz?: string;
+  name_ru?: string;
+  name_en?: string;
+  sort_order?: number;
+  status?: number;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type District = Region & {
+  region_id?: number;
+};
