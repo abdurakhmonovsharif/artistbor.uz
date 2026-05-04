@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Eye, Search, Star, Trash2 } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
-import { Pagination } from "@/components/admin/pagination";
+import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
@@ -122,7 +122,7 @@ export default function RatingsPage() {
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
-    setFilters({ ...draftFilters, page: 1, limit });
+    setFilters({ ...draftFilters, page: 1, limit: Number(draftFilters.limit) || limit });
   };
 
   const resetFilters = () => {
@@ -131,7 +131,12 @@ export default function RatingsPage() {
   };
 
   const changePage = (page: number) => {
-    setFilters((current) => ({ ...current, page, limit }));
+    setFilters((current) => ({ ...current, page, limit: Number(current.limit) || limit }));
+  };
+
+  const changePageSize = (nextLimit: number) => {
+    setDraftFilters((current) => ({ ...current, limit: nextLimit }));
+    setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
   };
 
   const openArtistRatings = async () => {
@@ -297,9 +302,21 @@ export default function RatingsPage() {
       )}
 
       {pageCount ? (
-        <Pagination meta={meta} page={page} onPageChange={changePage} />
+        <Pagination
+          meta={meta}
+          page={page}
+          pageSize={Number(filters.limit) || limit}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
+        />
       ) : (
-        <FallbackPagination page={page} rowsCount={rows.length} onPageChange={changePage} />
+        <FallbackPagination
+          page={page}
+          rowsCount={rows.length}
+          pageSize={Number(filters.limit) || limit}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
+        />
       )}
 
       {dialog?.type === "view" ? (
@@ -362,40 +379,5 @@ function IconButton({
     >
       {children}
     </button>
-  );
-}
-
-function FallbackPagination({
-  page,
-  rowsCount,
-  onPageChange,
-}: {
-  page: number;
-  rowsCount: number;
-  onPageChange: (page: number) => void;
-}) {
-  if (page <= 1 && rowsCount < limit) return null;
-  return (
-    <div className="flex justify-end gap-2 rounded-[22px] border border-slate-100 bg-white px-5 py-4 text-sm font-semibold text-slate-500 dark:border-white/10 dark:bg-slate-950">
-      <button
-        type="button"
-        disabled={page <= 1}
-        onClick={() => onPageChange(page - 1)}
-        className="rounded-xl border border-slate-200 px-4 py-2 font-black disabled:opacity-40 dark:border-white/10"
-      >
-        Oldingi
-      </button>
-      <span className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">
-        {page}
-      </span>
-      <button
-        type="button"
-        disabled={rowsCount < limit}
-        onClick={() => onPageChange(page + 1)}
-        className="rounded-xl border border-slate-200 px-4 py-2 font-black disabled:opacity-40 dark:border-white/10"
-      >
-        Keyingi
-      </button>
-    </div>
   );
 }

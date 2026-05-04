@@ -23,7 +23,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-slate-950">
+      <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-[#0f172a]">
         <LoadingState label="Sessiya tekshirilmoqda..." />
       </div>
     );
@@ -32,7 +32,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#080b12] dark:text-white lg:grid lg:grid-cols-[288px_1fr]">
+    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#0f172a] dark:text-slate-100 lg:grid lg:grid-cols-[288px_1fr]">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={handleLogout} />
       <div className="min-w-0">
         <Header user={user} onOpenSidebar={() => setSidebarOpen(true)} onLogout={handleLogout} />
@@ -41,4 +41,3 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

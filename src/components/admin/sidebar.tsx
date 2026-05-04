@@ -26,7 +26,7 @@ export function Sidebar({
       />
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-100 bg-white p-4 shadow-2xl shadow-slate-950/10 transition-transform dark:border-white/10 dark:bg-slate-950 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-100 bg-white p-4 shadow-2xl shadow-slate-950/10 transition-transform dark:border-slate-700/70 dark:bg-[#111827] lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >

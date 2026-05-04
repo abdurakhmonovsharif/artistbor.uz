@@ -239,6 +239,8 @@ export type NotificationFilters = {
   type?: string;
   date_from?: string;
   date_to?: string;
+  page?: number;
+  limit?: number;
 };
 
 export type SendNotificationPayload = {

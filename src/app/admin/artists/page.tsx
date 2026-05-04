@@ -69,7 +69,6 @@ const columns: DataTableColumn<ArtistProfile>[] = [
     ),
   },
   { key: "phone", label: "Telefon", render: (row) => row.phone || row.extra_phone || "—" },
-  { key: "role_label", label: "Rol", render: (row) => <StatusBadge value={row.role_label ?? row.role} /> },
   { key: "status_label", label: "Holat", render: (row) => <StatusBadge value={row.status_label ?? row.status} /> },
   { key: "region_id", label: "Viloyat", kind: "number" },
   { key: "district_id", label: "Tuman", kind: "number" },
@@ -151,7 +150,7 @@ export default function ArtistsPage() {
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
-    setFilters({ ...draftFilters, page: 1, limit });
+    setFilters({ ...draftFilters, page: 1, limit: Number(filters.limit) || limit });
   };
 
   const resetFilters = () => {
@@ -160,7 +159,12 @@ export default function ArtistsPage() {
   };
 
   const changePage = (page: number) => {
-    setFilters((current) => ({ ...current, page, limit }));
+    setFilters((current) => ({ ...current, page, limit: Number(current.limit) || limit }));
+  };
+
+  const changePageSize = (nextLimit: number) => {
+    setDraftFilters((current) => ({ ...current, limit: nextLimit }));
+    setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
   };
 
   const page = Number(filters.page ?? 1);
@@ -259,7 +263,13 @@ export default function ArtistsPage() {
         />
       )}
 
-      <Pagination meta={meta} page={page} onPageChange={changePage} />
+      <Pagination
+        meta={meta}
+        page={page}
+        pageSize={Number(filters.limit) || limit}
+        onPageChange={changePage}
+        onPageSizeChange={changePageSize}
+      />
 
       {dialog?.type === "view" ? (
         <ArtistDetailModal artist={dialog.artist} onClose={() => setDialog(null)} />

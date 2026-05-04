@@ -190,6 +190,11 @@ export default function TrashPage() {
     setFilters((current) => ({ ...current, page, limit: Number(current.limit) || limit }));
   };
 
+  const changePageSize = (nextLimit: number) => {
+    setDraftFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
+    setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
+  };
+
   const openDetail = async (row: TrashRecord) => {
     const id = getNumericId(row);
     const model = getActionModel(row, filters.model);
@@ -375,7 +380,15 @@ export default function TrashPage() {
         />
       )}
 
-      {pageCount ? <Pagination meta={meta} page={page} onPageChange={changePage} /> : null}
+      {pageCount ? (
+        <Pagination
+          meta={meta}
+          page={page}
+          pageSize={Number(filters.limit) || limit}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
+        />
+      ) : null}
 
       {dialog?.type === "view" ? (
         <Modal title="O'chirilgan yozuv tafsilotlari" onClose={() => setDialog(null)} width="max-w-5xl">

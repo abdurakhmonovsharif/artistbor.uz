@@ -87,6 +87,7 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
   const toast = useToast();
 
   const page = Number((filters as Record<string, unknown>).page ?? 1);
+  const pageSize = Number((filters as Record<string, unknown>).limit ?? pagination?.limit ?? 20);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -128,9 +129,10 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
+    const currentLimit = Number((filters as Record<string, unknown>).limit ?? pagination?.limit ?? 20);
     setFilters({
       ...draftFilters,
-      ...(pagination ? { page: 1, limit: pagination.limit } : {}),
+      ...(pagination ? { page: 1, limit: currentLimit } : {}),
     });
   };
 
@@ -140,7 +142,12 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
   };
 
   const changePage = (nextPage: number) => {
-    setFilters((current) => ({ ...current, page: nextPage, limit: pagination?.limit }) as TFilters);
+    setFilters((current) => ({ ...current, page: nextPage, limit: Number((current as Record<string, unknown>).limit ?? pagination?.limit ?? 20) }) as TFilters);
+  };
+
+  const changePageSize = (nextLimit: number) => {
+    setDraftFilters((current) => ({ ...current, limit: nextLimit }) as TFilters);
+    setFilters((current) => ({ ...current, page: 1, limit: nextLimit }) as TFilters);
   };
 
   return (
@@ -235,7 +242,15 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
         />
       )}
 
-      {pagination ? <Pagination meta={meta} page={page} onPageChange={changePage} /> : null}
+      {pagination ? (
+        <Pagination
+          meta={meta}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
+        />
+      ) : null}
 
       {dialog?.type === "create" ? (
         <FormModal

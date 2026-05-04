@@ -19,8 +19,8 @@
 }
 
 .dark {
-  --background: #080b12;
-  --foreground: #f8fafc;
+  --background: #0f172a;
+  --foreground: #e5edf8;
 }
 
 body {
@@ -50,4 +50,37 @@ textarea {
   display: none;
   height: 0;
   width: 0;
+}
+
+.admin-table-scroll {
+  scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
+  scrollbar-width: thin;
+}
+
+.admin-table-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.admin-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.44);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.dark .admin-table-scroll {
+  scrollbar-color: rgba(125, 146, 178, 0.58) rgba(15, 23, 42, 0.72);
+}
+
+.dark .admin-table-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.dark .admin-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(125, 146, 178, 0.68);
 }

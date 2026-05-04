@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Eye, Send, SendToBack, Search } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
+import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -15,7 +16,7 @@ import {
   type SendAllNotificationPayload,
   type SendNotificationPayload,
 } from "@/lib/api/admin-content";
-import type { NotificationRecord } from "@/types/api";
+import type { ListResult, NotificationRecord } from "@/types/api";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 
 type DialogState =
@@ -29,6 +30,8 @@ const notificationTypes = [
   { label: "Order", value: "order" },
   { label: "Promo", value: "promo" },
 ];
+
+const limit = 20;
 
 const columns: DataTableColumn<NotificationRecord>[] = [
   { key: "id", label: "ID", kind: "number" },
@@ -68,12 +71,15 @@ const initialFilters: NotificationFilters = {
   type: "",
   date_from: "",
   date_to: "",
+  page: 1,
+  limit,
 };
 
 export default function NotificationsPage() {
   const [filters, setFilters] = useState<NotificationFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<NotificationFilters>(initialFilters);
   const [rows, setRows] = useState<NotificationRecord[]>([]);
+  const [meta, setMeta] = useState<ListResult<NotificationRecord>["meta"]>();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +92,7 @@ export default function NotificationsPage() {
     try {
       const result = await notificationsApi.list(filters);
       setRows(result.items);
+      setMeta(result.meta);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Xabarnomalar yuklanmadi");
     } finally {
@@ -118,13 +125,26 @@ export default function NotificationsPage() {
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
-    setFilters(draftFilters);
+    setFilters({ ...draftFilters, page: 1, limit: Number(filters.limit) || limit });
   };
 
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
   };
+
+  const changePage = (page: number) => {
+    setFilters((current) => ({ ...current, page, limit: Number(current.limit) || limit }));
+  };
+
+  const changePageSize = (nextLimit: number) => {
+    setDraftFilters((current) => ({ ...current, limit: nextLimit }));
+    setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
+  };
+
+  const page = Number(filters.page ?? 1);
+  const pageCount =
+    meta?.pageCount ?? (meta?.total && meta?.limit ? Math.ceil(meta.total / meta.limit) : undefined);
 
   return (
     <section className="space-y-6">
@@ -221,6 +241,24 @@ export default function NotificationsPage() {
               </IconButton>
             </div>
           )}
+        />
+      )}
+
+      {pageCount ? (
+        <Pagination
+          meta={meta}
+          page={page}
+          pageSize={Number(filters.limit) || limit}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
+        />
+      ) : (
+        <FallbackPagination
+          page={page}
+          rowsCount={rows.length}
+          pageSize={Number(filters.limit) || limit}
+          onPageChange={changePage}
+          onPageSizeChange={changePageSize}
         />
       )}
 

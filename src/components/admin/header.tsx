@@ -19,7 +19,7 @@ export function Header({
     "Administrator";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-100 bg-slate-50/85 px-4 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-[#080b12]/85 lg:px-8">
+    <header className="sticky top-0 z-20 border-b border-slate-100 bg-slate-50/85 px-4 py-4 backdrop-blur-xl dark:border-slate-700/70 dark:bg-[#0f172a]/85 lg:px-8">
       <div className="flex items-center gap-3">
         <button
           type="button"

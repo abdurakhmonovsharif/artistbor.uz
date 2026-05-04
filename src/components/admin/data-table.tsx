@@ -24,15 +24,15 @@ export function DataTable<T extends object>({
   actions?: (row: T) => React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
+    <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827] dark:shadow-black/20">
+      <div className="admin-table-scroll overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.03]">
+            <tr className="border-b border-slate-100 bg-slate-50/70 dark:border-slate-700/70 dark:bg-[#1f2937]">
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400"
+                  className="px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300"
                 >
                   <span className="inline-flex items-center gap-2">
                     {column.label}
@@ -41,7 +41,7 @@ export function DataTable<T extends object>({
                 </th>
               ))}
               {actions ? (
-                <th className="px-5 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                <th className="px-5 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">
                   Amallar
                 </th>
               ) : null}
@@ -51,12 +51,12 @@ export function DataTable<T extends object>({
             {rows.map((row, index) => (
               <tr
                 key={String(getRowKey?.(row, index) ?? index)}
-                className="border-b border-slate-100 last:border-0 hover:bg-amber-50/40 dark:border-white/10 dark:hover:bg-white/[0.03]"
+                className="border-b border-slate-100 last:border-0 hover:bg-amber-50/40 dark:border-slate-700/55 dark:even:bg-[#172033] dark:hover:bg-[#22304a]"
               >
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className="max-w-[300px] px-5 py-4 text-sm font-semibold text-slate-700 dark:text-slate-200"
+                    className="max-w-[300px] px-5 py-4 text-sm font-semibold text-slate-700 dark:text-slate-100"
                   >
                     {column.render ? (
                       column.render(row)
