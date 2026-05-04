@@ -54,7 +54,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className="mt-6 flex-1 space-y-1 overflow-y-auto pr-1">
+        <nav className="admin-sidebar-nav mt-6 flex-1 space-y-1 overflow-y-auto pr-1">
           {adminMenu.map((item) => (
             <SidebarLink key={item.href} item={item} onClick={onClose} />
           ))}
