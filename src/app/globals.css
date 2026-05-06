@@ -36,6 +36,23 @@ textarea {
   font: inherit;
 }
 
+input[type="date"],
+input[type="time"] {
+  color-scheme: light;
+}
+
+.dark input[type="date"],
+.dark input[type="time"] {
+  color-scheme: dark;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(1) brightness(1.25);
+  opacity: 0.78;
+}
+
 ::selection {
   background: rgba(245, 158, 11, 0.28);
 }

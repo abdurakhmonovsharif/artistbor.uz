@@ -1,17 +1,26 @@
 "use client";
 
-import { Languages, LogOut, Menu } from "lucide-react";
+import Link from "next/link";
+import {
+  Languages,
+  LogOut,
+  Menu,
+  Receipt,
+} from "lucide-react";
 import { ThemeToggle } from "@/components/admin/theme-toggle";
 import type { User } from "@/types/api";
+import type { DashboardQuickStats } from "@/lib/api/admin-content";
 
 export function Header({
   user,
   onOpenSidebar,
   onLogout,
+  quickStats,
 }: {
   user: User | null;
   onOpenSidebar: () => void;
   onLogout: () => void;
+  quickStats: DashboardQuickStats | null;
 }) {
   const name =
     [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
@@ -31,6 +40,8 @@ export function Header({
         </button>
 
         <div className="flex-1" />
+
+        <QuickStatsPills stats={quickStats} />
 
         <button
           type="button"
@@ -56,7 +67,7 @@ export function Header({
               {name}
             </p>
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-500">
-            {formatRole(user?.role)}
+              {formatRole(user?.role)}
             </p>
           </div>
           <div className="grid size-9 place-items-center rounded-2xl border border-amber-300 bg-amber-50 text-sm font-black text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">
@@ -68,8 +79,45 @@ export function Header({
   );
 }
 
+function QuickStatsPills({ stats }: { stats: DashboardQuickStats | null }) {
+  if (!stats) return null;
+
+  const items = [
+    { label: "To'lov", value: stats.unpaid_invoices, icon: Receipt, href: "/admin/orders?payment_status=10" },
+  ].filter((item) => typeof item.value === "number" && item.value > 0);
+
+  if (!items.length) return null;
+
+  return (
+    <div className="hidden items-center gap-2 xl:flex">
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.label}
+            href={item.href}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:text-amber-300"
+            title={`${item.label}: ${item.value}`}
+          >
+            <Icon className="size-4 text-amber-500" />
+            {item.label}
+            <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] text-slate-950">
+              {item.value}
+            </span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 function formatRole(role: User["role"]) {
+  if (role === 30) return "Admin";
+  if (role === 25) return "Moderator";
+  if (role === 20) return "Operator";
+  if (role === 10) return "Mijoz";
   if (role === "admin") return "Admin";
+  if (role === "moderator") return "Moderator";
   if (role === "operator") return "Operator";
   if (role === "artist") return "Artist";
   if (role === "client") return "Mijoz";

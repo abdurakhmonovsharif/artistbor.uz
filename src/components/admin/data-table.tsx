@@ -3,6 +3,7 @@
 import { ArrowDownUp } from "lucide-react";
 import { getValue, normalizeDate, toDisplay } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import type { UnknownRecord } from "@/types/api";
 
 export type DataTableColumn<T extends object = UnknownRecord> = {
@@ -82,6 +83,13 @@ function Cell<T extends object>({
   column: DataTableColumn<T>;
   value: unknown;
 }) {
+  if (isLocationIdKey(column.key)) {
+    return (
+      <span className="line-clamp-2">
+        <LocationName fieldKey={column.key} value={value} fallback={toDisplay(value)} />
+      </span>
+    );
+  }
   if (column.kind === "status") return <StatusBadge value={value} />;
   if (column.kind === "boolean") return <StatusBadge value={Boolean(value)} />;
   if (column.kind === "date") return <span>{normalizeDate(value)}</span>;

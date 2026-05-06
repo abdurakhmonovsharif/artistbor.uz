@@ -5,15 +5,18 @@ import { usePathname } from "next/navigation";
 import { LogOut, X } from "lucide-react";
 import { adminMenu } from "@/components/admin/menu";
 import { cn } from "@/lib/utils";
+import type { DashboardQuickStats } from "@/lib/api/admin-content";
 
 export function Sidebar({
   open,
   onClose,
   onLogout,
+  quickStats,
 }: {
   open: boolean;
   onClose: () => void;
   onLogout: () => void;
+  quickStats: DashboardQuickStats | null;
 }) {
   return (
     <>
@@ -56,7 +59,12 @@ export function Sidebar({
 
         <nav className="admin-sidebar-nav mt-6 flex-1 space-y-1 overflow-y-auto pr-1">
           {adminMenu.map((item) => (
-            <SidebarLink key={item.href} item={item} onClick={onClose} />
+            <SidebarLink
+              key={item.href}
+              item={item}
+              onClick={onClose}
+              badge={getMenuBadge(item.href, quickStats)}
+            />
           ))}
         </nav>
 
@@ -76,9 +84,11 @@ export function Sidebar({
 function SidebarLink({
   item,
   onClick,
+  badge,
 }: {
   item: (typeof adminMenu)[number];
   onClick: () => void;
+  badge?: number;
 }) {
   const pathname = usePathname();
   const active =
@@ -97,7 +107,25 @@ function SidebarLink({
       )}
     >
       <Icon className="size-4" />
-      {item.label}
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {badge && badge > 0 ? (
+        <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-slate-950">
+          {formatBadge(badge)}
+        </span>
+      ) : null}
     </Link>
   );
+}
+
+function getMenuBadge(href: string, stats: DashboardQuickStats | null) {
+  if (!stats) return undefined;
+  if (href === "/admin/applications") return stats.pending_applications;
+  if (href === "/admin/comments") return stats.pending_comments;
+  if (href === "/admin/orders") return stats.today_orders;
+  return undefined;
+}
+
+function formatBadge(value: number) {
+  if (value > 99) return "99+";
+  return String(value);
 }

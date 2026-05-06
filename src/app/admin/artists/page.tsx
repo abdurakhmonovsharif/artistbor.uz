@@ -9,6 +9,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import { useToast } from "@/components/ui/toast";
 import {
   artistAvailabilityApi,
@@ -659,6 +660,17 @@ function PrimitiveValue({
   fieldKey: string;
   value: unknown;
 }) {
+  if (isLocationIdKey(fieldKey)) {
+    return (
+      <span className="break-words">
+        <LocationName
+          fieldKey={fieldKey}
+          value={value}
+          fallback={formatDisplayValue(fieldKey, value)}
+        />
+      </span>
+    );
+  }
   if (isStatusField(fieldKey)) return <StatusBadge value={value} />;
 
   if (typeof value === "string" && value.startsWith("http")) {

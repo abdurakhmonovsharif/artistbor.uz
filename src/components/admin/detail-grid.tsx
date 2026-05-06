@@ -1,6 +1,7 @@
 "use client";
 
 import { isRecord, normalizeDate, toDisplay } from "@/lib/utils";
+import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import type { UnknownRecord } from "@/types/api";
 
 export type DetailField = {
@@ -46,6 +47,9 @@ export function DetailGrid({
 }
 
 export function formatDetailValue(key: string, value: unknown): React.ReactNode {
+  if (isLocationIdKey(key)) {
+    return <LocationName fieldKey={key} value={value} fallback={toDisplay(value)} />;
+  }
   if (typeof value === "boolean") return value ? "Ha" : "Yo'q";
   if (looksLikeDate(key, value)) return normalizeDate(value);
   if (Array.isArray(value)) {
@@ -111,6 +115,8 @@ function readableLabel(key: string) {
     artist_id: "Artist ID",
     client_id: "Mijoz ID",
     user_id: "Foydalanuvchi ID",
+    region_id: "Viloyat",
+    district_id: "Tuman",
     title: "Sarlavha",
     message: "Xabar",
     comment: "Izoh",

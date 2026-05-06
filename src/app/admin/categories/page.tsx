@@ -23,7 +23,6 @@ const columns: DataTableColumn<Category>[] = [
 
 const filters: FilterField<CategoryFilters>[] = [
   { name: "name", label: "Nomi", placeholder: "Kategoriya nomi" },
-  { name: "parent_id", label: "Asosiy ID", type: "number" },
   { name: "status", label: "Holat", type: "number" },
 ];
 
@@ -31,7 +30,6 @@ const createFields: CrudField<CategoryCreatePayload>[] = [
   { name: "name_uz", label: "Nomi UZ", required: true },
   { name: "name_ru", label: "Nomi RU" },
   { name: "name_en", label: "Nomi EN" },
-  { name: "parent_id", label: "Asosiy ID", type: "number" },
   { name: "icon", label: "Icon" },
   { name: "sort_order", label: "Tartib", type: "number" },
   { name: "status", label: "Holat", type: "number" },
@@ -58,7 +56,7 @@ export default function CategoriesPage() {
       filterFields={filters}
       createFields={createFields}
       updateFields={updateFields}
-      initialFilters={{ name: "", parent_id: "", status: "" }}
+      initialFilters={{ name: "", status: "" }}
       list={categoriesApi.list}
       detail={categoriesApi.detail}
       create={categoriesApi.create}

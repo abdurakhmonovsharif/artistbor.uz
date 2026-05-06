@@ -64,6 +64,8 @@ export type FaqPayload = {
 export type RegionFilters = {
   name?: string;
   status?: string;
+  page?: number;
+  limit?: number;
 };
 
 export type RegionPayload = {
@@ -78,6 +80,8 @@ export type DistrictFilters = {
   region_id?: string;
   name?: string;
   status?: string;
+  page?: number;
+  limit?: number;
 };
 
 export type DistrictPayload = {
@@ -92,6 +96,8 @@ export type DistrictPayload = {
 export type ServiceFilters = {
   category_id?: string;
   status?: string;
+  page?: number;
+  limit?: number;
 };
 
 export type ServiceCreatePayload = {
@@ -112,19 +118,41 @@ export type ServiceUpdatePayload = Omit<ServiceCreatePayload, "slug"> & {
 };
 
 export type UserFilters = {
-  role?: string;
+  role?: string | number;
   status?: string;
   search?: string;
   page?: number;
   limit?: number;
+  expand?: string;
+};
+
+export type StaffRole = 20 | 25 | 30;
+
+export type StaffFilters = {
+  role?: string | number;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  expand?: string;
 };
 
 export type CreateStaffPayload = {
   phone: string;
   password: string;
   first_name: string;
-  last_name: string;
-  role: "admin" | "operator" | string;
+  last_name?: string;
+  email?: string;
+  role: StaffRole;
+};
+
+export type UpdateStaffPayload = {
+  first_name: string;
+  last_name?: string;
+  phone: string;
+  email?: string;
+  role: StaffRole;
+  status?: number;
 };
 
 export type UpdateUserPayload = {
@@ -175,12 +203,14 @@ export type UpdateApplicationPayload = {
 
 export type OrderFilters = {
   status?: string;
+  payment_status?: string;
   artist_id?: string;
   client_id?: string;
   date_from?: string;
   date_to?: string;
   page?: number;
   limit?: number;
+  expand?: string;
 };
 
 export type UpdateOrderPayload = {
@@ -190,8 +220,8 @@ export type UpdateOrderPayload = {
 
 export type RescheduleOrderPayload = {
   date: string;
-  start_time: string;
-  end_time?: string;
+  time: string;
+  time_to: string;
   reason?: string;
 };
 
@@ -241,6 +271,71 @@ export type NotificationFilters = {
   date_to?: string;
   page?: number;
   limit?: number;
+};
+
+export type DashboardPeriod = "today" | "week" | "month" | "custom";
+
+export type DashboardStatsFilters = {
+  period?: DashboardPeriod;
+  from?: string;
+  to?: string;
+};
+
+export type DashboardStats = {
+  period?: {
+    from?: string;
+    to?: string;
+  };
+  counters?: {
+    total_orders?: number;
+    pending_orders?: number;
+    payment_pending?: number;
+    confirmed_orders?: number;
+    completed_orders?: number;
+    cancelled_orders?: number;
+    total_revenue?: number;
+    pending_applications?: number;
+    pending_comments?: number;
+    new_users_today?: number;
+    active_artists?: number;
+  };
+  charts?: {
+    orders_per_day?: {
+      date?: string;
+      count?: number;
+    }[];
+    revenue_per_day?: {
+      date?: string;
+      amount?: number;
+    }[];
+    orders_by_status?: {
+      status?: string;
+      status_label?: string;
+      count?: number;
+    }[];
+  };
+  top_artists?: {
+    id?: number;
+    full_name?: string;
+    avatar_url?: string | null;
+    rating?: number;
+    orders_count?: number;
+    revenue?: number;
+  }[];
+  top_categories?: {
+    id?: number;
+    name?: string;
+    orders_count?: number;
+  }[];
+  recent_orders?: UnknownRecord[];
+  recent_applications?: UnknownRecord[];
+};
+
+export type DashboardQuickStats = {
+  pending_applications?: number;
+  pending_comments?: number;
+  unpaid_invoices?: number;
+  today_orders?: number;
 };
 
 export type SendNotificationPayload = {
@@ -353,7 +448,7 @@ export const regionsApi = {
   async list(filters: RegionFilters) {
     // TODO: Swagger does not define the concrete list response schema for regions.
     const response = await apiClient.get("/v1/admin/regions", {
-      params: compactParams(filters),
+      params: compactParamsWithPerPage(filters),
     });
     return normalizeList<Region>(response.data);
   },
@@ -386,7 +481,7 @@ export const districtsApi = {
   async list(filters: DistrictFilters) {
     // TODO: Swagger does not define the concrete list response schema for districts.
     const response = await apiClient.get("/v1/admin/districts", {
-      params: compactParams(filters),
+      params: compactParamsWithPerPage(filters),
     });
     return normalizeList<District>(response.data);
   },
@@ -414,7 +509,7 @@ export const servicesApi = {
   async list(filters: ServiceFilters) {
     // TODO: Swagger does not define the concrete list response schema for services.
     const response = await apiClient.get("/v1/admin/service", {
-      params: compactParams(filters),
+      params: compactParamsWithPerPage(filters),
     });
     return normalizeList<Service>(response.data);
   },
@@ -437,13 +532,12 @@ export const usersApi = {
   async list(filters: UserFilters) {
     // TODO: Swagger does not define the concrete list response schema for users.
     const response = await apiClient.get("/v1/admin/user", {
-      params: compactParams(filters),
+      params: compactParamsWithPerPage(filters),
     });
     return normalizeList<User>(response.data);
   },
   async createStaff(payload: CreateStaffPayload) {
-    // TODO: Swagger omits create-staff response body shape.
-    const response = await apiClient.post("/v1/admin/user/create-staff", payload);
+    const response = await apiClient.post("/v1/admin/staff", payload);
     return unwrapData<User>(response.data);
   },
   async update(id: number, payload: UpdateUserPayload) {
@@ -458,6 +552,43 @@ export const usersApi = {
   async unblock(id: number) {
     // TODO: Swagger omits unblock response body shape.
     const response = await apiClient.post(`/v1/admin/user/${id}/unblock`);
+    return unwrapData<unknown>(response.data);
+  },
+};
+
+export const staffApi = {
+  async list(filters: StaffFilters) {
+    const response = await apiClient.get("/v1/admin/staff", {
+      params: compactParamsWithPerPage(filters),
+    });
+    return normalizeList<User>(response.data);
+  },
+  async create(payload: CreateStaffPayload) {
+    const response = await apiClient.post("/v1/admin/staff", payload);
+    return unwrapData<User>(response.data);
+  },
+  async detail(id: number) {
+    const response = await apiClient.get(`/v1/admin/staff/${id}`);
+    return unwrapData<User>(response.data);
+  },
+  async update(id: number, payload: UpdateStaffPayload) {
+    const response = await apiClient.put(`/v1/admin/staff/${id}`, payload);
+    return unwrapData<User>(response.data);
+  },
+  async delete(id: number) {
+    const response = await apiClient.delete(`/v1/admin/staff/${id}`);
+    return unwrapData<unknown>(response.data);
+  },
+  async resetPassword(id: number, password: string) {
+    const response = await apiClient.post(`/v1/admin/staff/${id}/reset-password`, { password });
+    return unwrapData<unknown>(response.data);
+  },
+  async block(id: number) {
+    const response = await apiClient.post(`/v1/admin/staff/${id}/block`);
+    return unwrapData<unknown>(response.data);
+  },
+  async unblock(id: number) {
+    const response = await apiClient.post(`/v1/admin/staff/${id}/unblock`);
     return unwrapData<unknown>(response.data);
   },
 };
@@ -495,7 +626,7 @@ export const artistAvailabilityApi = {
   async list(artistId: number, filters: ArtistAvailabilityFilters = {}) {
     // TODO: Swagger omits concrete availability response schema.
     const response = await apiClient.get(`/v1/admin/artist/${artistId}/availability`, {
-      params: compactParams(filters),
+      params: compactParams(withDefaultAvailabilityRange(filters)),
     });
     return normalizeList<ArtistAvailabilityRecord>(response.data);
   },
@@ -554,7 +685,7 @@ export const ordersApi = {
   async list(filters: OrderFilters) {
     // TODO: Swagger does not define the concrete list response schema for orders.
     const response = await apiClient.get("/v1/admin/order", {
-      params: compactParams(filters),
+      params: compactParamsWithPerPage(filters),
     });
     return normalizeList<OrderRecord>(response.data);
   },
@@ -698,6 +829,19 @@ export const notificationsApi = {
   },
 };
 
+export const dashboardApi = {
+  async stats(filters: DashboardStatsFilters) {
+    const response = await apiClient.get("/v1/admin/dashboard/stats", {
+      params: compactParams(filters),
+    });
+    return unwrapData<DashboardStats>(response.data);
+  },
+  async quickStats() {
+    const response = await apiClient.get("/v1/admin/dashboard/quick-stats");
+    return unwrapData<DashboardQuickStats>(response.data);
+  },
+};
+
 export const trashApi = {
   async stats() {
     // TODO: Swagger omits the concrete trash stats response schema.
@@ -776,4 +920,42 @@ export function compactParams<T extends Record<string, unknown>>(values: T) {
   return Object.fromEntries(
     Object.entries(values).filter(([, value]) => value !== "" && value !== undefined && value !== null),
   );
+}
+
+function compactParamsWithPerPage<T extends Record<string, unknown>>(values: T) {
+  const params = compactParams(values);
+  if ("limit" in params) {
+    params["per-page"] = params.limit;
+    delete params.limit;
+  }
+  return params;
+}
+
+function withDefaultAvailabilityRange(filters: ArtistAvailabilityFilters): ArtistAvailabilityFilters {
+  const defaults = getDefaultAvailabilityRange();
+  return {
+    ...filters,
+    date_from: filters.date_from || defaults.date_from,
+    date_to: filters.date_to || defaults.date_to,
+  };
+}
+
+function getDefaultAvailabilityRange() {
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+
+  const to = new Date(from);
+  to.setDate(to.getDate() + 30);
+
+  return {
+    date_from: formatApiDate(from),
+    date_to: formatApiDate(to),
+  };
+}
+
+function formatApiDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

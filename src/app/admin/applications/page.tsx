@@ -701,7 +701,7 @@ function IconButton({
 
 function actionClass(tone: "default" | "confirm" | "danger") {
   if (tone === "confirm") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300";
+    return "border-emerald-400/40 bg-emerald-500/15 text-emerald-600 hover:border-emerald-400 hover:bg-emerald-500/25 hover:text-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-400/20";
   }
   if (tone === "danger") {
     return "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300";

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Ban, Pencil, Search, Unlock } from "lucide-react";
+import { Ban, Pencil, Plus, Search, Unlock } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -10,22 +10,24 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
-  usersApi,
-  type UpdateUserPayload,
-  type UserFilters,
+  staffApi,
+  type CreateStaffPayload,
+  type StaffFilters,
+  type UpdateStaffPayload,
 } from "@/lib/api/admin-content";
 import type { ListResult, User } from "@/types/api";
 
 type DialogState =
+  | { type: "create" }
   | { type: "edit"; user: User }
   | { type: "block"; user: User }
   | { type: "unblock"; user: User }
   | null;
 
 const limit = 20;
-const clientRole = 10;
+const operatorRole = 20;
 
-const userStatusOptions = [
+const staffStatusOptions = [
   { label: "Faol", value: "10" },
   { label: "Nofaol", value: "9" },
   { label: "Bloklangan", value: "20" },
@@ -38,21 +40,21 @@ const columns: DataTableColumn<User>[] = [
   { key: "last_name", label: "Familiya" },
   { key: "phone", label: "Telefon" },
   { key: "email", label: "Email" },
-  { key: "status", label: "Holat", render: (row) => formatUserStatus(row.status) },
+  { key: "status", label: "Holat", render: (row) => formatStaffStatus(row.status) },
   { key: "created_at", label: "Yaratilgan", kind: "date" },
 ];
 
-const initialFilters: UserFilters = {
-  role: clientRole,
+const initialFilters: StaffFilters = {
+  role: operatorRole,
   status: "",
   search: "",
   page: 1,
   limit,
 };
 
-export default function UsersPage() {
-  const [filters, setFilters] = useState<UserFilters>(initialFilters);
-  const [draftFilters, setDraftFilters] = useState<UserFilters>(initialFilters);
+export default function OperatorsPage() {
+  const [filters, setFilters] = useState<StaffFilters>(initialFilters);
+  const [draftFilters, setDraftFilters] = useState<StaffFilters>(initialFilters);
   const [rows, setRows] = useState<User[]>([]);
   const [meta, setMeta] = useState<ListResult<User>["meta"]>();
   const [loading, setLoading] = useState(true);
@@ -61,15 +63,15 @@ export default function UsersPage() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
 
-  const fetchUsers = useCallback(async () => {
+  const fetchStaff = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await usersApi.list({ ...filters, role: clientRole });
+      const result = await staffApi.list({ ...filters, role: operatorRole });
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Foydalanuvchilar yuklanmadi");
+      setError(caught instanceof Error ? caught.message : "Operatorlar yuklanmadi");
     } finally {
       setLoading(false);
     }
@@ -77,10 +79,10 @@ export default function UsersPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void fetchUsers();
+      void fetchStaff();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [fetchUsers]);
+  }, [fetchStaff]);
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
@@ -106,14 +108,14 @@ export default function UsersPage() {
     setSubmitting(true);
     try {
       if (dialog.type === "block") {
-        await usersApi.block(dialog.user.id);
-        toast.success("Foydalanuvchi bloklandi");
+        await staffApi.block(dialog.user.id);
+        toast.success("Operator bloklandi");
       } else {
-        await usersApi.unblock(dialog.user.id);
-        toast.success("Foydalanuvchi blokdan chiqarildi");
+        await staffApi.unblock(dialog.user.id);
+        toast.success("Operator blokdan chiqarildi");
       }
       setDialog(null);
-      await fetchUsers();
+      await fetchStaff();
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : "Amal bajarilmadi");
     } finally {
@@ -133,15 +135,23 @@ export default function UsersPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
-            Foydalanuvchilar
+            Operatorlar
           </p>
           <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-            Foydalanuvchilar
+            Operatorlar
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-            Oddiy mijoz foydalanuvchilarni ko&apos;rish, tahrirlash va bloklash.
+            Operatorlarni ko&apos;rish, yaratish, tahrirlash va bloklash.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setDialog({ type: "create" })}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-xl shadow-amber-400/25 transition hover:bg-amber-300"
+        >
+          <Plus className="size-4" />
+          Operator yaratish
+        </button>
       </div>
 
       <form
@@ -159,7 +169,7 @@ export default function UsersPage() {
             label="Holat"
             type="select"
             value={draftFilters.status ?? ""}
-            options={userStatusOptions}
+            options={staffStatusOptions}
             onChange={(value) => setDraftFilters((current) => ({ ...current, status: value }))}
           />
         </div>
@@ -229,6 +239,26 @@ export default function UsersPage() {
         />
       )}
 
+      {dialog?.type === "create" ? (
+        <StaffFormModal
+          loading={submitting}
+          onClose={() => setDialog(null)}
+          onSubmit={async (payload) => {
+            setSubmitting(true);
+            try {
+              await staffApi.create(payload);
+              toast.success("Operator yaratildi");
+              setDialog(null);
+              await fetchStaff();
+            } catch (caught) {
+              toast.error(caught instanceof Error ? caught.message : "Operator yaratilmadi");
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        />
+      ) : null}
+
       {dialog?.type === "edit" ? (
         <EditUserModal
           user={dialog.user}
@@ -238,10 +268,10 @@ export default function UsersPage() {
             if (!dialog.user.id) return;
             setSubmitting(true);
             try {
-              await usersApi.update(dialog.user.id, payload);
-              toast.success("Foydalanuvchi yangilandi");
+              await staffApi.update(dialog.user.id, payload);
+              toast.success("Operator yangilandi");
               setDialog(null);
-              await fetchUsers();
+              await fetchStaff();
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : "Yangilash bajarilmadi");
             } finally {
@@ -255,8 +285,8 @@ export default function UsersPage() {
         <ConfirmDialog
           danger
           loading={submitting}
-          title="Foydalanuvchini bloklash"
-          message="Foydalanuvchini bloklashni tasdiqlaysizmi?"
+          title="Operatorni bloklash"
+          message="Operatorni bloklashni tasdiqlaysizmi?"
           confirmLabel="Bloklash"
           onCancel={() => setDialog(null)}
           onConfirm={runConfirmedAction}
@@ -267,13 +297,62 @@ export default function UsersPage() {
         <ConfirmDialog
           loading={submitting}
           title="Blokdan chiqarish"
-          message="Foydalanuvchini blokdan chiqarishni tasdiqlaysizmi?"
+          message="Operatorni blokdan chiqarishni tasdiqlaysizmi?"
           confirmLabel="Blokdan chiqarish"
           onCancel={() => setDialog(null)}
           onConfirm={runConfirmedAction}
         />
       ) : null}
     </section>
+  );
+}
+
+function StaffFormModal({
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: (payload: CreateStaffPayload) => Promise<void>;
+}) {
+  const [values, setValues] = useState({
+    phone: "",
+    password: "",
+    first_name: "",
+    last_name: "",
+    email: "",
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextErrors = validateRequired(values, ["phone", "password", "first_name"]);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    await onSubmit({
+      phone: values.phone,
+      password: values.password,
+      first_name: values.first_name,
+      last_name: values.last_name || undefined,
+      email: values.email || undefined,
+      role: 20,
+    });
+  };
+
+  return (
+    <Modal title="Operator yaratish" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField label="Telefon" required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
+          <FormField label="Parol" type="password" required value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
+          <FormField label="Ism" required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+          <FormField label="Familiya" value={values.last_name} error={errors.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+          <FormField label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
+        </div>
+        <FormActions loading={loading} onClose={onClose} />
+      </form>
+    </Modal>
   );
 }
 
@@ -286,7 +365,7 @@ function EditUserModal({
   user: User;
   loading: boolean;
   onClose: () => void;
-  onSubmit: (payload: UpdateUserPayload) => Promise<void>;
+  onSubmit: (payload: UpdateStaffPayload) => Promise<void>;
 }) {
   const [values, setValues] = useState({
     first_name: user.first_name ?? "",
@@ -307,12 +386,13 @@ function EditUserModal({
       last_name: values.last_name || undefined,
       phone: values.phone,
       email: values.email || undefined,
+      role: 20,
       status: Number(values.status),
     });
   };
 
   return (
-    <Modal title="Foydalanuvchini tahrirlash" onClose={onClose}>
+    <Modal title="Operatorni tahrirlash" onClose={onClose}>
       <form onSubmit={submit} className="space-y-5">
         <div className="grid gap-4 md:grid-cols-2">
           <FormField label="Ism" required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
@@ -325,7 +405,7 @@ function EditUserModal({
             required
             value={values.status}
             error={errors.status}
-            options={userStatusOptions}
+            options={staffStatusOptions}
             onChange={(status) => setValues((current) => ({ ...current, status }))}
           />
         </div>
@@ -397,7 +477,7 @@ function isBlockedUser(user: User) {
   return status.includes("block") || status === "20";
 }
 
-function formatUserStatus(value: User["status"]) {
+function formatStaffStatus(value: User["status"]) {
   const status = String(value ?? "");
   const labels: Record<string, string> = {
     "0": "O'chirilgan",
