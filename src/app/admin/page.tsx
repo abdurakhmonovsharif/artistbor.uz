@@ -60,8 +60,8 @@ export default function AdminHome() {
     try {
       const result = await dashboardApi.stats(nextFilters);
       setStats(result);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Dashboard statistikasi yuklanmadi");
+    } catch {
+      setError("Statistika yuklanmadi. Qayta urinib ko'ring.");
     } finally {
       setLoading(false);
     }
@@ -84,6 +84,24 @@ export default function AdminHome() {
   const topCategories = useMemo(() => arrayOrEmpty(stats?.top_categories), [stats]);
   const recentOrders = useMemo(() => arrayOrEmpty(stats?.recent_orders), [stats]);
   const recentApplications = useMemo(() => arrayOrEmpty(stats?.recent_applications), [stats]);
+  const orderChartRows = useMemo(
+    () =>
+      arrayOrEmpty(charts?.orders_per_day).map((row) => ({
+        label: formatDateLabel(row.date),
+        value: numberValue(row.count),
+        display: formatNumber(numberValue(row.count)),
+      })),
+    [charts],
+  );
+  const revenueChartRows = useMemo(
+    () =>
+      arrayOrEmpty(charts?.revenue_per_day).map((row) => ({
+        label: formatDateLabel(row.date),
+        value: numberValue(row.amount),
+        display: formatCurrency(numberValue(row.amount)),
+      })),
+    [charts],
+  );
 
   const handlePeriodSelect = (period: DashboardPeriod) => {
     setCustomError("");
@@ -98,7 +116,7 @@ export default function AdminHome() {
   const handleCustomSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!customDraft.from || !customDraft.to) {
-      setCustomError("Custom period uchun boshlanish va tugash sanasini tanlang.");
+      setCustomError("Sana oralig'i uchun boshlanish va tugash sanasini tanlang.");
       return;
     }
     setCustomError("");
@@ -106,7 +124,7 @@ export default function AdminHome() {
   };
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
@@ -116,8 +134,8 @@ export default function AdminHome() {
             Boshqaruv paneli
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-            Buyurtmalar, daromad, arizalar, izohlar va platforma faolligini real
-            API statistikasi orqali kuzating.
+            Buyurtmalar, daromad, arizalar, izohlar va platforma faolligini
+            jonli statistik ma&apos;lumotlar orqali kuzating.
           </p>
           {stats?.period ? (
             <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
@@ -127,11 +145,11 @@ export default function AdminHome() {
           ) : null}
         </div>
 
-        <div className="w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-slate-950 xl:max-w-2xl">
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="w-full rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm dark:border-white/10 dark:bg-slate-950 xl:max-w-2xl">
+          <div className="mb-2.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
-                <CalendarDays className="size-5" />
+              <span className="grid size-9 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
+                <CalendarDays className="size-4" />
               </span>
               <div>
                 <p className="text-sm font-black text-slate-950 dark:text-white">
@@ -146,7 +164,7 @@ export default function AdminHome() {
               type="button"
               onClick={() => void fetchStats(filters)}
               disabled={loading}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-600 transition hover:border-amber-300 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-600 transition hover:border-amber-300 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
               aria-label="Statistikani yangilash"
             >
               <RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />
@@ -161,7 +179,7 @@ export default function AdminHome() {
                 type="button"
                 onClick={() => handlePeriodSelect(option.value)}
                 className={cn(
-                  "rounded-xl px-4 py-3 text-left transition",
+                  "rounded-xl px-3 py-2.5 text-left transition",
                   filters.period === option.value
                     ? "bg-amber-400 text-slate-950 shadow-sm"
                     : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
@@ -177,7 +195,7 @@ export default function AdminHome() {
               type="button"
               onClick={() => handlePeriodSelect("custom")}
               className={cn(
-                "rounded-xl px-4 py-3 text-left transition",
+                "rounded-xl px-3 py-2.5 text-left transition",
                 filters.period === "custom" || customOpen
                   ? "bg-amber-400 text-slate-950 shadow-sm"
                   : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
@@ -220,7 +238,7 @@ export default function AdminHome() {
         </div>
       </div>
 
-      {loading && !stats ? <LoadingState label="Dashboard statistikasi yuklanmoqda..." /> : null}
+      {loading && !stats ? <LoadingState label="Statistika yuklanmoqda..." /> : null}
 
       {error && !stats ? (
         <div className="space-y-4">
@@ -243,7 +261,7 @@ export default function AdminHome() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               label="Jami buyurtmalar"
               value={formatNumber(numberValue(counters?.total_orders))}
@@ -263,13 +281,13 @@ export default function AdminHome() {
               tone="amber"
             />
             <MetricCard
-              label="Faol artistlar"
+              label="Faol ijodkorlar"
               value={formatNumber(numberValue(counters?.active_artists))}
               icon={Paintbrush}
               tone="violet"
             />
             <MetricCard
-              label="Kutilayotgan orderlar"
+              label="Kutilayotgan buyurtmalar"
               value={formatNumber(numberValue(counters?.pending_orders))}
               icon={Clock3}
               tone="amber"
@@ -287,31 +305,28 @@ export default function AdminHome() {
               tone="emerald"
             />
             <MetricCard
-              label="Bugungi yangi users"
+              label="Bugungi yangi foydalanuvchilar"
               value={formatNumber(numberValue(counters?.new_users_today))}
               icon={UserPlus}
               tone="sky"
             />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
             <Panel
               title="Buyurtmalar kunlar bo'yicha"
-              description="Tanlangan period ichidagi orderlar soni."
+              description="Tanlangan davrdagi buyurtmalar soni."
               icon={BarChart3}
             >
-              <BarList
-                rows={arrayOrEmpty(charts?.orders_per_day).map((row) => ({
-                  label: formatDateLabel(row.date),
-                  value: numberValue(row.count),
-                  display: formatNumber(numberValue(row.count)),
-                }))}
+              <ColumnChart
+                rows={orderChartRows}
+                totalDisplay={formatNumber(sumChartValues(orderChartRows))}
               />
             </Panel>
 
             <Panel
-              title="Order statuslari"
-              description="Statuslar kesimidagi orderlar ulushi."
+              title="Buyurtma holatlari"
+              description="Holatlar bo'yicha buyurtmalar ulushi."
               icon={Activity}
             >
               <StatusDistribution rows={arrayOrEmpty(charts?.orders_by_status)} />
@@ -319,37 +334,34 @@ export default function AdminHome() {
 
             <Panel
               title="Daromad kunlar bo'yicha"
-              description="Kunlik revenue dinamikasi."
+              description="Kunlik daromad dinamikasi."
               icon={TrendingUp}
             >
-              <BarList
-                rows={arrayOrEmpty(charts?.revenue_per_day).map((row) => ({
-                  label: formatDateLabel(row.date),
-                  value: numberValue(row.amount),
-                  display: formatCurrency(numberValue(row.amount)),
-                }))}
+              <LineAreaChart
+                rows={revenueChartRows}
+                totalDisplay={formatCurrency(sumChartValues(revenueChartRows))}
               />
             </Panel>
 
             <Panel
               title="Operatsion navbat"
-              description="Hozir e'tibor talab qiladigan counterlar."
+              description="Hozir e'tibor talab qiladigan ko'rsatkichlar."
               icon={Clock3}
             >
               <QueueList counters={counters} />
             </Panel>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Panel title="Top artistlar" description="Order va revenue bo'yicha yetakchilar." icon={Star}>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Panel title="Yetakchi ijodkorlar" description="Buyurtma va daromad bo'yicha yetakchilar." icon={Star}>
               <TopArtists artists={topArtists} />
             </Panel>
-            <Panel title="Top kategoriyalar" description="Buyurtmalar soni bo'yicha." icon={Users}>
+            <Panel title="Yetakchi kategoriyalar" description="Buyurtmalar soni bo'yicha." icon={Users}>
               <TopCategories categories={topCategories} />
             </Panel>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-2">
             <RecentList
               title="So'nggi buyurtmalar"
               href="/admin/orders"
@@ -391,16 +403,16 @@ function MetricCard({
   }[tone];
 
   return (
-    <article className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+    <article className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
           {label}
         </p>
-        <span className={cn("grid size-10 shrink-0 place-items-center rounded-2xl ring-1", toneClass)}>
-          <Icon className="size-5" />
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1", toneClass)}>
+          <Icon className="size-4" />
         </span>
       </div>
-      <p className="mt-5 break-words text-2xl font-black text-slate-950 dark:text-white">
+      <p className="mt-3 break-words text-xl font-black text-slate-950 dark:text-white">
         {value}
       </p>
     </article>
@@ -419,16 +431,16 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950">
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-black text-slate-950 dark:text-white">{title}</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+          <h2 className="text-sm font-black text-slate-950 dark:text-white">{title}</h2>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
             {description}
           </p>
         </div>
-        <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
-          <Icon className="size-5" />
+        <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <Icon className="size-3.5" />
         </span>
       </div>
       {children}
@@ -436,29 +448,233 @@ function Panel({
   );
 }
 
-function BarList({ rows }: { rows: { label: string; value: number; display: string }[] }) {
-  const max = Math.max(1, ...rows.map((row) => row.value));
+type ChartRow = { label: string; value: number; display: string };
 
-  if (!rows.length) return <EmptyState title="Chart ma'lumotlari topilmadi" />;
+function ColumnChart({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: string }) {
+  if (!rows.length) return <EmptyState title="Grafik ma'lumotlari topilmadi" />;
+
+  const max = Math.max(1, ...rows.map((row) => row.value));
+  const hasData = rows.some((row) => row.value > 0);
+  const width = 720;
+  const height = 230;
+  const padding = { top: 14, right: 24, bottom: 36, left: 52 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const slot = plotWidth / rows.length;
+  const barWidth = Math.max(7, Math.min(22, slot * 0.58));
+  const labelIndexes = getChartLabelIndexes(rows.length);
 
   return (
     <div className="space-y-3">
-      {rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[72px_minmax(0,1fr)_92px] items-center gap-3">
-          <span className="truncate text-xs font-black text-slate-500 dark:text-slate-400">
-            {row.label}
-          </span>
-          <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-white/[0.06]">
-            <div
-              className="h-full rounded-full bg-amber-400"
-              style={{ width: `${Math.max(4, (row.value / max) * 100)}%` }}
+      <ChartSummary rows={rows} totalDisplay={totalDisplay} />
+      <div className="relative h-56 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/[0.03]">
+        <svg className="h-full w-full" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Buyurtmalar grafigi">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = padding.top + plotHeight * (1 - ratio);
+            return (
+              <g key={ratio}>
+                <line
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={y}
+                  y2={y}
+                  className="stroke-slate-200 dark:stroke-white/10"
+                  strokeDasharray={ratio === 0 ? undefined : "4 6"}
+                />
+                <text
+                  x={padding.left - 14}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-slate-400 text-[10px] font-black"
+                >
+                  {hasData ? formatNumber(Math.ceil(max * ratio)) : "0"}
+                </text>
+              </g>
+            );
+          })}
+
+          {rows.map((row, index) => {
+            const barHeight = hasData ? (row.value / max) * plotHeight : 0;
+            const x = padding.left + index * slot + (slot - barWidth) / 2;
+            const y = padding.top + plotHeight - barHeight;
+            return (
+              <g key={`${row.label}-${index}`}>
+                {barHeight > 0 ? (
+                  <rect
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={barHeight}
+                    rx={6}
+                    className="fill-amber-400"
+                  />
+                ) : null}
+                <title>{`${row.label}: ${row.display}`}</title>
+              </g>
+            );
+          })}
+
+          {labelIndexes.map((index) => {
+            const row = rows[index];
+            if (!row) return null;
+            const x = padding.left + index * slot + slot / 2;
+            return (
+              <text
+                key={`${row.label}-${index}`}
+                x={x}
+                y={height - 12}
+                textAnchor="middle"
+                className="fill-slate-500 text-[10px] font-black dark:fill-slate-400"
+              >
+                {row.label}
+              </text>
+            );
+          })}
+        </svg>
+        {!hasData ? <EmptyChartOverlay /> : null}
+      </div>
+    </div>
+  );
+}
+
+function LineAreaChart({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: string }) {
+  if (!rows.length) return <EmptyState title="Grafik ma'lumotlari topilmadi" />;
+
+  const max = Math.max(1, ...rows.map((row) => row.value));
+  const hasData = rows.some((row) => row.value > 0);
+  const width = 720;
+  const height = 230;
+  const padding = { top: 14, right: 24, bottom: 36, left: 66 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const baseline = padding.top + plotHeight;
+  const points = rows.map((row, index) => {
+    const x =
+      rows.length === 1
+        ? padding.left + plotWidth / 2
+        : padding.left + (index / (rows.length - 1)) * plotWidth;
+    const y = baseline - (row.value / max) * plotHeight;
+    return { ...row, x, y };
+  });
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const areaPath =
+    points.length > 0
+      ? `${linePath} L ${points[points.length - 1]?.x ?? padding.left} ${baseline} L ${points[0]?.x ?? padding.left} ${baseline} Z`
+      : "";
+  const labelIndexes = getChartLabelIndexes(rows.length);
+
+  return (
+    <div className="space-y-3">
+      <ChartSummary rows={rows} totalDisplay={totalDisplay} />
+      <div className="relative h-56 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/[0.03]">
+        <svg className="h-full w-full" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Daromad grafigi">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = padding.top + plotHeight * (1 - ratio);
+            return (
+              <g key={ratio}>
+                <line
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={y}
+                  y2={y}
+                  className="stroke-slate-200 dark:stroke-white/10"
+                  strokeDasharray={ratio === 0 ? undefined : "4 6"}
+                />
+                <text
+                  x={padding.left - 14}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-slate-400 text-[10px] font-black"
+                >
+                  {hasData ? formatCompactCurrency(max * ratio) : "0"}
+                </text>
+              </g>
+            );
+          })}
+
+          {areaPath ? (
+            <path d={areaPath} className="fill-amber-400/15 dark:fill-amber-400/10" />
+          ) : null}
+          {linePath ? (
+            <path
+              d={linePath}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="stroke-amber-400"
+              strokeWidth="4"
             />
-          </div>
-          <span className="truncate text-right text-xs font-black text-slate-700 dark:text-slate-200">
-            {row.display}
-          </span>
-        </div>
-      ))}
+          ) : null}
+          {hasData
+            ? points.map((point, index) => (
+                <circle
+                  key={`${point.label}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r="4"
+                  className="fill-slate-950 stroke-amber-400 dark:fill-slate-950"
+                  strokeWidth="3"
+                >
+                  <title>{`${point.label}: ${point.display}`}</title>
+                </circle>
+              ))
+            : null}
+
+          {labelIndexes.map((index) => {
+            const row = rows[index];
+            const point = points[index];
+            if (!row || !point) return null;
+            return (
+              <text
+                key={`${row.label}-${index}`}
+                x={point.x}
+                y={height - 12}
+                textAnchor="middle"
+                className="fill-slate-500 text-[10px] font-black dark:fill-slate-400"
+              >
+                {row.label}
+              </text>
+            );
+          })}
+        </svg>
+        {!hasData ? <EmptyChartOverlay /> : null}
+      </div>
+    </div>
+  );
+}
+
+function ChartSummary({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: string }) {
+  const peak = rows.reduce<ChartRow | undefined>(
+    (current, row) => (!current || row.value > current.value ? row : current),
+    undefined,
+  );
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-3">
+      <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
+        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Jami</p>
+        <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">{totalDisplay}</p>
+      </div>
+      <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
+        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Eng yuqori</p>
+        <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">
+          {peak?.display ?? "—"}
+        </p>
+      </div>
+      <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
+        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Nuqtalar</p>
+        <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{formatNumber(rows.length)}</p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyChartOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 grid place-items-center">
+      <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-black text-slate-500 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/80 dark:text-slate-300">
+        Tanlangan davrda ma&apos;lumot yo&apos;q
+      </div>
     </div>
   );
 }
@@ -470,16 +686,17 @@ function StatusDistribution({
 }) {
   const max = Math.max(1, ...rows.map((row) => numberValue(row.count)));
 
-  if (!rows.length) return <EmptyState title="Status statistikasi topilmadi" />;
+  if (!rows.length) return <EmptyState title="Holatlar statistikasi topilmadi" />;
 
   return (
     <div className="space-y-3">
       {rows.map((row) => {
         const count = numberValue(row.count);
+        const label = dashboardStatusLabel(row.status_label ?? row.status);
         return (
           <div key={`${row.status ?? row.status_label ?? "status"}-${count}`} className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <StatusBadge value={row.status_label ?? row.status} />
+              <StatusBadge value={label} />
               <span className="text-sm font-black text-slate-700 dark:text-slate-200">
                 {formatNumber(count)}
               </span>
@@ -500,7 +717,7 @@ function StatusDistribution({
 function QueueList({ counters }: { counters: DashboardStats["counters"] }) {
   const items = [
     {
-      label: "Kutilayotgan orderlar",
+      label: "Kutilayotgan buyurtmalar",
       value: numberValue(counters?.pending_orders),
       icon: Clock3,
       tone: "text-amber-600 dark:text-amber-300",
@@ -518,7 +735,7 @@ function QueueList({ counters }: { counters: DashboardStats["counters"] }) {
       tone: "text-sky-600 dark:text-sky-300",
     },
     {
-      label: "Bekor qilingan orderlar",
+      label: "Bekor qilingan buyurtmalar",
       value: numberValue(counters?.cancelled_orders),
       icon: XCircle,
       tone: "text-slate-500 dark:text-slate-300",
@@ -555,13 +772,13 @@ function TopArtists({
 }: {
   artists: NonNullable<DashboardStats["top_artists"]>;
 }) {
-  if (!artists.length) return <EmptyState title="Top artistlar topilmadi" />;
+  if (!artists.length) return <EmptyState title="Yetakchi ijodkorlar topilmadi" />;
 
   return (
     <div className="space-y-3">
       {artists.map((artist, index) => {
         const avatarUrl = safeHttpUrl(artist.avatar_url);
-        const name = artist.full_name || `Artist #${artist.id ?? index + 1}`;
+        const name = artist.full_name || `Ijodkor #${artist.id ?? index + 1}`;
         return (
           <div
             key={artist.id ?? `${name}-${index}`}
@@ -582,7 +799,7 @@ function TopArtists({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-black text-slate-950 dark:text-white">{name}</p>
               <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-                {formatNumber(numberValue(artist.orders_count))} order · {formatCurrency(numberValue(artist.revenue))}
+                {formatNumber(numberValue(artist.orders_count))} buyurtma · {formatCurrency(numberValue(artist.revenue))}
               </p>
             </div>
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
@@ -601,7 +818,7 @@ function TopCategories({
 }: {
   categories: NonNullable<DashboardStats["top_categories"]>;
 }) {
-  if (!categories.length) return <EmptyState title="Top kategoriyalar topilmadi" />;
+  if (!categories.length) return <EmptyState title="Yetakchi kategoriyalar topilmadi" />;
 
   const max = Math.max(1, ...categories.map((category) => numberValue(category.orders_count)));
 
@@ -621,7 +838,7 @@ function TopCategories({
                 </p>
               </div>
               <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                {formatNumber(count)} order
+                {formatNumber(count)} buyurtma
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/[0.06]">
@@ -654,7 +871,7 @@ function RecentList({
         <div>
           <h2 className="text-base font-black text-slate-950 dark:text-white">{title}</h2>
           <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            Backend qaytargan oxirgi yozuvlar.
+            Serverdan kelgan oxirgi yozuvlar.
           </p>
         </div>
         <Link
@@ -699,7 +916,7 @@ function RecentRow({
             {meta}
           </p>
         </div>
-        <StatusBadge value={status} />
+        <StatusBadge value={dashboardStatusLabel(status)} />
       </div>
     </div>
   );
@@ -740,8 +957,45 @@ function recentKey(item: UnknownRecord, index: number) {
   return `${id ?? "row"}-${index}`;
 }
 
+function dashboardStatusLabel(value: unknown) {
+  if (value === null || value === undefined || value === "") return "Noma'lum";
+  const normalized = String(value).trim().toLowerCase().replace(/[_-]+/g, " ");
+  const labels: Record<string, string> = {
+    active: "Faol",
+    inactive: "Nofaol",
+    pending: "Kutilmoqda",
+    "pending review": "Ko'rib chiqilmoqda",
+    "payment pending": "To'lov kutilmoqda",
+    "awaiting payment": "To'lov kutilmoqda",
+    confirmed: "Tasdiqlangan",
+    approved: "Tasdiqlangan",
+    accepted: "Qabul qilingan",
+    "in progress": "Jarayonda",
+    processing: "Jarayonda",
+    completed: "Yakunlangan",
+    done: "Yakunlangan",
+    cancelled: "Bekor qilingan",
+    canceled: "Bekor qilingan",
+    rejected: "Rad etilgan",
+    expired: "Muddati o'tgan",
+    unknown: "Noma'lum",
+  };
+
+  return labels[normalized] ?? String(value);
+}
+
 function arrayOrEmpty<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+function sumChartValues(rows: ChartRow[]) {
+  return rows.reduce((sum, row) => sum + row.value, 0);
+}
+
+function getChartLabelIndexes(length: number) {
+  if (length <= 0) return [];
+  if (length <= 5) return Array.from({ length }, (_, index) => index);
+  return Array.from(new Set([0, Math.floor(length / 4), Math.floor(length / 2), Math.floor((length * 3) / 4), length - 1]));
 }
 
 function numberValue(value: unknown) {
@@ -763,6 +1017,12 @@ function formatCurrency(value: number) {
     currency: "UZS",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function formatCompactCurrency(value: number) {
+  if (value >= 1_000_000) return `${formatNumber(Math.round(value / 1_000_000))} mln`;
+  if (value >= 1_000) return `${formatNumber(Math.round(value / 1_000))} ming`;
+  return formatNumber(Math.round(value));
 }
 
 function formatDateLabel(value: unknown) {
