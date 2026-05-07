@@ -7,9 +7,11 @@ import { LoadingState } from "@/components/ui/states";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { useToast } from "@/components/ui/toast";
 import { dashboardApi, type DashboardQuickStats } from "@/lib/api/admin-content";
+import { cn } from "@/lib/utils";
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [quickStats, setQuickStats] = useState<DashboardQuickStats | null>(null);
   const { user, loading, logout } = useAuth();
   const toast = useToast();
@@ -57,10 +59,17 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-[#0f172a] dark:text-slate-100 lg:grid lg:grid-cols-[288px_1fr]">
+    <div
+      className={cn(
+        "min-h-screen bg-slate-50 text-slate-950 transition-[grid-template-columns] duration-200 dark:bg-[#0f172a] dark:text-slate-100 lg:grid",
+        sidebarCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]",
+      )}
+    >
       <Sidebar
         open={sidebarOpen}
+        collapsed={sidebarCollapsed}
         onClose={() => setSidebarOpen(false)}
+        onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onLogout={handleLogout}
         quickStats={quickStats}
       />

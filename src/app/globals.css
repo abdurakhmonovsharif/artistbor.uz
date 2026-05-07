@@ -58,15 +58,392 @@ input[type="time"] {
 }
 
 .admin-sidebar-nav {
-  -ms-overflow-style: none;
   overscroll-behavior: contain;
-  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.admin-sidebar-nav:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.44) transparent;
 }
 
 .admin-sidebar-nav::-webkit-scrollbar {
+  width: 10px;
+}
+
+.admin-sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-sidebar-nav::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.admin-sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.44);
+}
+
+.artistbor-sidebar-menu,
+.artistbor-sidebar-menu.ant-menu,
+.artistbor-sidebar-menu.ant-menu-root,
+.artistbor-sidebar-menu.ant-menu-inline,
+.artistbor-sidebar-menu.ant-menu-light,
+.artistbor-sidebar-menu.ant-menu-dark {
+  --artistbor-sidebar-item: rgb(71 85 105);
+  --artistbor-sidebar-item-muted: rgb(100 116 139);
+  --artistbor-sidebar-item-hover: rgb(17 24 39);
+  --artistbor-sidebar-item-hover-bg: rgb(245 247 250);
+  --artistbor-sidebar-item-selected: rgb(173 104 0);
+  --artistbor-sidebar-item-selected-bg: rgb(255 247 230);
+  --artistbor-sidebar-item-selected-border: rgb(245 158 11);
+  --artistbor-sidebar-section: rgb(148 163 184);
+  --artistbor-sidebar-badge-bg: rgb(255 241 184);
+  --artistbor-sidebar-badge-text: rgb(173 104 0);
+  border-inline-end: 0 !important;
+  border-right: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  width: 100%;
+}
+
+.artistbor-sidebar-menu.ant-menu::before,
+.artistbor-sidebar-menu.ant-menu::after,
+.artistbor-sidebar-menu.ant-menu-inline::before,
+.artistbor-sidebar-menu.ant-menu-inline::after {
+  display: none !important;
+}
+
+.artistbor-sidebar-menu .ant-menu-item,
+.artistbor-sidebar-menu .ant-menu-submenu-title {
+  display: flex !important;
+  align-items: center !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  margin: 2px 0 !important;
+  overflow: hidden;
+  width: 100% !important;
+  border-radius: 8px !important;
+  color: var(--artistbor-sidebar-item) !important;
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.artistbor-sidebar-menu .ant-menu-item {
+  margin-inline: 0 !important;
+  padding-inline: 12px !important;
+  position: relative;
+}
+
+.artistbor-sidebar-menu .ant-menu-item::after,
+.artistbor-sidebar-menu.ant-menu-inline .ant-menu-item::after,
+.artistbor-sidebar-menu .ant-menu-submenu::after,
+.artistbor-sidebar-menu .ant-menu-submenu-title::after {
+  border-inline-end: 0 !important;
+  border-right: 0 !important;
+  display: none !important;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-group:not(:first-child) {
+  margin-top: 14px;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-group:first-child .ant-menu-item-group-title {
+  padding-top: 4px !important;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-group-title {
+  height: auto !important;
+  padding: 14px 8px 7px !important;
+  color: var(--artistbor-sidebar-section) !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-group-list {
+  margin: 0 !important;
+}
+
+.artistbor-sidebar-menu .ant-menu-title-content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-icon {
+  flex: 0 0 auto;
+  margin-inline-end: 10px !important;
+  color: var(--artistbor-sidebar-item-muted);
+  opacity: 0.88;
+  transition:
+    color 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.artistbor-sidebar-menu .ant-menu-item:not(.ant-menu-item-selected):hover,
+.artistbor-sidebar-menu .ant-menu-submenu-title:hover {
+  background: var(--artistbor-sidebar-item-hover-bg) !important;
+  color: var(--artistbor-sidebar-item-hover) !important;
+}
+
+.artistbor-sidebar-menu .ant-menu-item:not(.ant-menu-item-selected):hover .ant-menu-item-icon {
+  color: var(--artistbor-sidebar-item-hover);
+  opacity: 1;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-selected {
+  background: var(--artistbor-sidebar-item-selected-bg) !important;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.16);
+  color: var(--artistbor-sidebar-item-selected) !important;
+  font-weight: 600;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-selected::before {
+  background: var(--artistbor-sidebar-item-selected-border);
+  border-radius: 999px;
+  content: "";
+  height: 18px;
+  inset-inline-start: 0;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-selected .ant-menu-item-icon {
+  color: var(--artistbor-sidebar-item-selected);
+  opacity: 1;
+}
+
+.artistbor-sidebar-menu .ant-menu-item-selected .ant-menu-title-content {
+  color: inherit;
+}
+
+.artistbor-sidebar-badge {
+  align-items: center;
+  background: var(--artistbor-sidebar-badge-bg);
+  border-radius: 999px;
+  color: var(--artistbor-sidebar-badge-text);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  height: 18px;
+  justify-content: center;
+  line-height: 18px;
+  min-width: 20px;
+  padding: 0 6px;
+}
+
+.artistbor-sidebar-collapsed .admin-sidebar-nav {
+  scrollbar-width: none;
+}
+
+.artistbor-sidebar-collapsed .admin-sidebar-nav::-webkit-scrollbar {
   display: none;
-  height: 0;
-  width: 0;
+}
+
+.artistbor-sidebar-menu-collapsed .ant-menu-item-group:not(:first-child) {
+  margin-top: 8px;
+}
+
+.artistbor-sidebar-menu-collapsed .ant-menu-item-group-title {
+  display: none !important;
+}
+
+.artistbor-sidebar-menu-collapsed .ant-menu-item {
+  justify-content: center;
+  margin: 4px auto !important;
+  padding-inline: 0 !important;
+  width: 40px !important;
+}
+
+.artistbor-sidebar-menu-collapsed .ant-menu-item-icon {
+  margin-inline-end: 0 !important;
+}
+
+.artistbor-sidebar-menu-collapsed .ant-menu-title-content,
+.artistbor-sidebar-menu-collapsed .artistbor-sidebar-badge {
+  display: none !important;
+}
+
+.artistbor-sidebar-menu-collapsed .ant-menu-item-selected::before {
+  height: 16px;
+  inset-inline-start: 0;
+}
+
+.dark .admin-sidebar-nav:hover {
+  scrollbar-color: rgba(100, 116, 139, 0.64) transparent;
+}
+
+.dark .admin-sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.64);
+}
+
+.dark .artistbor-sidebar-menu,
+.dark .artistbor-sidebar-menu.ant-menu,
+.dark .artistbor-sidebar-menu.ant-menu-root,
+.dark .artistbor-sidebar-menu.ant-menu-inline,
+.dark .artistbor-sidebar-menu.ant-menu-light,
+.dark .artistbor-sidebar-menu.ant-menu-dark {
+  --artistbor-sidebar-item: rgb(174 184 201);
+  --artistbor-sidebar-item-muted: rgb(148 163 184);
+  --artistbor-sidebar-item-hover: rgb(248 250 252);
+  --artistbor-sidebar-item-hover-bg: rgba(255, 255, 255, 0.055);
+  --artistbor-sidebar-item-selected: rgb(251 191 36);
+  --artistbor-sidebar-item-selected-bg: rgba(245, 158, 11, 0.15);
+  --artistbor-sidebar-item-selected-border: rgb(251 191 36);
+  --artistbor-sidebar-section: rgb(107 114 128);
+  --artistbor-sidebar-badge-bg: rgba(245, 158, 11, 0.16);
+  --artistbor-sidebar-badge-text: rgb(251 191 36);
+}
+
+.dark .artistbor-sidebar-menu .ant-menu-item-selected {
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.13);
+}
+
+.dark .artistbor-sidebar-badge {
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.18);
+}
+
+.artistbor-application-drawer .ant-drawer-content {
+  background: #ffffff;
+  border-inline-start: 1px solid rgb(226 232 240);
+  display: flex;
+  flex-direction: column;
+}
+
+.artistbor-application-drawer .ant-drawer-content-wrapper {
+  box-shadow: none;
+}
+
+.artistbor-application-drawer .ant-drawer-header {
+  border-bottom-color: rgb(226 232 240);
+  padding: 0 16px;
+}
+
+.artistbor-application-drawer .ant-drawer-header-title {
+  min-width: 0;
+  gap: 8px;
+}
+
+.artistbor-application-drawer .ant-drawer-title {
+  min-width: 0;
+}
+
+.artistbor-application-drawer .ant-drawer-body {
+  background: #ffffff;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.artistbor-application-drawer .ant-drawer-footer {
+  border-top-color: rgb(226 232 240);
+  flex: none;
+  padding: 12px 16px;
+}
+
+.artistbor-application-drawer .ant-drawer-close {
+  color: rgb(71 85 105);
+  display: grid;
+  height: 32px;
+  margin-inline-end: 2px;
+  place-items: center;
+  width: 32px;
+}
+
+.artistbor-application-drawer .ant-drawer-close:hover {
+  background: rgb(241 245 249);
+  color: rgb(15 23 42);
+}
+
+.artistbor-contact-drawer .ant-drawer-header-title {
+  align-items: center;
+  gap: 8px;
+}
+
+.artistbor-contact-drawer .ant-drawer-close {
+  height: 32px;
+  width: 32px;
+}
+
+.artistbor-drawer-tabs .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
+.artistbor-drawer-tabs .ant-tabs-tab {
+  color: rgb(100 116 139);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 0;
+}
+
+.artistbor-drawer-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: rgb(37 99 235);
+}
+
+.artistbor-drawer-tabs .ant-tabs-ink-bar {
+  background: rgb(37 99 235);
+  height: 2px;
+}
+
+.artistbor-drawer-tabs .ant-tabs-nav::before {
+  border-bottom-color: rgb(226 232 240);
+}
+
+.dark .artistbor-application-drawer .ant-drawer-content {
+  background: #111827;
+  border-inline-start-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .artistbor-application-drawer .ant-drawer-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  background: #0f172a;
+}
+
+.dark .artistbor-application-drawer .ant-drawer-body {
+  background: #111827;
+}
+
+.dark .artistbor-application-drawer .ant-drawer-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
+  background: #0f172a;
+}
+
+.dark .artistbor-application-drawer .ant-drawer-close {
+  color: rgb(203 213 225);
+}
+
+.dark .artistbor-application-drawer .ant-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgb(255 255 255);
+}
+
+.dark .artistbor-drawer-tabs .ant-tabs-tab {
+  color: rgb(148 163 184);
+}
+
+.dark .artistbor-drawer-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: rgb(251 191 36);
+}
+
+.dark .artistbor-drawer-tabs .ant-tabs-ink-bar {
+  background: rgb(251 191 36);
+}
+
+.dark .artistbor-drawer-tabs .ant-tabs-nav::before {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .admin-table-scroll {
