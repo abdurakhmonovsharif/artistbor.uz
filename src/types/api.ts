@@ -72,6 +72,7 @@ export type ArtistProfile = {
 export type ArtistApplication = {
   id?: number;
   user_id?: number;
+  user?: User | UnknownRecord | null;
   category_ids?: number[];
   sub_category_ids?: number[];
   bio?: string;
@@ -81,7 +82,8 @@ export type ArtistApplication = {
   administrator_phone?: string;
   profile_photo_id?: number;
   profile_photo_url?: string | null;
-  status?: string;
+  status?: string | number;
+  status_label?: string;
   rejection_reason?: string;
   created_at?: number;
 };

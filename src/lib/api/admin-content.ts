@@ -185,7 +185,7 @@ export type UpdateArtistPayload = {
 };
 
 export type ApplicationFilters = {
-  status?: string;
+  status?: string | number;
   page?: number;
   limit?: number;
 };
@@ -656,13 +656,20 @@ export const applicationsApi = {
   async list(filters: ApplicationFilters) {
     // TODO: Swagger does not define the concrete list response schema for applications.
     const response = await apiClient.get("/v1/admin/application", {
-      params: compactParams(filters),
+      params: compactParams(normalizeApplicationFilters(filters)),
     });
     return normalizeList<ArtistApplication>(response.data);
   },
   async detail(id: number) {
-    const response = await apiClient.get(`/v1/admin/application/${id}`);
-    return unwrapData<ArtistApplication>(response.data);
+    try {
+      const response = await apiClient.get(`/v1/admin/application/${id}`, {
+        params: { expand: "user" },
+      });
+      return unwrapData<ArtistApplication>(response.data);
+    } catch {
+      const response = await apiClient.get(`/v1/admin/application/${id}`);
+      return unwrapData<ArtistApplication>(response.data);
+    }
   },
   async update(id: number, payload: UpdateApplicationPayload) {
     // TODO: Swagger omits update application response body shape.
@@ -680,6 +687,26 @@ export const applicationsApi = {
     return unwrapData<unknown>(response.data);
   },
 };
+
+function normalizeApplicationFilters(filters: ApplicationFilters) {
+  const status = normalizeApplicationStatusFilter(filters.status);
+  return {
+    ...filters,
+    ...(status === undefined ? { status: undefined } : { status }),
+  };
+}
+
+function normalizeApplicationStatusFilter(status: ApplicationFilters["status"]) {
+  if (status === "" || status === undefined || status === null) return undefined;
+  const numericStatus = Number(status);
+  if (Number.isFinite(numericStatus)) return numericStatus;
+
+  const text = String(status).toLowerCase().replace(/[_-]+/g, " ").trim();
+  if (text.includes("pending") || text.includes("kutilmoqda")) return 10;
+  if (text.includes("approved") || text.includes("tasdiqlangan")) return 20;
+  if (text.includes("rejected") || text.includes("rad etilgan")) return 30;
+  return undefined;
+}
 
 export const ordersApi = {
   async list(filters: OrderFilters) {
