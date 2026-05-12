@@ -1,12 +1,22 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Ban, Pencil, Plus, Search, Unlock } from "lucide-react";
+import { Button, Drawer, Input, Select } from "antd";
+import { Ban, Pencil, Plus, RotateCcw, Search, Unlock, X } from "lucide-react";
+import {
+  AdminFilterForm,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
+import {
+  adminActionButtonLargeClass,
+  adminDangerActionButtonClass,
+  adminPrimaryActionButtonClass,
+} from "@/components/admin/admin-action-button";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
-import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -15,6 +25,7 @@ import {
   type StaffFilters,
   type UpdateStaffPayload,
 } from "@/lib/api/admin-content";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { ListResult, User } from "@/types/api";
 
 type DialogState =
@@ -27,23 +38,6 @@ type DialogState =
 const limit = 20;
 const operatorRole = 20;
 
-const staffStatusOptions = [
-  { label: "Faol", value: "10" },
-  { label: "Nofaol", value: "9" },
-  { label: "Bloklangan", value: "20" },
-  { label: "O'chirilgan", value: "0" },
-];
-
-const columns: DataTableColumn<User>[] = [
-  { key: "id", label: "ID", kind: "number" },
-  { key: "first_name", label: "Ism" },
-  { key: "last_name", label: "Familiya" },
-  { key: "phone", label: "Telefon" },
-  { key: "email", label: "Email" },
-  { key: "status", label: "Holat", render: (row) => formatStaffStatus(row.status) },
-  { key: "created_at", label: "Yaratilgan", kind: "date" },
-];
-
 const initialFilters: StaffFilters = {
   role: operatorRole,
   status: "",
@@ -53,6 +47,10 @@ const initialFilters: StaffFilters = {
 };
 
 export default function OperatorsPage() {
+  const { locale, t } = useI18n();
+  const labels = getOperatorLabels(locale);
+  const staffStatusOptions = getStaffStatusOptions(labels);
+  const columns = getStaffColumns(labels);
   const [filters, setFilters] = useState<StaffFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<StaffFilters>(initialFilters);
   const [rows, setRows] = useState<User[]>([]);
@@ -71,11 +69,11 @@ export default function OperatorsPage() {
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Operatorlar yuklanmadi");
+      setError(caught instanceof Error ? caught.message : getOperatorLabels(locale).loadFailed);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, locale]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -109,15 +107,44 @@ export default function OperatorsPage() {
     try {
       if (dialog.type === "block") {
         await staffApi.block(dialog.user.id);
-        toast.success("Operator bloklandi");
+        toast.success(labels.blocked);
       } else {
         await staffApi.unblock(dialog.user.id);
-        toast.success("Operator blokdan chiqarildi");
+        toast.success(labels.unblocked);
       }
       setDialog(null);
       await fetchStaff();
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Amal bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const createOperator = async (payload: CreateStaffPayload) => {
+    setSubmitting(true);
+    try {
+      await staffApi.create(payload);
+      toast.success(labels.created);
+      setDialog(null);
+      await fetchStaff();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.createFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateOperator = async (user: User, payload: UpdateStaffPayload) => {
+    if (!user.id) return;
+    setSubmitting(true);
+    try {
+      await staffApi.update(user.id, payload);
+      toast.success(labels.updated);
+      setDialog(null);
+      await fetchStaff();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.updateFailed);
     } finally {
       setSubmitting(false);
     }
@@ -135,61 +162,53 @@ export default function OperatorsPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
-            Operatorlar
+            {labels.eyebrow}
           </p>
           <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-            Operatorlar
+            {labels.title}
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-            Operatorlarni ko&apos;rish, yaratish, tahrirlash va bloklash.
+            {labels.description}
           </p>
         </div>
         <button
           type="button"
           onClick={() => setDialog({ type: "create" })}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-xl shadow-amber-400/25 transition hover:bg-amber-300"
+          className={adminActionButtonLargeClass}
         >
           <Plus className="size-4" />
-          Operator yaratish
+          {labels.createAction}
         </button>
       </div>
 
-      <form
+      <AdminFilterForm
         onSubmit={applyFilters}
-        className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
+        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
+        mobileLabel={t("actions.search")}
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <FormField
-            label="Qidiruv"
+          <Input
+            allowClear
+            prefix={<Search className="size-4 text-slate-400" />}
             value={draftFilters.search ?? ""}
-            placeholder="Ism, telefon yoki email"
-            onChange={(value) => setDraftFilters((current) => ({ ...current, search: value }))}
+            placeholder={labels.searchPlaceholder}
+            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+            className={`${adminFilterControlClass} h-10`}
           />
-          <FormField
-            label="Holat"
-            type="select"
+          <Select
+            className={`${adminFilterControlClass} h-10`}
             value={draftFilters.status ?? ""}
-            options={staffStatusOptions}
-            onChange={(value) => setDraftFilters((current) => ({ ...current, status: value }))}
+            onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
+            options={[{ label: `${labels.status}: ${labels.all}`, value: "" }, ...staffStatusOptions]}
           />
-        </div>
-        <div className="mt-4 flex flex-wrap justify-end gap-3">
-          <button
-            type="button"
+          <Button
+            htmlType="button"
+            className={`${adminFilterActionClass} h-10`}
+            icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
-            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
           >
-            Tozalash
-          </button>
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
-          >
-            <Search className="size-4" />
-            Qidirish
-          </button>
-        </div>
-      </form>
+            {t("actions.clear")}
+          </Button>
+      </AdminFilterForm>
 
       {loading ? (
         <LoadingState />
@@ -204,15 +223,15 @@ export default function OperatorsPage() {
           getRowKey={(row, index) => row.id ?? index}
           actions={(row) => (
             <div className="flex justify-end gap-2">
-              <IconButton label="Tahrirlash" onClick={() => setDialog({ type: "edit", user: row })}>
+              <IconButton label={t("actions.edit")} onClick={() => setDialog({ type: "edit", user: row })}>
                 <Pencil className="size-4" />
               </IconButton>
               {isBlockedUser(row) ? (
-                <IconButton label="Blokdan chiqarish" onClick={() => setDialog({ type: "unblock", user: row })}>
+                <IconButton label={labels.unblockAction} onClick={() => setDialog({ type: "unblock", user: row })}>
                   <Unlock className="size-4" />
                 </IconButton>
               ) : (
-                <IconButton danger label="Bloklash" onClick={() => setDialog({ type: "block", user: row })}>
+                <IconButton danger label={labels.blockAction} onClick={() => setDialog({ type: "block", user: row })}>
                   <Ban className="size-4" />
                 </IconButton>
               )}
@@ -239,44 +258,19 @@ export default function OperatorsPage() {
         />
       )}
 
-      {dialog?.type === "create" ? (
-        <StaffFormModal
+      {dialog?.type === "create" || dialog?.type === "edit" ? (
+        <StaffDrawer
+          key={dialog.type === "edit" ? `edit-${dialog.user.id ?? "unknown"}` : "create"}
+          mode={dialog.type}
+          labels={labels}
+          statusOptions={staffStatusOptions}
+          user={dialog.type === "edit" ? dialog.user : undefined}
           loading={submitting}
           onClose={() => setDialog(null)}
-          onSubmit={async (payload) => {
-            setSubmitting(true);
-            try {
-              await staffApi.create(payload);
-              toast.success("Operator yaratildi");
-              setDialog(null);
-              await fetchStaff();
-            } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : "Operator yaratilmadi");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-        />
-      ) : null}
-
-      {dialog?.type === "edit" ? (
-        <EditUserModal
-          user={dialog.user}
-          loading={submitting}
-          onClose={() => setDialog(null)}
-          onSubmit={async (payload) => {
-            if (!dialog.user.id) return;
-            setSubmitting(true);
-            try {
-              await staffApi.update(dialog.user.id, payload);
-              toast.success("Operator yangilandi");
-              setDialog(null);
-              await fetchStaff();
-            } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : "Yangilash bajarilmadi");
-            } finally {
-              setSubmitting(false);
-            }
+          onSubmitCreate={createOperator}
+          onSubmitUpdate={(payload) => {
+            if (dialog.type !== "edit") return Promise.resolve();
+            return updateOperator(dialog.user, payload);
           }}
         />
       ) : null}
@@ -285,9 +279,9 @@ export default function OperatorsPage() {
         <ConfirmDialog
           danger
           loading={submitting}
-          title="Operatorni bloklash"
-          message="Operatorni bloklashni tasdiqlaysizmi?"
-          confirmLabel="Bloklash"
+          title={labels.blockTitle}
+          message={labels.blockConfirm}
+          confirmLabel={labels.blockAction}
           onCancel={() => setDialog(null)}
           onConfirm={runConfirmedAction}
         />
@@ -296,9 +290,9 @@ export default function OperatorsPage() {
       {dialog?.type === "unblock" ? (
         <ConfirmDialog
           loading={submitting}
-          title="Blokdan chiqarish"
-          message="Operatorni blokdan chiqarishni tasdiqlaysizmi?"
-          confirmLabel="Blokdan chiqarish"
+          title={labels.unblockTitle}
+          message={labels.unblockConfirm}
+          confirmLabel={labels.unblockAction}
           onCancel={() => setDialog(null)}
           onConfirm={runConfirmedAction}
         />
@@ -307,81 +301,59 @@ export default function OperatorsPage() {
   );
 }
 
-function StaffFormModal({
-  loading,
-  onClose,
-  onSubmit,
-}: {
-  loading: boolean;
-  onClose: () => void;
-  onSubmit: (payload: CreateStaffPayload) => Promise<void>;
-}) {
-  const [values, setValues] = useState({
-    phone: "",
-    password: "",
-    first_name: "",
-    last_name: "",
-    email: "",
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const nextErrors = validateRequired(values, ["phone", "password", "first_name"]);
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
-    await onSubmit({
-      phone: values.phone,
-      password: values.password,
-      first_name: values.first_name,
-      last_name: values.last_name || undefined,
-      email: values.email || undefined,
-      role: 20,
-    });
-  };
-
-  return (
-    <Modal title="Operator yaratish" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField label="Telefon" required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
-          <FormField label="Parol" type="password" required value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
-          <FormField label="Ism" required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
-          <FormField label="Familiya" value={values.last_name} error={errors.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
-          <FormField label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
-        </div>
-        <FormActions loading={loading} onClose={onClose} />
-      </form>
-    </Modal>
-  );
-}
-
-function EditUserModal({
+function StaffDrawer({
+  mode,
+  labels,
+  statusOptions = [],
   user,
   loading,
   onClose,
-  onSubmit,
+  onSubmitCreate,
+  onSubmitUpdate,
 }: {
-  user: User;
+  mode: "create" | "edit";
+  labels: OperatorLabels;
+  statusOptions?: { label: string; value: string }[];
+  user?: User;
   loading: boolean;
   onClose: () => void;
-  onSubmit: (payload: UpdateStaffPayload) => Promise<void>;
+  onSubmitCreate?: (payload: CreateStaffPayload) => Promise<void>;
+  onSubmitUpdate?: (payload: UpdateStaffPayload) => Promise<void>;
 }) {
   const [values, setValues] = useState({
-    first_name: user.first_name ?? "",
-    last_name: user.last_name ?? "",
-    phone: user.phone ?? "",
-    email: user.email ?? "",
-    status: user.status === undefined ? "" : String(user.status),
+    phone: user?.phone ?? "",
+    password: "",
+    first_name: user?.first_name ?? "",
+    last_name: user?.last_name ?? "",
+    email: user?.email ?? "",
+    status: user?.status === undefined ? "" : String(user.status),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const formId = mode === "create" ? "operator-create-form" : "operator-edit-form";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const nextErrors = validateRequired(values, ["first_name", "phone", "status"]);
+    const requiredFields =
+      mode === "create"
+        ? ["phone", "password", "first_name"]
+        : ["phone", "first_name", "status"];
+    const nextErrors = validateRequired(values, requiredFields, labels.requiredField);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    await onSubmit({
+
+    if (mode === "create") {
+      await onSubmitCreate?.({
+        phone: values.phone,
+        password: values.password,
+        first_name: values.first_name,
+        last_name: values.last_name || undefined,
+        email: values.email || undefined,
+        role: 20,
+      });
+      return;
+    }
+
+    await onSubmitUpdate?.({
       first_name: values.first_name,
       last_name: values.last_name || undefined,
       phone: values.phone,
@@ -392,47 +364,95 @@ function EditUserModal({
   };
 
   return (
-    <Modal title="Operatorni tahrirlash" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField label="Ism" required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
-          <FormField label="Familiya" value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
-          <FormField label="Telefon" required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
-          <FormField label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
-          <FormField
-            label="Holat"
-            type="select"
-            required
-            value={values.status}
-            error={errors.status}
-            options={staffStatusOptions}
-            onChange={(status) => setValues((current) => ({ ...current, status }))}
+    <Drawer
+      open
+      onClose={onClose}
+      size="min(100vw, 480px)"
+      placement="right"
+      closable={{ placement: "start" }}
+      closeIcon={<X className="size-5" />}
+      rootClassName="artistbor-application-drawer"
+      classNames={{
+        body: "artistbor-application-drawer-body",
+        footer: "artistbor-application-drawer-footer",
+        header: "artistbor-application-drawer-header",
+        title: "artistbor-application-drawer-title",
+      }}
+      title={<span className="truncate text-lg font-bold text-slate-950 dark:text-white">{mode === "create" ? labels.createTitle : labels.editTitle}</span>}
+      footer={
+        <div className="grid grid-cols-2 gap-2">
+          <DrawerActionButton
+            icon={<X className="size-4" />}
+            label={labels.cancel}
+            onClick={onClose}
+          />
+          <DrawerActionButton
+            form={formId}
+            icon={mode === "create" ? <Plus className="size-4" /> : <Pencil className="size-4" />}
+            label={loading ? labels.saving : labels.save}
+            loading={loading}
+            tone="save"
+            type="submit"
           />
         </div>
-        <FormActions loading={loading} onClose={onClose} />
+      }
+      styles={{
+        body: { padding: 0, overflow: "auto" },
+        footer: { padding: "12px 16px" },
+        header: { minHeight: 64, padding: "0 16px" },
+        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
+        section: { boxShadow: "none" },
+      }}
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5 p-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField compact autoComplete="off" label={labels.phone} required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
+          {mode === "create" ? (
+            <FormField compact autoComplete="new-password" label={labels.password} type="password" required value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
+          ) : null}
+          <FormField compact autoComplete="off" label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+          <FormField compact autoComplete="off" label={labels.lastName} value={values.last_name} error={errors.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+          {mode === "edit" ? (
+            <FormField
+              compact
+              label={labels.status}
+              type="select"
+              required
+              value={values.status}
+              error={errors.status}
+              options={statusOptions}
+              onChange={(status) => setValues((current) => ({ ...current, status }))}
+            />
+          ) : null}
+          <FormField compact autoComplete="off" className="md:col-span-2" label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
+        </div>
       </form>
-    </Modal>
+    </Drawer>
   );
 }
 
-function FormActions({ loading, onClose }: { loading: boolean; onClose: () => void }) {
+function DrawerActionButton({
+  icon,
+  label,
+  loading,
+  tone = "default",
+  ...buttonProps
+}: {
+  icon: React.ReactNode;
+  label: string;
+  loading?: boolean;
+  tone?: "default" | "save";
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <div className="flex justify-end gap-3">
-      <button
-        type="button"
-        onClick={onClose}
-        className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
-      >
-        Bekor qilish
-      </button>
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded-2xl bg-amber-400 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-lg shadow-amber-400/25 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? "Saqlanmoqda..." : "Saqlash"}
-      </button>
-    </div>
+    <button
+      {...buttonProps}
+      type={buttonProps.type ?? "button"}
+      disabled={loading || buttonProps.disabled}
+      className={tone === "save" ? adminPrimaryActionButtonClass : adminDangerActionButtonClass}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 
@@ -453,7 +473,7 @@ function IconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`rounded-xl border p-2 transition ${
+      className={`cursor-pointer rounded-xl border p-2 transition ${
         danger
           ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
           : "border-slate-200 text-slate-500 hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
@@ -464,10 +484,10 @@ function IconButton({
   );
 }
 
-function validateRequired(values: Record<string, string>, keys: string[]) {
+function validateRequired(values: Record<string, string>, keys: string[], message: string) {
   const errors: Record<string, string> = {};
   for (const key of keys) {
-    if (!values[key]) errors[key] = "Majburiy maydon";
+    if (!values[key]) errors[key] = message;
   }
   return errors;
 }
@@ -477,13 +497,120 @@ function isBlockedUser(user: User) {
   return status.includes("block") || status === "20";
 }
 
-function formatStaffStatus(value: User["status"]) {
+function formatStaffStatus(value: User["status"], labels: OperatorLabels) {
   const status = String(value ?? "");
-  const labels: Record<string, string> = {
-    "0": "O'chirilgan",
-    "9": "Nofaol",
-    "10": "Faol",
-    "20": "Bloklangan",
+  const statusLabels: Record<string, string> = {
+    "0": labels.deletedStatus,
+    "9": labels.inactiveStatus,
+    "10": labels.activeStatus,
+    "20": labels.blockedStatus,
   };
-  return labels[status] ?? (status || "—");
+  return statusLabels[status] ?? (status || "—");
+}
+
+type OperatorLabels = ReturnType<typeof getOperatorLabels>;
+
+function getStaffColumns(labels: OperatorLabels): DataTableColumn<User>[] {
+  return [
+    { key: "id", label: "ID", kind: "number" },
+    { key: "first_name", label: labels.firstName },
+    { key: "last_name", label: labels.lastName },
+    { key: "phone", label: labels.phone },
+    { key: "email", label: "Email" },
+    { key: "status", label: labels.status, render: (row) => formatStaffStatus(row.status, labels) },
+    { key: "created_at", label: labels.createdAt, kind: "date" },
+  ];
+}
+
+function getStaffStatusOptions(labels: OperatorLabels) {
+  return [
+    { label: labels.activeStatus, value: "10" },
+    { label: labels.inactiveStatus, value: "9" },
+    { label: labels.blockedStatus, value: "20" },
+    { label: labels.deletedStatus, value: "0" },
+  ];
+}
+
+function getOperatorLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      actionFailed: "Не удалось выполнить действие",
+      activeStatus: "Активный",
+      all: "Все",
+      blockAction: "Заблокировать",
+      blockConfirm: "Подтвердите блокировку оператора.",
+      blocked: "Оператор заблокирован",
+      blockedStatus: "Заблокирован",
+      blockTitle: "Блокировка оператора",
+      cancel: "Отмена",
+      createAction: "Создать оператора",
+      createFailed: "Не удалось создать оператора",
+      created: "Оператор создан",
+      createdAt: "Создан",
+      createTitle: "Создание оператора",
+      deletedStatus: "Удален",
+      description: "Просмотр, создание, редактирование и блокировка операторов.",
+      editTitle: "Редактирование оператора",
+      eyebrow: "Операторы",
+      firstName: "Имя",
+      inactiveStatus: "Неактивный",
+      lastName: "Фамилия",
+      loadFailed: "Не удалось загрузить операторов",
+      password: "Пароль",
+      phone: "Телефон",
+      requiredField: "Обязательное поле",
+      save: "Сохранить",
+      saving: "Сохранение...",
+      search: "Поиск",
+      searchPlaceholder: "Имя, телефон или email",
+      status: "Статус",
+      title: "Операторы",
+      unblockAction: "Разблокировать",
+      unblockConfirm: "Подтвердите разблокировку оператора.",
+      unblocked: "Оператор разблокирован",
+      unblockTitle: "Разблокировка",
+      updated: "Оператор обновлен",
+      updateFailed: "Не удалось обновить",
+    };
+  }
+
+  return {
+    actionFailed: "Amal bajarilmadi",
+    activeStatus: "Faol",
+    all: "Barchasi",
+    blockAction: "Bloklash",
+    blockConfirm: "Operatorni bloklashni tasdiqlaysizmi?",
+    blocked: "Operator bloklandi",
+    blockedStatus: "Bloklangan",
+    blockTitle: "Operatorni bloklash",
+    cancel: "Bekor qilish",
+    createAction: "Operator yaratish",
+    createFailed: "Operator yaratilmadi",
+    created: "Operator yaratildi",
+    createdAt: "Yaratilgan",
+    createTitle: "Operator yaratish",
+    deletedStatus: "O'chirilgan",
+    description: "Operatorlarni ko'rish, yaratish, tahrirlash va bloklash.",
+    editTitle: "Operatorni tahrirlash",
+    eyebrow: "Operatorlar",
+    firstName: "Ism",
+    inactiveStatus: "Nofaol",
+    lastName: "Familiya",
+    loadFailed: "Operatorlar yuklanmadi",
+    password: "Parol",
+    phone: "Telefon",
+    requiredField: "Majburiy maydon",
+    save: "Saqlash",
+    saving: "Saqlanmoqda...",
+    search: "Qidiruv",
+    searchPlaceholder: "Ism, telefon yoki email",
+    status: "Holat",
+    title: "Operatorlar",
+    unblockAction: "Blokdan chiqarish",
+    unblockConfirm: "Operatorni blokdan chiqarishni tasdiqlaysizmi?",
+    unblocked: "Operator blokdan chiqarildi",
+    unblockTitle: "Blokdan chiqarish",
+    updated: "Operator yangilandi",
+    updateFailed: "Yangilash bajarilmadi",
+  };
 }

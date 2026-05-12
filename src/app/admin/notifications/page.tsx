@@ -1,12 +1,22 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Eye, Send, SendToBack, Search } from "lucide-react";
+import { CheckCircle2, Eye, Send, SendToBack, Search, X } from "lucide-react";
+import {
+  AdminFilterForm,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
+import {
+  adminActionButtonClass,
+  adminActionButtonLargeClass,
+  adminPrimaryActionButtonClass,
+} from "@/components/admin/admin-action-button";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { FormField } from "@/components/ui/form-field";
-import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -172,7 +182,7 @@ export default function NotificationsPage() {
           <button
             type="button"
             onClick={() => setDialog({ type: "send-all" })}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-xl shadow-amber-400/25 transition hover:bg-amber-300"
+            className={adminActionButtonLargeClass}
           >
             <SendToBack className="size-4" />
             Send all
@@ -180,14 +190,17 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      <form
+      <AdminFilterForm
         onSubmit={applyFilters}
-        className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
+        gridClassName="md:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_auto_auto] md:items-center"
+        mobileLabel="Filter"
       >
-        <div className="grid gap-3 md:grid-cols-3">
           <FormField
             label="Type"
             type="select"
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             value={draftFilters.type ?? ""}
             options={notificationTypes}
             onChange={(type) => setDraftFilters((current) => ({ ...current, type }))}
@@ -195,33 +208,36 @@ export default function NotificationsPage() {
           <FormField
             label="Sanadan"
             type="date"
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             value={draftFilters.date_from ?? ""}
             onChange={(date_from) => setDraftFilters((current) => ({ ...current, date_from }))}
           />
           <FormField
             label="Sanagacha"
             type="date"
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             value={draftFilters.date_to ?? ""}
             onChange={(date_to) => setDraftFilters((current) => ({ ...current, date_to }))}
           />
-        </div>
-        <div className="mt-4 flex flex-wrap justify-end gap-3">
           <button
             type="button"
             onClick={resetFilters}
-            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
+            className={`${adminFilterActionClass} h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300`}
           >
             Tozalash
           </button>
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+            className={`${adminFilterActionClass} inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950`}
           >
             <Search className="size-4" />
             Qidirish
           </button>
-        </div>
-      </form>
+      </AdminFilterForm>
 
       {loading ? (
         <LoadingState label="Xabarnomalar yuklanmoqda..." />
@@ -263,9 +279,11 @@ export default function NotificationsPage() {
       )}
 
       {dialog?.type === "view" ? (
-        <Modal title="Xabarnoma tafsilotlari" onClose={() => setDialog(null)} width="max-w-5xl">
-          <DetailGrid record={dialog.notification} fields={notificationDetailFields} />
-        </Modal>
+        <AdminDrawer title="Xabarnoma tafsilotlari" onClose={() => setDialog(null)} size="min(100vw, 720px)">
+          <div className="p-4">
+            <DetailGrid record={dialog.notification} fields={notificationDetailFields} />
+          </div>
+        </AdminDrawer>
       ) : null}
 
       {dialog?.type === "send-filtered" ? (
@@ -356,13 +374,13 @@ function SendFilteredModal({
   };
 
   return (
-    <Modal title="Filter bo'yicha xabarnoma yuborish" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5">
+    <AdminDrawer title="Filter bo'yicha xabarnoma yuborish" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-5 p-4">
         <NotificationBaseFields values={values} setValues={setValues} includeRole />
         {error ? <p className="text-sm font-semibold text-rose-500">{error}</p> : null}
         <FormActions loading={loading} onClose={onClose} />
       </form>
-    </Modal>
+    </AdminDrawer>
   );
 }
 
@@ -404,13 +422,13 @@ function SendAllModal({
   };
 
   return (
-    <Modal title="Barchaga xabarnoma yuborish" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5">
+    <AdminDrawer title="Barchaga xabarnoma yuborish" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-5 p-4">
         <NotificationBaseFields values={values} setValues={setValues} />
         {error ? <p className="text-sm font-semibold text-rose-500">{error}</p> : null}
         <FormActions loading={loading} onClose={onClose} />
       </form>
-    </Modal>
+    </AdminDrawer>
   );
 }
 
@@ -435,12 +453,14 @@ function NotificationBaseFields({
     <>
       <div className="grid gap-4 md:grid-cols-2">
         <FormField
+          compact
           label="Sarlavha"
           value={values.title}
           required
           onChange={(title) => setValues((current) => ({ ...current, title }))}
         />
         <FormField
+          compact
           label="Type"
           type="select"
           value={values.type}
@@ -459,22 +479,25 @@ function NotificationBaseFields({
       {includeRole ? (
         <div className="grid gap-4 md:grid-cols-3">
           <FormField
+            compact
             label="Role"
             type="select"
             value={values.role}
             options={[
               { label: "Mijoz", value: "client" },
-              { label: "Artist", value: "artist" },
+              { label: "Sanatkor", value: "artist" },
             ]}
             onChange={(role) => setValues((current) => ({ ...current, role }))}
           />
           <FormField
+            compact
             label="Region ID"
             type="number"
             value={values.region_id}
             onChange={(region_id) => setValues((current) => ({ ...current, region_id }))}
           />
           <FormField
+            compact
             label="District ID"
             type="number"
             value={values.district_id}
@@ -509,19 +532,21 @@ function parseData(value: string): { value?: Record<string, unknown>; error?: st
 
 function FormActions({ loading, onClose }: { loading: boolean; onClose: () => void }) {
   return (
-    <div className="flex justify-end gap-3">
+    <div className="grid grid-cols-2 gap-2">
       <button
         type="button"
         onClick={onClose}
-        className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
+        className={adminActionButtonClass}
       >
+        <X className="size-4" />
         Bekor qilish
       </button>
       <button
         type="submit"
         disabled={loading}
-        className="rounded-2xl bg-amber-400 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-lg shadow-amber-400/25 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+        className={adminPrimaryActionButtonClass}
       >
+        <CheckCircle2 className="size-4" />
         {loading ? "Yuborilmoqda..." : "Yuborish"}
       </button>
     </div>
@@ -543,7 +568,7 @@ function IconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
+      className="cursor-pointer rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
     >
       {children}
     </button>

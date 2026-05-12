@@ -112,7 +112,7 @@ function looksLikeDate(key: string, value: unknown) {
 function readableLabel(key: string) {
   const labels: Record<string, string> = {
     id: "ID",
-    artist_id: "Artist ID",
+    artist_id: "Sanatkor ID",
     client_id: "Mijoz ID",
     user_id: "Foydalanuvchi ID",
     region_id: "Viloyat",

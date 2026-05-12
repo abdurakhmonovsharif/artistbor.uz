@@ -36,6 +36,32 @@ textarea {
   font: inherit;
 }
 
+button,
+[role="button"],
+summary,
+.ant-btn,
+.ant-dropdown-trigger,
+.ant-menu-item,
+.ant-menu-submenu-title,
+.ant-pagination-item,
+.ant-pagination-prev,
+.ant-pagination-next,
+.ant-select-selector,
+.ant-picker,
+.ant-tabs-tab {
+  cursor: pointer;
+}
+
+button:disabled,
+button[disabled],
+[aria-disabled="true"],
+.ant-btn-disabled,
+.ant-btn:disabled,
+.ant-select-disabled .ant-select-selector,
+.ant-picker-disabled {
+  cursor: not-allowed;
+}
+
 input[type="date"],
 input[type="time"] {
   color-scheme: light;
@@ -368,6 +394,34 @@ input[type="time"] {
   color: rgb(15 23 42);
 }
 
+.artistbor-order-drawer .ant-drawer-close {
+  background: rgb(255 241 242);
+  border: 1.5px solid rgb(251 113 133);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
+  color: rgb(244 63 94);
+}
+
+.artistbor-order-drawer .ant-drawer-close svg {
+  color: rgb(244 63 94);
+  stroke: currentColor;
+}
+
+.artistbor-order-drawer .ant-drawer-close:hover {
+  background: rgb(255 241 242);
+  border-color: rgb(225 29 72);
+  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.16);
+  color: rgb(225 29 72);
+}
+
+.artistbor-order-drawer .ant-drawer-close:focus-visible {
+  outline: 2px solid rgb(244 63 94);
+  outline-offset: 2px;
+}
+
+.artistbor-order-drawer .ant-drawer-close:hover svg {
+  color: rgb(225 29 72);
+}
+
 .artistbor-contact-drawer .ant-drawer-header-title {
   align-items: center;
   gap: 8px;
@@ -430,6 +484,28 @@ input[type="time"] {
   color: rgb(255 255 255);
 }
 
+.dark .artistbor-order-drawer .ant-drawer-close {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(251, 113, 133, 0.7);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.18);
+  color: rgb(251 113 133);
+}
+
+.dark .artistbor-order-drawer .ant-drawer-close svg {
+  color: rgb(251 113 133);
+}
+
+.dark .artistbor-order-drawer .ant-drawer-close:hover {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(253, 164, 175, 0.9);
+  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.24);
+  color: rgb(253 164 175);
+}
+
+.dark .artistbor-order-drawer .ant-drawer-close:hover svg {
+  color: rgb(253 164 175);
+}
+
 .dark .artistbor-drawer-tabs .ant-tabs-tab {
   color: rgb(148 163 184);
 }
@@ -477,4 +553,11 @@ input[type="time"] {
 
 .dark .admin-table-scroll::-webkit-scrollbar-thumb {
   background: rgba(125, 146, 178, 0.68);
+}
+
+@media (max-width: 767px) {
+  .admin-filter-collapsed .admin-filter-control,
+  .admin-filter-collapsed .admin-filter-action {
+    display: none !important;
+  }
 }

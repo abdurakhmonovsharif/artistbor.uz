@@ -13,6 +13,8 @@ import {
   type AdminMenuItem,
 } from "@/components/admin/menu";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { TranslationKey } from "@/lib/i18n/translations";
 import type { DashboardQuickStats } from "@/lib/api/admin-content";
 
 export function Sidebar({
@@ -32,12 +34,13 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useI18n();
   const [isDesktop, setIsDesktop] = useState(false);
   const selectedKey = useMemo(() => getSelectedKey(pathname), [pathname]);
   const compact = collapsed && isDesktop;
   const menuItems = useMemo<MenuProps["items"]>(
-    () => adminMenuGroups.map((item) => createGroupMenuItem(item, quickStats)),
-    [quickStats],
+    () => adminMenuGroups.map((item) => createGroupMenuItem(item, quickStats, t)),
+    [quickStats, t],
   );
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export function Sidebar({
             href="/admin"
             onClick={onClose}
             className={cn("flex min-w-0 items-center", compact ? "justify-center" : "gap-3")}
-            aria-label="Artistbor admin paneli"
+            aria-label={t("admin.brandAria")}
           >
             <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-sm font-bold text-white">
               A
@@ -94,7 +97,7 @@ export function Sidebar({
                 Artistbor
               </span>
               <span className="block truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-                Admin paneli
+                {t("menu.dashboard")}
               </span>
             </span>
           </Link>
@@ -102,9 +105,9 @@ export function Sidebar({
             type="button"
             onClick={onToggleCollapsed}
             className="absolute -right-4 top-1/2 z-10 hidden size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:bg-[#111827] dark:text-slate-400 dark:hover:border-amber-400/40 dark:hover:text-amber-300 lg:grid"
-            aria-label={compact ? "Sidebarni kengaytirish" : "Sidebarni qisqartirish"}
+            aria-label={compact ? t("sidebar.expand") : t("sidebar.collapse")}
             aria-expanded={!compact}
-            title={compact ? "Kengaytirish" : "Qisqartirish"}
+            title={compact ? t("sidebar.expand") : t("sidebar.collapse")}
           >
             {compact ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </button>
@@ -112,7 +115,7 @@ export function Sidebar({
             type="button"
             onClick={onClose}
             className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white lg:hidden"
-            aria-label="Menyuni yopish"
+            aria-label={t("sidebar.closeMenu")}
           >
             <X className="size-4" />
           </button>
@@ -120,7 +123,7 @@ export function Sidebar({
 
         <nav className="admin-sidebar-nav flex-1 overflow-y-auto px-3 py-3">
           <Menu
-            aria-label="Admin navigatsiyasi"
+            aria-label={t("dashboard.menu")}
             className={cn("artistbor-sidebar-menu", compact && "artistbor-sidebar-menu-collapsed")}
             inlineCollapsed={compact}
             items={menuItems}
@@ -132,7 +135,7 @@ export function Sidebar({
         </nav>
 
         <div className="border-t border-slate-100 px-3 py-3 dark:border-white/10">
-          <Tooltip title={compact ? "Chiqish" : null} placement="right" mouseEnterDelay={0.2}>
+          <Tooltip title={compact ? t("admin.logout") : null} placement="right" mouseEnterDelay={0.2}>
             <button
               type="button"
               onClick={onLogout}
@@ -140,10 +143,10 @@ export function Sidebar({
                 "flex h-10 items-center rounded-lg text-sm font-semibold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300",
                 compact ? "mx-auto w-10 justify-center px-0" : "w-full gap-3 px-3",
               )}
-              aria-label="Chiqish"
+              aria-label={t("admin.logout")}
             >
               <LogOut className="size-4 shrink-0" />
-              <span className={cn(compact && "hidden")}>Chiqish</span>
+              <span className={cn(compact && "hidden")}>{t("admin.logout")}</span>
             </button>
           </Tooltip>
         </div>
@@ -155,25 +158,31 @@ export function Sidebar({
 function createGroupMenuItem(
   item: AdminMenuGroup,
   quickStats: DashboardQuickStats | null,
+  t: (key: TranslationKey) => string,
 ) {
   return {
     key: item.key,
     type: "group" as const,
-    label: item.label,
-    children: item.children.map((child) => createRouteMenuItem(child, quickStats)),
+    label: t(item.labelKey),
+    children: item.children.map((child) => createRouteMenuItem(child, quickStats, t)),
   };
 }
 
-function createRouteMenuItem(item: AdminMenuItem, quickStats: DashboardQuickStats | null) {
+function createRouteMenuItem(
+  item: AdminMenuItem,
+  quickStats: DashboardQuickStats | null,
+  t: (key: TranslationKey) => string,
+) {
   const Icon = item.icon;
+  const label = t(item.labelKey);
 
   return {
     key: item.href,
     icon: <Icon className="size-4" />,
-    title: item.label,
+    title: label,
     label: (
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
         <MenuBadge value={getMenuBadge(item.href, quickStats)} />
       </span>
     ),
@@ -198,7 +207,7 @@ function getMenuBadge(href: string, stats: DashboardQuickStats | null) {
   if (!stats) return undefined;
   if (href === "/admin/applications") return stats.pending_applications;
   if (href === "/admin/comments") return stats.pending_comments;
-  if (href === "/admin/orders") return stats.today_orders;
+  if (href === "/admin/orders") return stats.pending_orders;
   return undefined;
 }
 

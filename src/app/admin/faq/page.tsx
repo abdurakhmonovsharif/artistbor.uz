@@ -1,47 +1,66 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { CrudPage, type CrudField, type FilterField } from "@/components/admin/crud-page";
 import type { DataTableColumn } from "@/components/admin/data-table";
 import { faqApi, type FaqFilters, type FaqPayload } from "@/lib/api/admin-content";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { Faq } from "@/types/api";
 
-const columns: DataTableColumn<Faq>[] = [
-  { key: "id", label: "ID", kind: "number" },
-  { key: "question_uz", label: "Savol UZ" },
-  { key: "question_ru", label: "Savol RU" },
-  { key: "answer_uz", label: "Javob UZ" },
-  { key: "status", label: "Holat", kind: "status" },
-  { key: "sort_order", label: "Tartib", kind: "number" },
-  { key: "created_at", label: "Yaratilgan", kind: "date" },
-];
-
-const filters: FilterField<FaqFilters>[] = [
-  { name: "search", label: "Qidiruv", placeholder: "Savol yoki javob" },
-  { name: "status", label: "Holat", type: "number" },
-];
-
-const fields: CrudField<FaqPayload>[] = [
-  { name: "question_uz", label: "Savol UZ", required: true },
-  { name: "question_ru", label: "Savol RU" },
-  { name: "question_en", label: "Savol EN" },
-  { name: "answer_uz", label: "Javob UZ", type: "textarea", required: true },
-  { name: "answer_ru", label: "Javob RU", type: "textarea" },
-  { name: "answer_en", label: "Javob EN", type: "textarea" },
-  { name: "sort_order", label: "Tartib", type: "number" },
-  { name: "status", label: "Holat", type: "number" },
-];
-
 export default function FaqPage() {
+  const { locale } = useI18n();
+  const labels = getLabels(locale);
+  const columns: DataTableColumn<Faq>[] = [
+    { key: "id", label: "ID", kind: "number" },
+    { key: "question_uz", label: labels.questionUz },
+    { key: "question_ru", label: labels.questionRu },
+    { key: "answer_uz", label: labels.answerUz },
+    { key: "status", label: labels.status, kind: "status" },
+    { key: "sort_order", label: labels.sortOrder, kind: "number" },
+    { key: "created_at", label: labels.createdAt, kind: "date" },
+  ];
+  const filters: FilterField<FaqFilters>[] = [
+    {
+      name: "search",
+      label: labels.search,
+      placeholder: labels.searchPlaceholder,
+      hideLabel: true,
+      compact: true,
+      prefixIcon: <Search className="size-4" />,
+    },
+    {
+      name: "status",
+      label: labels.status,
+      type: "number",
+      placeholder: labels.status,
+      hideLabel: true,
+      compact: true,
+    },
+  ];
+  const fields: CrudField<FaqPayload>[] = [
+    { name: "question_uz", label: labels.questionUz, required: true },
+    { name: "question_ru", label: labels.questionRu },
+    { name: "question_en", label: labels.questionEn },
+    { name: "answer_uz", label: labels.answerUz, type: "textarea", required: true },
+    { name: "answer_ru", label: labels.answerRu, type: "textarea" },
+    { name: "answer_en", label: labels.answerEn, type: "textarea" },
+    { name: "sort_order", label: labels.sortOrder, type: "number" },
+    { name: "status", label: labels.status, type: "number" },
+  ];
+
   return (
     <CrudPage<Faq, FaqFilters, FaqPayload, FaqPayload>
-      title="Savol-javob"
-      eyebrow="Yordam"
-      description="Ko'p so'raladigan savollarni ko'rish, qo'shish va tahrirlash."
+      title={labels.title}
+      eyebrow={labels.eyebrow}
+      description={labels.description}
       columns={columns}
       filterFields={filters}
       createFields={fields}
       updateFields={fields}
       initialFilters={{ search: "", status: "", page: 1, limit: 20 }}
+      filterGridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto_auto] md:items-center"
+      inlineFilterActions
+      showFilterSettingsButton
       pagination={{ limit: 20 }}
       list={faqApi.list}
       detail={faqApi.detail}
@@ -50,4 +69,42 @@ export default function FaqPage() {
       remove={faqApi.delete}
     />
   );
+}
+
+function getLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      answerEn: "Ответ EN",
+      answerRu: "Ответ RU",
+      answerUz: "Ответ UZ",
+      createdAt: "Создано",
+      description: "Просмотр, добавление и редактирование часто задаваемых вопросов.",
+      eyebrow: "Помощь",
+      questionEn: "Вопрос EN",
+      questionRu: "Вопрос RU",
+      questionUz: "Вопрос UZ",
+      search: "Поиск",
+      searchPlaceholder: "Вопрос или ответ",
+      sortOrder: "Порядок",
+      status: "Статус",
+      title: "Вопросы и ответы",
+    };
+  }
+
+  return {
+    answerEn: "Javob EN",
+    answerRu: "Javob RU",
+    answerUz: "Javob UZ",
+    createdAt: "Yaratilgan",
+    description: "Ko'p so'raladigan savollarni ko'rish, qo'shish va tahrirlash.",
+    eyebrow: "Yordam",
+    questionEn: "Savol EN",
+    questionRu: "Savol RU",
+    questionUz: "Savol UZ",
+    search: "Qidiruv",
+    searchPlaceholder: "Savol yoki javob",
+    sortOrder: "Tartib",
+    status: "Holat",
+    title: "Savol-javob",
+  };
 }

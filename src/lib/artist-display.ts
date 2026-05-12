@@ -6,7 +6,7 @@ export function getArtistId(artist: ArtistProfile) {
 
 export function getArtistName(artist: ArtistProfile) {
   const fromParts = [artist.first_name, artist.last_name].filter(Boolean).join(" ").trim();
-  return artist.full_name || fromParts || artist.administrator_name || `Artist #${getArtistId(artist) ?? "—"}`;
+  return artist.full_name || fromParts || artist.administrator_name || `Sanatkor #${getArtistId(artist) ?? "—"}`;
 }
 
 export function getArtistOptionLabel(artist: ArtistProfile) {
@@ -24,7 +24,7 @@ export function getArtistSelectOptions(artists: ArtistProfile[], selectedId?: st
   const selectedValue = selectedId === undefined || selectedId === "" ? "" : String(selectedId);
 
   if (selectedValue && !options.some((option) => option.value === selectedValue)) {
-    return [{ label: `Artist #${selectedValue}`, value: selectedValue }, ...options];
+    return [{ label: `Sanatkor #${selectedValue}`, value: selectedValue }, ...options];
   }
 
   return options;

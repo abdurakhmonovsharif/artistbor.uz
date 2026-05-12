@@ -5,6 +5,7 @@ import {
   applicationStatusLabel,
   type ApplicationStatusKey,
 } from "@/components/admin/applications/application-utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function ApplicationStatusBadge({
   application,
@@ -13,6 +14,7 @@ export function ApplicationStatusBadge({
   application?: ArtistApplication;
   status?: ApplicationStatusKey;
 }) {
+  const { locale } = useI18n();
   const key = status ?? (application ? applicationStatusKey(application) : "unknown");
   const tone = statusTone(key);
 
@@ -24,7 +26,7 @@ export function ApplicationStatusBadge({
       )}
     >
       <span className={cn("size-1.5 rounded-full", tone.dotClassName)} />
-      {applicationStatusLabel(key)}
+      {applicationStatusLabel(key, locale)}
     </span>
   );
 }

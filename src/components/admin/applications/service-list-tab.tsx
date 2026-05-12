@@ -5,12 +5,16 @@ import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
 import { servicesApi } from "@/lib/api/admin-content";
 import type { ArtistApplication, Service } from "@/types/api";
 import { cn } from "@/lib/utils";
+import { getApplicationLabels } from "@/components/admin/applications/application-labels";
 import {
   getServiceDescription,
   getServiceName,
 } from "@/components/admin/applications/application-utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function ServiceListTab({ application }: { application: ArtistApplication }) {
+  const { locale } = useI18n();
+  const labels = getApplicationLabels(locale);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +52,7 @@ export function ServiceListTab({ application }: { application: ArtistApplication
           });
         setServices(Array.from(deduped.values()));
       } catch (caught) {
-        if (active) setError(caught instanceof Error ? caught.message : "Xizmatlar yuklanmadi");
+        if (active) setError(caught instanceof Error ? caught.message : getApplicationLabels(locale).servicesLoadFailed);
       } finally {
         if (active) setLoading(false);
       }
@@ -59,13 +63,13 @@ export function ServiceListTab({ application }: { application: ArtistApplication
     return () => {
       active = false;
     };
-  }, [categoryIds]);
+  }, [categoryIds, locale]);
 
   if (loading) {
     return (
       <div className="flex min-h-28 items-center justify-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
         <Loader2 className="size-4 animate-spin text-amber-500" />
-        Xizmatlar yuklanmoqda...
+        {labels.servicesLoading}
       </div>
     );
   }
@@ -83,14 +87,14 @@ export function ServiceListTab({ application }: { application: ArtistApplication
     return (
       <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white p-4 text-center text-sm font-semibold text-slate-500 dark:border-white/10 dark:bg-[#121c2b] dark:text-slate-400">
         <Inbox className="size-5 text-amber-400" />
-        Xizmatlar topilmadi
+        {labels.servicesEmpty}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-bold text-slate-950 dark:text-white">Xizmatlar</h4>
+      <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.servicesTitle}</h4>
       <div className="space-y-3">
         {services.map((service, index) => (
           <ServiceCard key={String(service.id ?? service.slug ?? index)} service={service} />
@@ -101,6 +105,7 @@ export function ServiceListTab({ application }: { application: ArtistApplication
 }
 
 function ServiceCard({ service }: { service: Service }) {
+  const { locale } = useI18n();
   const active = Number(service.status) === 1;
 
   return (
@@ -113,10 +118,10 @@ function ServiceCard({ service }: { service: Service }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h4 className="truncate text-[15px] font-semibold text-slate-950 dark:text-white">
-            {getServiceName(service)}
+            {getServiceName(service, locale)}
           </h4>
           <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-600 dark:text-slate-300">
-            {getServiceDescription(service)}
+            {getServiceDescription(service, locale)}
           </p>
         </div>
       </div>

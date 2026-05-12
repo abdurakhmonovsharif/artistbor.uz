@@ -1,10 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useState } from "react";
+import { Button, DatePicker, Select } from "antd";
+import type { ColumnConfig, LineConfig, PieConfig } from "@ant-design/charts";
 import {
   Activity,
-  ArrowRight,
   BarChart3,
   CalendarDays,
   CheckCircle2,
@@ -13,11 +15,9 @@ import {
   CreditCard,
   MessageSquare,
   PackageCheck,
-  Paintbrush,
   RefreshCcw,
   Star,
   TrendingUp,
-  UserPlus,
   Users,
   XCircle,
 } from "lucide-react";
@@ -30,26 +30,35 @@ import {
 } from "@/lib/api/admin-content";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { cn, getValue, toDisplay } from "@/lib/utils";
-import type { UnknownRecord } from "@/types/api";
+import { cn, toDisplay } from "@/lib/utils";
+import { useTheme } from "@/lib/theme/theme-provider";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { Locale } from "@/lib/i18n/translations";
 
-const periodOptions: {
-  label: string;
-  hint: string;
-  value: Exclude<DashboardPeriod, "custom">;
-}[] = [
-  { label: "Bugun", hint: "Joriy kun", value: "today" },
-  { label: "Bu hafta", hint: "7 kun", value: "week" },
-  { label: "Bu oy", hint: "30 kun", value: "month" },
-];
+const AntColumn = dynamic(
+  () => import("@ant-design/charts").then((mod) => mod.Column),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+) as ComponentType<ColumnConfig>;
+
+const AntLine = dynamic(
+  () => import("@ant-design/charts").then((mod) => mod.Line),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+) as ComponentType<LineConfig>;
+
+const AntPie = dynamic(
+  () => import("@ant-design/charts").then((mod) => mod.Pie),
+  { ssr: false, loading: () => <ChartSkeleton /> },
+) as ComponentType<PieConfig>;
 
 const defaultFilters: DashboardStatsFilters = { period: "month" };
+const { RangePicker } = DatePicker;
 
 export default function AdminHome() {
+  const { locale } = useI18n();
+  const labels = useMemo(() => getDashboardLabels(locale), [locale]);
+  const periodOptions = useMemo(() => getDashboardPeriodOptions(labels), [labels]);
   const [filters, setFilters] = useState<DashboardStatsFilters>(defaultFilters);
   const [customOpen, setCustomOpen] = useState(false);
-  const [customDraft, setCustomDraft] = useState({ from: "", to: "" });
-  const [customError, setCustomError] = useState("");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,11 +70,11 @@ export default function AdminHome() {
       const result = await dashboardApi.stats(nextFilters);
       setStats(result);
     } catch {
-      setError("Statistika yuklanmadi. Qayta urinib ko'ring.");
+      setError(labels.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [labels.loadFailed]);
 
   useEffect(() => {
     let active = true;
@@ -82,29 +91,50 @@ export default function AdminHome() {
   const charts = stats?.charts;
   const topArtists = useMemo(() => arrayOrEmpty(stats?.top_artists), [stats]);
   const topCategories = useMemo(() => arrayOrEmpty(stats?.top_categories), [stats]);
-  const recentOrders = useMemo(() => arrayOrEmpty(stats?.recent_orders), [stats]);
-  const recentApplications = useMemo(() => arrayOrEmpty(stats?.recent_applications), [stats]);
   const orderChartRows = useMemo(
     () =>
       arrayOrEmpty(charts?.orders_per_day).map((row) => ({
         label: formatDateLabel(row.date),
         value: numberValue(row.count),
-        display: formatNumber(numberValue(row.count)),
+        display: formatNumber(numberValue(row.count), locale),
       })),
-    [charts],
+    [charts, locale],
   );
   const revenueChartRows = useMemo(
     () =>
       arrayOrEmpty(charts?.revenue_per_day).map((row) => ({
         label: formatDateLabel(row.date),
         value: numberValue(row.amount),
-        display: formatCurrency(numberValue(row.amount)),
+        display: formatCurrency(numberValue(row.amount), locale),
       })),
-    [charts],
+    [charts, locale],
+  );
+  const statusChartRows = useMemo(
+    () =>
+      arrayOrEmpty(charts?.orders_by_status).map((row) => {
+        const value = numberValue(row.count);
+        return {
+          label: dashboardStatusLabel(row.status_label ?? row.status, labels),
+          value,
+          display: formatNumber(value, locale),
+        };
+      }),
+    [charts, labels, locale],
+  );
+  const categoryChartRows = useMemo(
+    () =>
+      topCategories.slice(0, 8).map((category, index) => {
+        const value = numberValue(category.orders_count);
+        return {
+          label: category.name || `${labels.categoryFallback} #${category.id ?? index + 1}`,
+          value,
+          display: `${formatNumber(value, locale)} ${labels.ordersUnit}`,
+        };
+      }),
+    [topCategories, labels, locale],
   );
 
   const handlePeriodSelect = (period: DashboardPeriod) => {
-    setCustomError("");
     if (period === "custom") {
       setCustomOpen(true);
       return;
@@ -113,132 +143,78 @@ export default function AdminHome() {
     setFilters({ period });
   };
 
-  const handleCustomSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!customDraft.from || !customDraft.to) {
-      setCustomError("Sana oralig'i uchun boshlanish va tugash sanasini tanlang.");
-      return;
-    }
-    setCustomError("");
-    setFilters({ period: "custom", from: customDraft.from, to: customDraft.to });
+  const handleRangeChange = (dates: unknown) => {
+    const [from, to] = Array.isArray(dates) ? dates : [];
+    const fromValue = pickerDateToApi(from);
+    const toValue = pickerDateToApi(to);
+
+    if (!fromValue || !toValue) return;
+    setFilters({ period: "custom", from: fromValue, to: toValue });
   };
 
   return (
-    <section className="space-y-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
-            Artistbor
-          </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-            Boshqaruv paneli
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-            Buyurtmalar, daromad, arizalar, izohlar va platforma faolligini
-            jonli statistik ma&apos;lumotlar orqali kuzating.
-          </p>
-          {stats?.period ? (
-            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
-              <CalendarDays className="size-4 text-amber-500" />
-              {toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}
+    <section className="space-y-6 pb-8">
+      <header className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950 md:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+              Artistbor
             </p>
-          ) : null}
-        </div>
-
-        <div className="w-full rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm dark:border-white/10 dark:bg-slate-950 xl:max-w-2xl">
-          <div className="mb-2.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
-                <CalendarDays className="size-4" />
-              </span>
-              <div>
-                <p className="text-sm font-black text-slate-950 dark:text-white">
-                  Statistika davri
-                </p>
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Qaysi oralig&apos;dagi ma&apos;lumotlar chiqishini tanlang
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void fetchStats(filters)}
-              disabled={loading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-600 transition hover:border-amber-300 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
-              aria-label="Statistikani yangilash"
-            >
-              <RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />
-              Yangilash
-            </button>
+            <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+              {labels.title}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+              {labels.description}
+            </p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-4">
-            {periodOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => handlePeriodSelect(option.value)}
-                className={cn(
-                  "rounded-xl px-3 py-2.5 text-left transition",
-                  filters.period === option.value
-                    ? "bg-amber-400 text-slate-950 shadow-sm"
-                    : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
-                )}
-              >
-                <span className="block text-sm font-black">{option.label}</span>
-                <span className="mt-0.5 block text-xs font-semibold opacity-70">
-                  {option.hint}
-                </span>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => handlePeriodSelect("custom")}
-              className={cn(
-                "rounded-xl px-3 py-2.5 text-left transition",
-                filters.period === "custom" || customOpen
-                  ? "bg-amber-400 text-slate-950 shadow-sm"
-                  : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:bg-white/[0.04] dark:text-slate-400 dark:hover:bg-white/[0.08] dark:hover:text-white",
-              )}
-            >
-              <span className="block text-sm font-black">Sana oralig&apos;i</span>
-              <span className="mt-0.5 block text-xs font-semibold opacity-70">
-                Qo&apos;lda tanlash
-              </span>
-            </button>
-          </div>
+          <div className="flex w-full flex-col gap-3 xl:max-w-[620px] xl:items-end">
+            {stats?.period ? (
+              <p className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
+                <CalendarDays className="size-4 text-amber-500" />
+                {toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}
+              </p>
+            ) : null}
 
-          {customOpen ? (
-            <form onSubmit={handleCustomSubmit} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-              <input
-                type="date"
-                value={customDraft.from}
-                onChange={(event) => setCustomDraft((current) => ({ ...current, from: event.target.value }))}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-amber-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-white"
-                aria-label="Boshlanish sanasi"
+            <div className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-2 dark:border-white/10 dark:bg-white/[0.03] sm:flex-row xl:w-auto">
+              <Select
+                value={customOpen ? "custom" : filters.period}
+                onChange={(value) => handlePeriodSelect(value as DashboardPeriod)}
+                options={[
+                  ...periodOptions.map((option) => ({
+                    label: option.label,
+                    value: option.value,
+                  })),
+                  { label: labels.customRange, value: "custom" },
+                ]}
+                className="!h-11 w-full sm:!w-44"
+                aria-label={labels.periodAria}
               />
-              <input
-                type="date"
-                value={customDraft.to}
-                onChange={(event) => setCustomDraft((current) => ({ ...current, to: event.target.value }))}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-amber-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-white"
-                aria-label="Tugash sanasi"
-              />
-              <button
-                type="submit"
-                className="h-10 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-amber-500 hover:text-slate-950 dark:bg-white dark:text-slate-950"
-              >
-                Qo&apos;llash
-              </button>
-              {customError ? (
-                <p className="text-xs font-bold text-rose-500 sm:col-span-3">{customError}</p>
+              {customOpen ? (
+                <RangePicker
+                  format="DD.MM.YYYY"
+                  onChange={handleRangeChange}
+                  className="!h-11 w-full !rounded-xl sm:!w-64"
+                  placeholder={[labels.rangeStart, labels.rangeEnd]}
+                  aria-label={labels.customRange}
+                />
               ) : null}
-            </form>
-          ) : null}
+              <Button
+                type="default"
+                onClick={() => void fetchStats(filters)}
+                disabled={loading}
+                icon={<RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />}
+                className="!h-11 !rounded-xl !border-slate-200 !px-4 !font-black dark:!border-white/10"
+                aria-label={labels.refreshAria}
+              >
+                {labels.refresh}
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      </header>
 
-      {loading && !stats ? <LoadingState label="Statistika yuklanmoqda..." /> : null}
+      {loading && !stats ? <LoadingState label={labels.loading} /> : null}
 
       {error && !stats ? (
         <div className="space-y-4">
@@ -248,7 +224,7 @@ export default function AdminHome() {
             onClick={() => void fetchStats(filters)}
             className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-amber-500 hover:text-slate-950 dark:bg-white dark:text-slate-950"
           >
-            Qayta yuklash
+            {labels.retry}
           </button>
         </div>
       ) : null}
@@ -261,120 +237,104 @@ export default function AdminHome() {
             </div>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <MetricCard
-              label="Jami buyurtmalar"
-              value={formatNumber(numberValue(counters?.total_orders))}
+              label={labels.totalOrders}
+              value={formatNumber(numberValue(counters?.total_orders), locale)}
               icon={PackageCheck}
               tone="sky"
+              href="/admin/orders"
             />
             <MetricCard
-              label="Jami daromad"
-              value={formatCurrency(numberValue(counters?.total_revenue))}
+              label={labels.totalRevenue}
+              value={formatCurrency(numberValue(counters?.total_revenue), locale)}
               icon={TrendingUp}
               tone="emerald"
+              href="/admin/orders"
             />
             <MetricCard
-              label="Kutilayotgan arizalar"
-              value={formatNumber(numberValue(counters?.pending_applications))}
+              label={labels.pendingApplications}
+              value={formatNumber(numberValue(counters?.pending_applications), locale)}
               icon={ClipboardList}
               tone="amber"
+              href="/admin/applications?status=pending"
             />
-            <MetricCard
-              label="Faol ijodkorlar"
-              value={formatNumber(numberValue(counters?.active_artists))}
-              icon={Paintbrush}
-              tone="violet"
-            />
-            <MetricCard
-              label="Kutilayotgan buyurtmalar"
-              value={formatNumber(numberValue(counters?.pending_orders))}
+            <CompactMetric
+              label={labels.pendingOrders}
+              value={formatNumber(numberValue(counters?.pending_orders), locale)}
               icon={Clock3}
               tone="amber"
+              href="/admin/orders?status=pending"
             />
-            <MetricCard
-              label="To'lov kutilmoqda"
-              value={formatNumber(numberValue(counters?.payment_pending))}
+            <CompactMetric
+              label={labels.paymentPending}
+              value={formatNumber(numberValue(counters?.payment_pending), locale)}
               icon={CreditCard}
               tone="rose"
+              href="/admin/orders?payment_status=10"
             />
-            <MetricCard
-              label="Yakunlangan"
-              value={formatNumber(numberValue(counters?.completed_orders))}
+            <CompactMetric
+              label={labels.completed}
+              value={formatNumber(numberValue(counters?.completed_orders), locale)}
               icon={CheckCircle2}
               tone="emerald"
-            />
-            <MetricCard
-              label="Bugungi yangi foydalanuvchilar"
-              value={formatNumber(numberValue(counters?.new_users_today))}
-              icon={UserPlus}
-              tone="sky"
+              href="/admin/orders?status=completed"
             />
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
             <Panel
-              title="Buyurtmalar kunlar bo'yicha"
-              description="Tanlangan davrdagi buyurtmalar soni."
+              title={labels.ordersByDay}
+              description={labels.ordersByDayDescription}
               icon={BarChart3}
             >
-              <ColumnChart
+              <OrdersColumnChart
                 rows={orderChartRows}
-                totalDisplay={formatNumber(sumChartValues(orderChartRows))}
+                totalDisplay={formatNumber(sumChartValues(orderChartRows), locale)}
+                labels={labels}
+                locale={locale}
               />
             </Panel>
 
             <Panel
-              title="Buyurtma holatlari"
-              description="Holatlar bo'yicha buyurtmalar ulushi."
+              title={labels.orderStatuses}
+              description={labels.orderStatusesDescription}
               icon={Activity}
             >
-              <StatusDistribution rows={arrayOrEmpty(charts?.orders_by_status)} />
+              <OrderStatusDonut rows={statusChartRows} labels={labels} locale={locale} />
             </Panel>
 
             <Panel
-              title="Daromad kunlar bo'yicha"
-              description="Kunlik daromad dinamikasi."
+              title={labels.revenueByDay}
+              description={labels.revenueByDayDescription}
               icon={TrendingUp}
             >
-              <LineAreaChart
+              <RevenueLineChart
                 rows={revenueChartRows}
-                totalDisplay={formatCurrency(sumChartValues(revenueChartRows))}
+                totalDisplay={formatCurrency(sumChartValues(revenueChartRows), locale)}
+                labels={labels}
+                locale={locale}
               />
             </Panel>
 
             <Panel
-              title="Operatsion navbat"
-              description="Hozir e'tibor talab qiladigan ko'rsatkichlar."
+              title={labels.operationQueue}
+              description={labels.operationQueueDescription}
               icon={Clock3}
             >
-              <QueueList counters={counters} />
+              <QueueList counters={counters} labels={labels} locale={locale} />
             </Panel>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Panel title="Yetakchi ijodkorlar" description="Buyurtma va daromad bo'yicha yetakchilar." icon={Star}>
-              <TopArtists artists={topArtists} />
+          <div className="grid gap-4 2xl:grid-cols-[minmax(360px,0.75fr)_minmax(0,1.25fr)]">
+            <Panel title={labels.topArtists} description={labels.topArtistsDescription} icon={Star}>
+              <TopArtists artists={topArtists} labels={labels} locale={locale} />
             </Panel>
-            <Panel title="Yetakchi kategoriyalar" description="Buyurtmalar soni bo'yicha." icon={Users}>
-              <TopCategories categories={topCategories} />
+            <Panel title={labels.topCategories} description={labels.topCategoriesDescription} icon={Users}>
+              <TopCategoriesBar rows={categoryChartRows} labels={labels} locale={locale} />
             </Panel>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <RecentList
-              title="So'nggi buyurtmalar"
-              href="/admin/orders"
-              items={recentOrders}
-              type="order"
-            />
-            <RecentList
-              title="So'nggi arizalar"
-              href="/admin/applications"
-              items={recentApplications}
-              type="application"
-            />
-          </div>
         </>
       ) : null}
     </section>
@@ -386,11 +346,13 @@ function MetricCard({
   value,
   icon: Icon,
   tone,
+  href,
 }: {
   label: string;
   value: string;
   icon: LucideIcon;
   tone: "amber" | "emerald" | "rose" | "sky" | "violet";
+  href: string;
 }) {
   const toneClass = {
     amber: "bg-amber-50 text-amber-700 ring-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300",
@@ -403,21 +365,64 @@ function MetricCard({
   }[tone];
 
   return (
-    <article className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950">
-      <div className="flex items-start justify-between gap-3">
+    <Link
+      href={href}
+      className={dashboardMetricCardClass}
+    >
+      <div className="min-w-0">
         <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
           {label}
         </p>
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1", toneClass)}>
-          <Icon className="size-4" />
-        </span>
+        <p className="mt-1 break-words text-xl font-black text-slate-950 dark:text-white">
+          {value}
+        </p>
       </div>
-      <p className="mt-3 break-words text-xl font-black text-slate-950 dark:text-white">
-        {value}
-      </p>
-    </article>
+      <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1 transition group-hover:scale-105", toneClass)}>
+        <Icon className="size-4" />
+      </span>
+    </Link>
   );
 }
+
+function CompactMetric({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  href,
+}: {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+  tone: "amber" | "emerald" | "rose" | "sky" | "violet";
+  href: string;
+}) {
+  const toneClass = {
+    amber: "text-amber-600 dark:text-amber-300",
+    emerald: "text-emerald-600 dark:text-emerald-300",
+    rose: "text-rose-600 dark:text-rose-300",
+    sky: "text-sky-600 dark:text-sky-300",
+    violet: "text-violet-600 dark:text-violet-300",
+  }[tone];
+
+  return (
+    <Link
+      href={href}
+      className={dashboardMetricCardClass}
+    >
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
+          {label}
+        </p>
+        <p className="mt-1 text-xl font-black text-slate-950 dark:text-white">{value}</p>
+      </div>
+      <Icon className={cn("size-5 shrink-0 transition group-hover:scale-110", toneClass)} />
+    </Link>
+  );
+}
+
+const dashboardMetricCardClass =
+  "group flex min-h-[112px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm transition hover:border-amber-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-white/10 dark:bg-slate-950 dark:hover:border-amber-400";
 
 function Panel({
   title,
@@ -449,201 +454,294 @@ function Panel({
 }
 
 type ChartRow = { label: string; value: number; display: string };
+type DashboardLabels = ReturnType<typeof getDashboardLabels>;
 
-function ColumnChart({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: string }) {
-  if (!rows.length) return <EmptyState title="Grafik ma'lumotlari topilmadi" />;
+function OrdersColumnChart({
+  rows,
+  totalDisplay,
+  labels,
+  locale,
+}: {
+  rows: ChartRow[];
+  totalDisplay: string;
+  labels: DashboardLabels;
+  locale: Locale;
+}) {
+  const chartTokens = useDashboardChartTokens();
 
-  const max = Math.max(1, ...rows.map((row) => row.value));
+  if (!rows.length) return <EmptyState title={labels.chartDataEmpty} />;
+
   const hasData = rows.some((row) => row.value > 0);
-  const width = 720;
-  const height = 230;
-  const padding = { top: 14, right: 24, bottom: 36, left: 52 };
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-  const slot = plotWidth / rows.length;
-  const barWidth = Math.max(7, Math.min(22, slot * 0.58));
-  const labelIndexes = getChartLabelIndexes(rows.length);
+  const bandPadding = rows.length <= 1 ? 0.86 : rows.length <= 7 ? 0.72 : 0.44;
+  const config: ColumnConfig = {
+    data: rows,
+    xField: "label",
+    yField: "value",
+    height: 240,
+    autoFit: true,
+    legend: false,
+    theme: getDashboardChartTheme(chartTokens),
+    scale: {
+      x: { padding: bandPadding },
+    },
+    style: {
+      fill: chartTokens.primary,
+      fillOpacity: chartTokens.barOpacity,
+      radiusTopLeft: 7,
+      radiusTopRight: 7,
+    },
+    axis: {
+      x: getChartAxis(chartTokens, { labelAutoHide: true, labelAutoRotate: false }),
+      y: getChartAxis(chartTokens, {
+        labelFormatter: (value: string | number) => formatNumber(numberValue(value), locale),
+      }),
+    },
+    tooltip: {
+      title: (datum: ChartRow) => datum.label,
+      items: [
+        {
+          field: "value",
+          name: labels.orders,
+          valueFormatter: (value: string | number) => formatNumber(numberValue(value), locale),
+        },
+      ],
+    },
+  };
 
   return (
     <div className="space-y-3">
-      <ChartSummary rows={rows} totalDisplay={totalDisplay} />
-      <div className="relative h-56 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/[0.03]">
-        <svg className="h-full w-full" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Buyurtmalar grafigi">
-          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-            const y = padding.top + plotHeight * (1 - ratio);
-            return (
-              <g key={ratio}>
-                <line
-                  x1={padding.left}
-                  x2={width - padding.right}
-                  y1={y}
-                  y2={y}
-                  className="stroke-slate-200 dark:stroke-white/10"
-                  strokeDasharray={ratio === 0 ? undefined : "4 6"}
-                />
-                <text
-                  x={padding.left - 14}
-                  y={y + 4}
-                  textAnchor="end"
-                  className="fill-slate-400 text-[10px] font-black"
-                >
-                  {hasData ? formatNumber(Math.ceil(max * ratio)) : "0"}
-                </text>
-              </g>
-            );
-          })}
+      <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} locale={locale} />
+      <ChartBox empty={!hasData}>
+        <AntColumn {...config} />
+      </ChartBox>
+    </div>
+  );
+}
 
-          {rows.map((row, index) => {
-            const barHeight = hasData ? (row.value / max) * plotHeight : 0;
-            const x = padding.left + index * slot + (slot - barWidth) / 2;
-            const y = padding.top + plotHeight - barHeight;
-            return (
-              <g key={`${row.label}-${index}`}>
-                {barHeight > 0 ? (
-                  <rect
-                    x={x}
-                    y={y}
-                    width={barWidth}
-                    height={barHeight}
-                    rx={6}
-                    className="fill-amber-400"
-                  />
-                ) : null}
-                <title>{`${row.label}: ${row.display}`}</title>
-              </g>
-            );
-          })}
+function RevenueLineChart({
+  rows,
+  totalDisplay,
+  labels,
+  locale,
+}: {
+  rows: ChartRow[];
+  totalDisplay: string;
+  labels: DashboardLabels;
+  locale: Locale;
+}) {
+  const chartTokens = useDashboardChartTokens();
 
-          {labelIndexes.map((index) => {
-            const row = rows[index];
-            if (!row) return null;
-            const x = padding.left + index * slot + slot / 2;
-            return (
-              <text
-                key={`${row.label}-${index}`}
-                x={x}
-                y={height - 12}
-                textAnchor="middle"
-                className="fill-slate-500 text-[10px] font-black dark:fill-slate-400"
-              >
-                {row.label}
-              </text>
-            );
-          })}
-        </svg>
-        {!hasData ? <EmptyChartOverlay /> : null}
+  if (!rows.length) return <EmptyState title={labels.chartDataEmpty} />;
+
+  const hasData = rows.some((row) => row.value > 0);
+  const config: LineConfig = {
+    data: rows,
+    xField: "label",
+    yField: "value",
+    height: 240,
+    autoFit: true,
+    legend: false,
+    theme: getDashboardChartTheme(chartTokens),
+    style: {
+      stroke: chartTokens.primary,
+      lineWidth: 2,
+    },
+    point: {
+      sizeField: 3,
+      shapeField: "circle",
+      style: {
+        fill: chartTokens.chartSurface,
+        stroke: chartTokens.primary,
+        lineWidth: 2,
+      },
+    },
+    axis: {
+      x: getChartAxis(chartTokens, { labelAutoHide: true, labelAutoRotate: false }),
+      y: getChartAxis(chartTokens, {
+        labelFormatter: (value: string | number) => formatCompactCurrency(numberValue(value), locale, labels),
+      }),
+    },
+    tooltip: {
+      title: (datum: ChartRow) => datum.label,
+      items: [
+        {
+          field: "value",
+          name: labels.revenue,
+          valueFormatter: (value: string | number) => formatCurrency(numberValue(value), locale),
+        },
+      ],
+    },
+  };
+
+  return (
+    <div className="space-y-3">
+      <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} locale={locale} />
+      <ChartBox empty={!hasData}>
+        <AntLine {...config} />
+      </ChartBox>
+    </div>
+  );
+}
+
+function OrderStatusDonut({
+  rows,
+  labels,
+  locale,
+}: {
+  rows: ChartRow[];
+  labels: DashboardLabels;
+  locale: Locale;
+}) {
+  const chartTokens = useDashboardChartTokens();
+
+  if (!rows.length) return <EmptyState title={labels.statusDataEmpty} />;
+
+  const hasData = rows.some((row) => row.value > 0);
+  const config: PieConfig = {
+    data: rows,
+    angleField: "value",
+    colorField: "label",
+    height: 240,
+    innerRadius: 0.68,
+    theme: getDashboardChartTheme(chartTokens),
+    scale: {
+      color: { range: ["#f59e0b", "#fbbf24", "#d97706", "#fcd34d", "#b45309", "#fef3c7"] },
+    },
+    label: false,
+    legend: {
+      color: {
+        position: "bottom",
+        itemLabelFill: chartTokens.label,
+        itemLabelFontWeight: 700,
+        layout: { justifyContent: "center" },
+      },
+    },
+    tooltip: {
+      title: (datum: ChartRow) => datum.label,
+      items: [
+        {
+          field: "value",
+          name: labels.count,
+          valueFormatter: (value: string | number) => formatNumber(numberValue(value), locale),
+        },
+      ],
+    },
+  };
+
+  return (
+    <div className="space-y-4">
+      <ChartBox empty={!hasData}>
+        <AntPie {...config} />
+      </ChartBox>
+      <div className="grid gap-2">
+        {rows.map((row) => (
+          <div
+            key={`${row.label}-${row.value}`}
+            className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10"
+          >
+            <StatusBadge value={row.label} />
+            <span className="text-sm font-black text-slate-700 dark:text-slate-200">
+              {row.display}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function LineAreaChart({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: string }) {
-  if (!rows.length) return <EmptyState title="Grafik ma'lumotlari topilmadi" />;
+function TopCategoriesBar({
+  rows,
+  labels,
+  locale,
+}: {
+  rows: ChartRow[];
+  labels: DashboardLabels;
+  locale: Locale;
+}) {
+  const chartTokens = useDashboardChartTokens();
 
-  const max = Math.max(1, ...rows.map((row) => row.value));
+  if (!rows.length) return <EmptyState title={labels.topCategoriesEmpty} />;
+
   const hasData = rows.some((row) => row.value > 0);
-  const width = 720;
-  const height = 230;
-  const padding = { top: 14, right: 24, bottom: 36, left: 66 };
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-  const baseline = padding.top + plotHeight;
-  const points = rows.map((row, index) => {
-    const x =
-      rows.length === 1
-        ? padding.left + plotWidth / 2
-        : padding.left + (index / (rows.length - 1)) * plotWidth;
-    const y = baseline - (row.value / max) * plotHeight;
-    return { ...row, x, y };
-  });
-  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const areaPath =
-    points.length > 0
-      ? `${linePath} L ${points[points.length - 1]?.x ?? padding.left} ${baseline} L ${points[0]?.x ?? padding.left} ${baseline} Z`
-      : "";
-  const labelIndexes = getChartLabelIndexes(rows.length);
+  const bandPadding = rows.length <= 1 ? 0.86 : rows.length <= 4 ? 0.72 : 0.48;
+  const config: ColumnConfig = {
+    data: rows,
+    xField: "label",
+    yField: "value",
+    height: 240,
+    autoFit: true,
+    legend: false,
+    theme: getDashboardChartTheme(chartTokens),
+    scale: {
+      x: { padding: bandPadding },
+    },
+    style: {
+      fill: chartTokens.primary,
+      fillOpacity: chartTokens.barOpacity,
+      radiusTopLeft: 7,
+      radiusTopRight: 7,
+    },
+    axis: {
+      x: getChartAxis(chartTokens, {
+        labelAutoHide: true,
+        labelAutoRotate: false,
+        labelFormatter: (value: string | number) => truncateLabel(String(value), 16),
+      }),
+      y: getChartAxis(chartTokens, {
+        labelFormatter: (value: string | number) => formatNumber(numberValue(value), locale),
+      }),
+    },
+    tooltip: {
+      title: (datum: ChartRow) => datum.label,
+      items: [
+        {
+          field: "value",
+          name: labels.orders,
+          valueFormatter: (value: string | number) => formatNumber(numberValue(value), locale),
+        },
+      ],
+    },
+  };
 
   return (
-    <div className="space-y-3">
-      <ChartSummary rows={rows} totalDisplay={totalDisplay} />
-      <div className="relative h-56 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/[0.03]">
-        <svg className="h-full w-full" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Daromad grafigi">
-          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-            const y = padding.top + plotHeight * (1 - ratio);
-            return (
-              <g key={ratio}>
-                <line
-                  x1={padding.left}
-                  x2={width - padding.right}
-                  y1={y}
-                  y2={y}
-                  className="stroke-slate-200 dark:stroke-white/10"
-                  strokeDasharray={ratio === 0 ? undefined : "4 6"}
-                />
-                <text
-                  x={padding.left - 14}
-                  y={y + 4}
-                  textAnchor="end"
-                  className="fill-slate-400 text-[10px] font-black"
-                >
-                  {hasData ? formatCompactCurrency(max * ratio) : "0"}
-                </text>
-              </g>
-            );
-          })}
+    <ChartBox empty={!hasData}>
+      <AntColumn {...config} />
+    </ChartBox>
+  );
+}
 
-          {areaPath ? (
-            <path d={areaPath} className="fill-amber-400/15 dark:fill-amber-400/10" />
-          ) : null}
-          {linePath ? (
-            <path
-              d={linePath}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="stroke-amber-400"
-              strokeWidth="4"
-            />
-          ) : null}
-          {hasData
-            ? points.map((point, index) => (
-                <circle
-                  key={`${point.label}-${index}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r="4"
-                  className="fill-slate-950 stroke-amber-400 dark:fill-slate-950"
-                  strokeWidth="3"
-                >
-                  <title>{`${point.label}: ${point.display}`}</title>
-                </circle>
-              ))
-            : null}
-
-          {labelIndexes.map((index) => {
-            const row = rows[index];
-            const point = points[index];
-            if (!row || !point) return null;
-            return (
-              <text
-                key={`${row.label}-${index}`}
-                x={point.x}
-                y={height - 12}
-                textAnchor="middle"
-                className="fill-slate-500 text-[10px] font-black dark:fill-slate-400"
-              >
-                {row.label}
-              </text>
-            );
-          })}
-        </svg>
-        {!hasData ? <EmptyChartOverlay /> : null}
-      </div>
+function ChartBox({ children, empty }: { children: React.ReactNode; empty?: boolean }) {
+  return (
+    <div className="relative min-h-[250px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-[#0b1020]">
+      {children}
+      {empty ? <EmptyChartOverlay /> : null}
     </div>
   );
 }
 
-function ChartSummary({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: string }) {
+function ChartSkeleton() {
+  const { locale } = useI18n();
+  const labels = getDashboardLabels(locale);
+
+  return (
+    <div className="grid min-h-[260px] place-items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.14em] text-slate-400 dark:border-white/10 dark:bg-white/[0.03]">
+      {labels.chartLoading}
+    </div>
+  );
+}
+
+function ChartSummary({
+  rows,
+  totalDisplay,
+  labels,
+  locale,
+}: {
+  rows: ChartRow[];
+  totalDisplay: string;
+  labels: DashboardLabels;
+  locale: Locale;
+}) {
   const peak = rows.reduce<ChartRow | undefined>(
     (current, row) => (!current || row.value > current.value ? row : current),
     undefined,
@@ -652,90 +750,126 @@ function ChartSummary({ rows, totalDisplay }: { rows: ChartRow[]; totalDisplay: 
   return (
     <div className="grid gap-2 sm:grid-cols-3">
       <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
-        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Jami</p>
+        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryTotal}</p>
         <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">{totalDisplay}</p>
       </div>
       <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
-        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Eng yuqori</p>
+        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryPeak}</p>
         <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">
           {peak?.display ?? "—"}
         </p>
       </div>
       <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
-        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Nuqtalar</p>
-        <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{formatNumber(rows.length)}</p>
+        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryPoints}</p>
+        <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{formatNumber(rows.length, locale)}</p>
       </div>
     </div>
   );
 }
 
 function EmptyChartOverlay() {
+  const { locale } = useI18n();
+  const labels = getDashboardLabels(locale);
+
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center">
       <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-black text-slate-500 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/80 dark:text-slate-300">
-        Tanlangan davrda ma&apos;lumot yo&apos;q
+        {labels.selectedPeriodEmpty}
       </div>
     </div>
   );
 }
 
-function StatusDistribution({
-  rows,
-}: {
-  rows: NonNullable<NonNullable<DashboardStats["charts"]>["orders_by_status"]>;
-}) {
-  const max = Math.max(1, ...rows.map((row) => numberValue(row.count)));
+type DashboardChartTokens = {
+  primary: string;
+  label: string;
+  axis: string;
+  grid: string;
+  chartSurface: string;
+  barOpacity: number;
+};
 
-  if (!rows.length) return <EmptyState title="Holatlar statistikasi topilmadi" />;
+function useDashboardChartTokens(): DashboardChartTokens {
+  const { theme } = useTheme();
+  const dark = theme === "dark";
 
-  return (
-    <div className="space-y-3">
-      {rows.map((row) => {
-        const count = numberValue(row.count);
-        const label = dashboardStatusLabel(row.status_label ?? row.status);
-        return (
-          <div key={`${row.status ?? row.status_label ?? "status"}-${count}`} className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <StatusBadge value={label} />
-              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                {formatNumber(count)}
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/[0.06]">
-              <div
-                className="h-full rounded-full bg-sky-400"
-                style={{ width: `${Math.max(4, (count / max) * 100)}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
+  return useMemo(
+    () => ({
+      primary: dark ? "#fbbf24" : "#f59e0b",
+      label: dark ? "#cbd5e1" : "#475569",
+      axis: dark ? "rgba(203, 213, 225, 0.32)" : "rgba(100, 116, 139, 0.35)",
+      grid: dark ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.28)",
+      chartSurface: dark ? "#0b1020" : "#f8fafc",
+      barOpacity: dark ? 0.92 : 0.96,
+    }),
+    [dark],
   );
 }
 
-function QueueList({ counters }: { counters: DashboardStats["counters"] }) {
+function getDashboardChartTheme(tokens: DashboardChartTokens) {
+  return {
+    view: {
+      viewFill: "transparent",
+    },
+    axis: {
+      labelFill: tokens.label,
+      labelFillOpacity: 1,
+      lineStroke: tokens.axis,
+      lineStrokeOpacity: 1,
+      tickStroke: tokens.axis,
+      tickStrokeOpacity: 1,
+      gridStroke: tokens.grid,
+      gridStrokeOpacity: 1,
+    },
+  };
+}
+
+function getChartAxis(tokens: DashboardChartTokens, overrides: Record<string, unknown> = {}) {
+  return {
+    labelFill: tokens.label,
+    labelFillOpacity: 1,
+    labelFontSize: 12,
+    labelFontWeight: 600,
+    lineStroke: tokens.axis,
+    lineStrokeOpacity: 1,
+    tickStroke: tokens.axis,
+    tickStrokeOpacity: 1,
+    gridStroke: tokens.grid,
+    gridStrokeOpacity: 1,
+    ...overrides,
+  };
+}
+
+function QueueList({
+  counters,
+  labels,
+  locale,
+}: {
+  counters: DashboardStats["counters"];
+  labels: DashboardLabels;
+  locale: Locale;
+}) {
   const items = [
     {
-      label: "Kutilayotgan buyurtmalar",
+      label: labels.pendingOrders,
       value: numberValue(counters?.pending_orders),
       icon: Clock3,
       tone: "text-amber-600 dark:text-amber-300",
     },
     {
-      label: "To'lov kutilmoqda",
+      label: labels.paymentPending,
       value: numberValue(counters?.payment_pending),
       icon: CreditCard,
       tone: "text-rose-600 dark:text-rose-300",
     },
     {
-      label: "Kutilayotgan izohlar",
+      label: labels.pendingComments,
       value: numberValue(counters?.pending_comments),
       icon: MessageSquare,
       tone: "text-sky-600 dark:text-sky-300",
     },
     {
-      label: "Bekor qilingan buyurtmalar",
+      label: labels.cancelledOrders,
       value: numberValue(counters?.cancelled_orders),
       icon: XCircle,
       tone: "text-slate-500 dark:text-slate-300",
@@ -758,7 +892,7 @@ function QueueList({ counters }: { counters: DashboardStats["counters"] }) {
               </span>
             </div>
             <span className="text-lg font-black text-slate-950 dark:text-white">
-              {formatNumber(item.value)}
+              {formatNumber(item.value, locale)}
             </span>
           </div>
         );
@@ -769,16 +903,20 @@ function QueueList({ counters }: { counters: DashboardStats["counters"] }) {
 
 function TopArtists({
   artists,
+  labels,
+  locale,
 }: {
   artists: NonNullable<DashboardStats["top_artists"]>;
+  labels: DashboardLabels;
+  locale: Locale;
 }) {
-  if (!artists.length) return <EmptyState title="Yetakchi ijodkorlar topilmadi" />;
+  if (!artists.length) return <EmptyState title={labels.topArtistsEmpty} />;
 
   return (
     <div className="space-y-3">
       {artists.map((artist, index) => {
         const avatarUrl = safeHttpUrl(artist.avatar_url);
-        const name = artist.full_name || `Ijodkor #${artist.id ?? index + 1}`;
+        const name = artist.full_name || `${labels.artistFallback} #${artist.id ?? index + 1}`;
         return (
           <div
             key={artist.id ?? `${name}-${index}`}
@@ -799,12 +937,12 @@ function TopArtists({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-black text-slate-950 dark:text-white">{name}</p>
               <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-                {formatNumber(numberValue(artist.orders_count))} buyurtma · {formatCurrency(numberValue(artist.revenue))}
+                {formatNumber(numberValue(artist.orders_count), locale)} {labels.ordersUnit} · {formatCurrency(numberValue(artist.revenue), locale)}
               </p>
             </div>
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               <Star className="size-3.5 fill-current" />
-              {formatNumber(numberValue(artist.rating))}
+              {formatNumber(numberValue(artist.rating), locale)}
             </span>
           </div>
         );
@@ -813,175 +951,185 @@ function TopArtists({
   );
 }
 
-function TopCategories({
-  categories,
-}: {
-  categories: NonNullable<DashboardStats["top_categories"]>;
-}) {
-  if (!categories.length) return <EmptyState title="Yetakchi kategoriyalar topilmadi" />;
-
-  const max = Math.max(1, ...categories.map((category) => numberValue(category.orders_count)));
-
-  return (
-    <div className="space-y-4">
-      {categories.map((category, index) => {
-        const count = numberValue(category.orders_count);
-        return (
-          <div key={category.id ?? `${category.name}-${index}`} className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-950 dark:text-white">
-                  {category.name || `Kategoriya #${category.id ?? index + 1}`}
-                </p>
-                <p className="mt-0.5 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  #{index + 1}
-                </p>
-              </div>
-              <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-                {formatNumber(count)} buyurtma
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/[0.06]">
-              <div
-                className="h-full rounded-full bg-emerald-400"
-                style={{ width: `${Math.max(4, (count / max) * 100)}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function RecentList({
-  title,
-  href,
-  items,
-  type,
-}: {
-  title: string;
-  href: string;
-  items: UnknownRecord[];
-  type: "order" | "application";
-}) {
-  return (
-    <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-base font-black text-slate-950 dark:text-white">{title}</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            Serverdan kelgan oxirgi yozuvlar.
-          </p>
-        </div>
-        <Link
-          href={href}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-600 transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
-        >
-          Barchasi
-          <ArrowRight className="size-4" />
-        </Link>
-      </div>
-
-      {!items.length ? (
-        <EmptyState title={`${title} topilmadi`} />
-      ) : (
-        <div className="space-y-3">
-          {items.slice(0, 6).map((item, index) => (
-            <RecentRow key={recentKey(item, index)} item={item} type={type} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function RecentRow({
-  item,
-  type,
-}: {
-  item: UnknownRecord;
-  type: "order" | "application";
-}) {
-  const status = getValue(item, "status_label") ?? getValue(item, "status") ?? getValue(item, "status_code");
-  const title = getRecentTitle(item, type);
-  const meta = getRecentMeta(item, type);
-
-  return (
-    <div className="rounded-2xl border border-slate-100 px-4 py-3 dark:border-white/10">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-black text-slate-950 dark:text-white">{title}</p>
-          <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {meta}
-          </p>
-        </div>
-        <StatusBadge value={dashboardStatusLabel(status)} />
-      </div>
-    </div>
-  );
-}
-
-function getRecentTitle(item: UnknownRecord, type: "order" | "application") {
-  const id = getValue(item, "id") ?? getValue(item, "order_id") ?? getValue(item, "application_id");
-  if (type === "order") return id ? `Buyurtma #${id}` : "Buyurtma";
-
-  const firstName = getValue(item, "user.first_name") ?? getValue(item, "first_name");
-  const lastName = getValue(item, "user.last_name") ?? getValue(item, "last_name");
-  const fullName = getValue(item, "full_name") ?? [firstName, lastName].filter(Boolean).join(" ");
-  if (typeof fullName === "string" && fullName.trim()) return fullName;
-
-  return id ? `Ariza #${id}` : "Ariza";
-}
-
-function getRecentMeta(item: UnknownRecord, type: "order" | "application") {
-  const keys =
-    type === "order"
-      ? ["date", "start_time", "artist.full_name", "client.full_name", "total_price", "amount", "created_at"]
-      : ["user.phone", "phone", "category.name_uz", "created_at", "updated_at"];
-
-  const values = keys
-    .map((key) => {
-      const value = getValue(item, key);
-      if (value === undefined || value === null || value === "") return "";
-      if (key.includes("price") || key === "amount") return formatCurrency(numberValue(value));
-      return toDisplay(value);
-    })
-    .filter(Boolean);
-
-  return values.length ? values.join(" · ") : "Qo'shimcha ma'lumot yo'q";
-}
-
-function recentKey(item: UnknownRecord, index: number) {
-  const id = getValue(item, "id") ?? getValue(item, "order_id") ?? getValue(item, "application_id");
-  return `${id ?? "row"}-${index}`;
-}
-
-function dashboardStatusLabel(value: unknown) {
-  if (value === null || value === undefined || value === "") return "Noma'lum";
+function dashboardStatusLabel(value: unknown, labels: DashboardLabels) {
+  if (value === null || value === undefined || value === "") return labels.unknown;
   const normalized = String(value).trim().toLowerCase().replace(/[_-]+/g, " ");
-  const labels: Record<string, string> = {
-    active: "Faol",
-    inactive: "Nofaol",
-    pending: "Kutilmoqda",
-    "pending review": "Ko'rib chiqilmoqda",
-    "payment pending": "To'lov kutilmoqda",
-    "awaiting payment": "To'lov kutilmoqda",
-    confirmed: "Tasdiqlangan",
-    approved: "Tasdiqlangan",
-    accepted: "Qabul qilingan",
-    "in progress": "Jarayonda",
-    processing: "Jarayonda",
-    completed: "Yakunlangan",
-    done: "Yakunlangan",
-    cancelled: "Bekor qilingan",
-    canceled: "Bekor qilingan",
-    rejected: "Rad etilgan",
-    expired: "Muddati o'tgan",
-    unknown: "Noma'lum",
+  const statusLabels: Record<string, string> = {
+    active: labels.statusActive,
+    inactive: labels.statusInactive,
+    pending: labels.statusPending,
+    "pending review": labels.statusPendingReview,
+    "payment pending": labels.paymentPending,
+    "awaiting payment": labels.paymentPending,
+    confirmed: labels.statusConfirmed,
+    approved: labels.statusConfirmed,
+    accepted: labels.statusAccepted,
+    "in progress": labels.statusInProgress,
+    processing: labels.statusInProgress,
+    completed: labels.statusCompleted,
+    done: labels.statusCompleted,
+    cancelled: labels.statusCancelled,
+    canceled: labels.statusCancelled,
+    rejected: labels.statusRejected,
+    expired: labels.statusExpired,
+    unknown: labels.unknown,
   };
 
-  return labels[normalized] ?? String(value);
+  return statusLabels[normalized] ?? String(value);
+}
+
+function getDashboardPeriodOptions(labels: DashboardLabels): {
+  label: string;
+  hint: string;
+  value: Exclude<DashboardPeriod, "custom">;
+}[] {
+  return [
+    { label: labels.today, hint: labels.todayHint, value: "today" },
+    { label: labels.week, hint: labels.weekHint, value: "week" },
+    { label: labels.month, hint: labels.monthHint, value: "month" },
+  ];
+}
+
+function getDashboardLabels(locale: Locale) {
+  if (locale === "ru") {
+    return {
+      artistFallback: "Артист",
+      cancelledOrders: "Отмененные заказы",
+      categoryFallback: "Категория",
+      chartDataEmpty: "Данные для графика не найдены",
+      chartLoading: "Загрузка графика",
+      completed: "Завершенные заказы",
+      count: "Количество",
+      customRange: "Диапазон дат",
+      description: "Следите за состоянием платформы через ключевые метрики и диаграммы.",
+      loadFailed: "Не удалось загрузить статистику. Попробуйте еще раз.",
+      loading: "Загрузка статистики...",
+      millionShort: "млн",
+      month: "Этот месяц",
+      monthHint: "30 дней",
+      operationQueue: "Операционная очередь",
+      operationQueueDescription: "Показатели, требующие внимания сейчас.",
+      orderStatuses: "Статусы заказов",
+      orderStatusesDescription: "Доля заказов по статусам.",
+      orders: "Заказы",
+      ordersByDay: "Заказы по дням",
+      ordersByDayDescription: "Количество заказов за выбранный период.",
+      ordersUnit: "заказов",
+      paymentPending: "Ожидает оплаты",
+      pendingApplications: "Ожидающие заявки",
+      pendingComments: "Ожидающие комментарии",
+      pendingOrders: "Ожидающие заказы",
+      periodAria: "Период статистики",
+      rangeEnd: "Конец",
+      rangeStart: "Начало",
+      refresh: "Обновить",
+      refreshAria: "Обновить статистику",
+      retry: "Повторить загрузку",
+      revenue: "Доход",
+      revenueByDay: "Доход по дням",
+      revenueByDayDescription: "Динамика ежедневного дохода.",
+      selectedPeriodEmpty: "За выбранный период данных нет",
+      statusAccepted: "Принято",
+      statusActive: "Активный",
+      statusCancelled: "Отменено",
+      statusCompleted: "Завершено",
+      statusConfirmed: "Подтверждено",
+      statusDataEmpty: "Статистика по статусам не найдена",
+      statusExpired: "Истекло",
+      statusInactive: "Неактивный",
+      statusInProgress: "В процессе",
+      statusPending: "Ожидает",
+      statusPendingReview: "На рассмотрении",
+      statusRejected: "Отклонено",
+      summaryPeak: "Максимум",
+      summaryPoints: "Точки",
+      summaryTotal: "Итого",
+      thousandShort: "тыс.",
+      title: "Панель управления",
+      today: "Сегодня",
+      todayHint: "Текущий день",
+      topArtists: "Ведущие артисты",
+      topArtistsDescription: "Лидеры по заказам и доходу.",
+      topArtistsEmpty: "Ведущие артисты не найдены",
+      topCategories: "Ведущие категории",
+      topCategoriesDescription: "По количеству заказов.",
+      topCategoriesEmpty: "Ведущие категории не найдены",
+      totalOrders: "Всего заказов",
+      totalRevenue: "Общий доход",
+      unknown: "Неизвестно",
+      week: "Эта неделя",
+      weekHint: "7 дней",
+    };
+  }
+
+  return {
+    artistFallback: "Ijodkor",
+    cancelledOrders: "Bekor qilingan buyurtmalar",
+    categoryFallback: "Kategoriya",
+    chartDataEmpty: "Grafik ma'lumotlari topilmadi",
+    chartLoading: "Grafik yuklanmoqda",
+    completed: "Yakunlangan buyurtmalar",
+    count: "Soni",
+    customRange: "Sana oralig'i",
+    description: "Platforma holatini asosiy raqamlar va diagrammalar orqali kuzating.",
+    loadFailed: "Statistika yuklanmadi. Qayta urinib ko'ring.",
+    loading: "Statistika yuklanmoqda...",
+    millionShort: "mln",
+    month: "Bu oy",
+    monthHint: "30 kun",
+    operationQueue: "Operatsion navbat",
+    operationQueueDescription: "Hozir e'tibor talab qiladigan ko'rsatkichlar.",
+    orderStatuses: "Buyurtma holatlari",
+    orderStatusesDescription: "Holatlar bo'yicha buyurtmalar ulushi.",
+    orders: "Buyurtmalar",
+    ordersByDay: "Buyurtmalar kunlar bo'yicha",
+    ordersByDayDescription: "Tanlangan davrdagi buyurtmalar soni.",
+    ordersUnit: "buyurtma",
+    paymentPending: "To'lov kutilmoqda",
+    pendingApplications: "Kutilayotgan arizalar",
+    pendingComments: "Kutilayotgan izohlar",
+    pendingOrders: "Kutilayotgan buyurtmalar",
+    periodAria: "Statistika davri",
+    rangeEnd: "Tugash",
+    rangeStart: "Boshlanish",
+    refresh: "Yangilash",
+    refreshAria: "Statistikani yangilash",
+    retry: "Qayta yuklash",
+    revenue: "Daromad",
+    revenueByDay: "Daromad kunlar bo'yicha",
+    revenueByDayDescription: "Kunlik daromad dinamikasi.",
+    selectedPeriodEmpty: "Tanlangan davrda ma'lumot yo'q",
+    statusAccepted: "Qabul qilingan",
+    statusActive: "Faol",
+    statusCancelled: "Bekor qilingan",
+    statusCompleted: "Yakunlangan",
+    statusConfirmed: "Tasdiqlangan",
+    statusDataEmpty: "Holatlar statistikasi topilmadi",
+    statusExpired: "Muddati o'tgan",
+    statusInactive: "Nofaol",
+    statusInProgress: "Jarayonda",
+    statusPending: "Kutilmoqda",
+    statusPendingReview: "Ko'rib chiqilmoqda",
+    statusRejected: "Rad etilgan",
+    summaryPeak: "Eng yuqori",
+    summaryPoints: "Nuqtalar",
+    summaryTotal: "Jami",
+    thousandShort: "ming",
+    title: "Boshqaruv paneli",
+    today: "Bugun",
+    todayHint: "Joriy kun",
+    topArtists: "Yetakchi ijodkorlar",
+    topArtistsDescription: "Buyurtma va daromad bo'yicha yetakchilar.",
+    topArtistsEmpty: "Yetakchi ijodkorlar topilmadi",
+    topCategories: "Yetakchi kategoriyalar",
+    topCategoriesDescription: "Buyurtmalar soni bo'yicha.",
+    topCategoriesEmpty: "Yetakchi kategoriyalar topilmadi",
+    totalOrders: "Jami buyurtmalar",
+    totalRevenue: "Jami daromad",
+    unknown: "Noma'lum",
+    week: "Bu hafta",
+    weekHint: "7 kun",
+  };
 }
 
 function arrayOrEmpty<T>(value: T[] | undefined): T[] {
@@ -990,12 +1138,6 @@ function arrayOrEmpty<T>(value: T[] | undefined): T[] {
 
 function sumChartValues(rows: ChartRow[]) {
   return rows.reduce((sum, row) => sum + row.value, 0);
-}
-
-function getChartLabelIndexes(length: number) {
-  if (length <= 0) return [];
-  if (length <= 5) return Array.from({ length }, (_, index) => index);
-  return Array.from(new Set([0, Math.floor(length / 4), Math.floor(length / 2), Math.floor((length * 3) / 4), length - 1]));
 }
 
 function numberValue(value: unknown) {
@@ -1007,32 +1149,50 @@ function numberValue(value: unknown) {
   return 0;
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("uz-UZ").format(value);
+function intlLocale(locale: Locale) {
+  return locale === "ru" ? "ru-RU" : "uz-UZ";
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("uz-UZ", {
+function formatNumber(value: number, locale: Locale) {
+  return new Intl.NumberFormat(intlLocale(locale)).format(value);
+}
+
+function formatCurrency(value: number, locale: Locale) {
+  return new Intl.NumberFormat(intlLocale(locale), {
     style: "currency",
     currency: "UZS",
     maximumFractionDigits: 0,
   }).format(value);
 }
 
-function formatCompactCurrency(value: number) {
-  if (value >= 1_000_000) return `${formatNumber(Math.round(value / 1_000_000))} mln`;
-  if (value >= 1_000) return `${formatNumber(Math.round(value / 1_000))} ming`;
-  return formatNumber(Math.round(value));
+function formatCompactCurrency(value: number, locale: Locale, labels: DashboardLabels) {
+  if (value >= 1_000_000) {
+    return `${formatNumber(Math.round(value / 1_000_000), locale)} ${labels.millionShort}`;
+  }
+  if (value >= 1_000) {
+    return `${formatNumber(Math.round(value / 1_000), locale)} ${labels.thousandShort}`;
+  }
+  return formatNumber(Math.round(value), locale);
+}
+
+function truncateLabel(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, maxLength).trim()}...` : value;
+}
+
+function pickerDateToApi(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  const formatter = (value as { format?: (format: string) => string }).format;
+  if (typeof formatter !== "function") return "";
+  return formatter.call(value, "YYYY-MM-DD");
 }
 
 function formatDateLabel(value: unknown) {
   if (typeof value !== "string" || !value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("uz-UZ", {
-    day: "2-digit",
-    month: "short",
-  }).format(date);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}`;
 }
 
 function safeHttpUrl(value: unknown) {

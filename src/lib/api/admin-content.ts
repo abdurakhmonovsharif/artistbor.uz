@@ -94,7 +94,9 @@ export type DistrictPayload = {
 };
 
 export type ServiceFilters = {
+  name?: string;
   category_id?: string;
+  sort_order?: string;
   status?: string;
   page?: number;
   limit?: number;
@@ -213,9 +215,15 @@ export type OrderFilters = {
   expand?: string;
 };
 
+export type OrderDetailFilters = {
+  expand?: string;
+};
+
 export type UpdateOrderPayload = {
   notes?: string;
   address?: string;
+  lat?: number;
+  lon?: number;
 };
 
 export type RescheduleOrderPayload = {
@@ -224,6 +232,22 @@ export type RescheduleOrderPayload = {
   time_to: string;
   reason?: string;
 };
+
+export type ConfirmOrderPayload = Partial<{
+  date: string;
+  time: string;
+  time_to: string;
+  artist_id: number;
+  service_id: number;
+  sub_service_id: number;
+  region_id: number;
+  district_id: number;
+  lat: number | string;
+  lon: number | string;
+  address: string;
+  comment: string;
+  total_price: number | string;
+}>;
 
 export type CommentFilters = {
   status?: string;
@@ -332,6 +356,7 @@ export type DashboardStats = {
 };
 
 export type DashboardQuickStats = {
+  pending_orders?: number;
   pending_applications?: number;
   pending_comments?: number;
   unpaid_invoices?: number;
@@ -716,9 +741,11 @@ export const ordersApi = {
     });
     return normalizeList<OrderRecord>(response.data);
   },
-  async detail(id: number) {
+  async detail(id: number, filters?: OrderDetailFilters) {
     // TODO: Swagger documents this endpoint but omits the concrete response schema.
-    const response = await apiClient.get(`/v1/admin/order/${id}`);
+    const response = await apiClient.get(`/v1/admin/order/${id}`, {
+      params: compactParams(filters ?? {}),
+    });
     return unwrapData<OrderRecord>(response.data);
   },
   async update(id: number, payload: UpdateOrderPayload) {
@@ -726,9 +753,9 @@ export const ordersApi = {
     const response = await apiClient.put(`/v1/admin/order/${id}`, payload);
     return unwrapData<OrderRecord>(response.data);
   },
-  async confirm(id: number) {
+  async confirm(id: number, payload: ConfirmOrderPayload = {}) {
     // TODO: Swagger omits confirm response body shape.
-    const response = await apiClient.post(`/v1/admin/order/${id}/confirm`);
+    const response = await apiClient.post(`/v1/admin/order/${id}/confirm`, compactParams(payload));
     return unwrapData<unknown>(response.data);
   },
   async reschedule(id: number, payload: RescheduleOrderPayload) {

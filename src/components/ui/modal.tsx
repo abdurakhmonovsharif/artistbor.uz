@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function Modal({
   title,
@@ -13,6 +14,8 @@ export function Modal({
   onClose: () => void;
   width?: string;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
       <div
@@ -24,7 +27,7 @@ export function Modal({
             type="button"
             onClick={onClose}
             className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
-            aria-label="Yopish"
+            aria-label={t("actions.close")}
           >
             <X className="size-4" />
           </button>
@@ -34,4 +37,3 @@ export function Modal({
     </div>
   );
 }
-

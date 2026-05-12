@@ -1,32 +1,36 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Eye, Search, Star, Trash2 } from "lucide-react";
+import { Button, Select } from "antd";
+import { Eye, RotateCcw, Trash2 } from "lucide-react";
+import {
+  AdminFilterForm,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { FormField } from "@/components/ui/form-field";
-import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { artistsApi, ratingsApi, type RatingFilters } from "@/lib/api/admin-content";
-import { getArtistId, getArtistName, getArtistSelectOptions } from "@/lib/artist-display";
+import { getArtistSelectOptions } from "@/lib/artist-display";
 import { normalizeDate } from "@/lib/utils";
 import type { ArtistProfile, ListResult, RatingRecord } from "@/types/api";
 
 type DialogState =
   | { type: "view"; rating: RatingRecord }
   | { type: "delete"; rating: RatingRecord }
-  | { type: "artist-ratings"; title: string; rows: RatingRecord[]; loading: boolean; error: string | null }
   | null;
 
 const limit = 20;
 
 const columns: DataTableColumn<RatingRecord>[] = [
   { key: "id", label: "ID", kind: "number" },
-  { key: "artist_id", label: "Artist ID", kind: "number" },
+  { key: "artist_id", label: "Sanatkor ID", kind: "number" },
   { key: "client_id", label: "Mijoz ID", kind: "number" },
   { key: "rating", label: "Reyting", kind: "number" },
   { key: "is_published", label: "Ko'rsatilgan", render: (row) => <StatusBadge value={row.is_published} /> },
@@ -39,7 +43,7 @@ const columns: DataTableColumn<RatingRecord>[] = [
 
 const ratingDetailFields: DetailField[] = [
   { key: "id", label: "ID" },
-  { key: "artist_id", label: "Artist ID" },
+  { key: "artist_id", label: "Sanatkor ID" },
   { key: "client_id", label: "Mijoz ID" },
   { key: "rating", label: "Reyting" },
   { key: "is_published", label: "Ko'rsatilgan" },
@@ -48,8 +52,6 @@ const ratingDetailFields: DetailField[] = [
 
 const initialFilters: RatingFilters = {
   artist_id: "",
-  client_id: "",
-  rating: "",
   is_published: "",
   page: 1,
   limit,
@@ -125,6 +127,16 @@ export default function RatingsPage() {
     setFilters({ ...draftFilters, page: 1, limit: Number(draftFilters.limit) || limit });
   };
 
+  const applySelectFilter = <K extends "artist_id" | "is_published">(key: K, value: RatingFilters[K]) => {
+    setDraftFilters((current) => ({ ...current, [key]: value }));
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: 1,
+      limit: Number(current.limit) || limit,
+    }));
+  };
+
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
@@ -137,40 +149,6 @@ export default function RatingsPage() {
   const changePageSize = (nextLimit: number) => {
     setDraftFilters((current) => ({ ...current, limit: nextLimit }));
     setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
-  };
-
-  const openArtistRatings = async () => {
-    const artistId = Number(draftFilters.artist_id || filters.artist_id);
-    if (!Number.isFinite(artistId) || artistId <= 0) {
-      toast.error("Artist ID kiriting");
-      return;
-    }
-    const artist = artistOptions.find((item) => String(getArtistId(item)) === String(artistId));
-    setDialog({
-      type: "artist-ratings",
-      title: `${artist ? getArtistName(artist) : `Artist #${artistId}`} reytinglari`,
-      rows: [],
-      loading: true,
-      error: null,
-    });
-    try {
-      const result = await ratingsApi.byArtist(artistId, 1, limit);
-      setDialog({
-        type: "artist-ratings",
-        title: `${artist ? getArtistName(artist) : `Artist #${artistId}`} reytinglari`,
-        rows: result.items,
-        loading: false,
-        error: null,
-      });
-    } catch (caught) {
-      setDialog({
-        type: "artist-ratings",
-        title: `${artist ? getArtistName(artist) : `Artist #${artistId}`} reytinglari`,
-        rows: [],
-        loading: false,
-        error: caught instanceof Error ? caught.message : "Artist reytinglari yuklanmadi",
-      });
-    }
   };
 
   const deleteRating = async () => {
@@ -202,80 +180,44 @@ export default function RatingsPage() {
           Reytinglar
         </h1>
         <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-          Artist reytinglarini ko&apos;rish, filterlash va moderatsiya qilish.
+          Sanatkor reytinglarini ko&apos;rish, filterlash va moderatsiya qilish.
         </p>
       </div>
 
-      <form
+      <AdminFilterForm
         onSubmit={applyFilters}
-        className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
+        gridClassName="md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.7fr)_auto] md:items-center"
+        mobileLabel="Qidirish"
       >
-        <div className="grid gap-3 md:grid-cols-5">
-          <FormField
-            label={artistsLoading ? "Artist yuklanmoqda..." : "Artist"}
-            type="select"
+          <Select
+            className={`${adminFilterControlClass} h-10`}
+            loading={artistsLoading}
             value={draftFilters.artist_id ?? ""}
-            options={getArtistSelectOptions(artistOptions, draftFilters.artist_id)}
-            onChange={(artist_id) => setDraftFilters((current) => ({ ...current, artist_id }))}
+            options={[
+              { label: artistsLoading ? "Sanatkor yuklanmoqda..." : "Sanatkor: Barchasi", value: "" },
+              ...getArtistSelectOptions(artistOptions, draftFilters.artist_id),
+            ]}
+            onChange={(artist_id) => applySelectFilter("artist_id", artist_id)}
           />
-          <FormField
-            label="Mijoz ID"
-            type="number"
-            value={draftFilters.client_id ?? ""}
-            onChange={(client_id) => setDraftFilters((current) => ({ ...current, client_id }))}
-          />
-          <FormField
-            label="Rating"
-            type="number"
-            value={draftFilters.rating ?? ""}
-            onChange={(rating) => setDraftFilters((current) => ({ ...current, rating }))}
-          />
-          <FormField
-            label="Published"
-            type="select"
+          <Select
+            className={`${adminFilterControlClass} h-10`}
             value={draftFilters.is_published ?? ""}
             options={[
+              { label: "Published: Barchasi", value: "" },
               { label: "Kutilmoqda", value: 0 },
               { label: "Published", value: 1 },
             ]}
-            onChange={(is_published) =>
-              setDraftFilters((current) => ({ ...current, is_published }))
-            }
+            onChange={(is_published) => applySelectFilter("is_published", is_published)}
           />
-          <FormField
-            label="Limit"
-            type="number"
-            value={draftFilters.limit ?? limit}
-            onChange={(value) =>
-              setDraftFilters((current) => ({ ...current, limit: Number(value) || limit }))
-            }
-          />
-        </div>
-        <div className="mt-4 flex flex-wrap justify-end gap-3">
-          <button
-            type="button"
-            onClick={openArtistRatings}
-            className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 px-5 py-3 text-sm font-black text-amber-700 transition hover:bg-amber-50 dark:border-amber-400/20 dark:text-amber-300 dark:hover:bg-amber-400/10"
-          >
-            <Star className="size-4" />
-            Artist reytinglari
-          </button>
-          <button
-            type="button"
+          <Button
+            htmlType="button"
+            className={`${adminFilterActionClass} h-10`}
+            icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
-            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
           >
             Tozalash
-          </button>
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
-          >
-            <Search className="size-4" />
-            Qidirish
-          </button>
-        </div>
-      </form>
+          </Button>
+      </AdminFilterForm>
 
       {loading ? (
         <LoadingState />
@@ -320,9 +262,11 @@ export default function RatingsPage() {
       )}
 
       {dialog?.type === "view" ? (
-        <Modal title="Reyting tafsilotlari" onClose={() => setDialog(null)} width="max-w-5xl">
-          <DetailGrid record={dialog.rating} fields={ratingDetailFields} />
-        </Modal>
+        <AdminDrawer title="Reyting tafsilotlari" onClose={() => setDialog(null)} size="min(100vw, 720px)">
+          <div className="p-4">
+            <DetailGrid record={dialog.rating} fields={ratingDetailFields} />
+          </div>
+        </AdminDrawer>
       ) : null}
 
       {dialog?.type === "delete" ? (
@@ -337,19 +281,6 @@ export default function RatingsPage() {
         />
       ) : null}
 
-      {dialog?.type === "artist-ratings" ? (
-        <Modal title={dialog.title} onClose={() => setDialog(null)} width="max-w-5xl">
-          {dialog.loading ? (
-            <LoadingState label="Artist reytinglari yuklanmoqda..." />
-          ) : dialog.error ? (
-            <ErrorState message={dialog.error} />
-          ) : dialog.rows.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <DataTable columns={columns} rows={dialog.rows} getRowKey={(row, index) => row.id ?? index} />
-          )}
-        </Modal>
-      ) : null}
     </section>
   );
 }
@@ -371,7 +302,7 @@ function IconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`rounded-xl border p-2 transition ${
+      className={`cursor-pointer rounded-xl border p-2 transition ${
         danger
           ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
           : "border-slate-200 text-slate-500 hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"

@@ -1,16 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { Input } from "antd";
 import { ApplicationsFilterBar, defaultApplicationFilters } from "@/components/admin/applications/applications-filter-bar";
 import type { ApplicationsFilterState } from "@/components/admin/applications/applications-filter-bar";
 import { ApplicationContactDrawer } from "@/components/admin/applications/application-contact-drawer";
 import { ApplicationDetailDrawer } from "@/components/admin/applications/application-detail-drawer";
+import { getApplicationLabels } from "@/components/admin/applications/application-labels";
 import { ApplicationsTable } from "@/components/admin/applications/applications-table";
 import { ApplicationStatusTabs } from "@/components/admin/applications/application-status-tabs";
 import {
   APPLICATION_STATUS_FILTERS,
   applicationStatusKey,
+  canApproveApplication,
+  canRejectApplication,
   formatDateParts,
   getApplicationTitle,
   getApplicationUserName,
@@ -30,6 +34,8 @@ import {
   categoriesApi,
   type ApplicationFilters,
 } from "@/lib/api/admin-content";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { Locale } from "@/lib/i18n/translations";
 import { toDisplay } from "@/lib/utils";
 import type { ArtistApplication, Category, ListResult } from "@/types/api";
 
@@ -55,11 +61,40 @@ const initialCounts: StatusCounts = {
   rejected: 0,
 };
 
+type InitialApplicationStatus = Exclude<ApplicationStatusKey, "unknown">;
+
 export default function ApplicationsPage() {
-  const [apiFilters, setApiFilters] = useState<ApplicationFilters>(initialApiFilters);
-  const [uiFilters, setUiFilters] = useState<ApplicationsFilterState>(defaultApplicationFilters);
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <ApplicationsContent />
+    </Suspense>
+  );
+}
+
+function ApplicationsContent() {
+  const searchParams = useSearchParams();
+  const queryKey = searchParams.toString();
+
+  return (
+    <ApplicationsTableView
+      key={queryKey}
+      initialStatus={getInitialApplicationStatus(searchParams)}
+    />
+  );
+}
+
+function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplicationStatus }) {
+  const { locale } = useI18n();
+  const labels = getApplicationLabels(locale);
+  const [apiFilters, setApiFilters] = useState<ApplicationFilters>(() => ({
+    ...initialApiFilters,
+    status: APPLICATION_STATUS_FILTERS[initialStatus],
+  }));
+  const [uiFilters, setUiFilters] = useState<ApplicationsFilterState>(() => ({
+    ...defaultApplicationFilters,
+    status: initialStatus,
+  }));
   const [rows, setRows] = useState<ArtistApplication[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [categoryMap, setCategoryMap] = useState<CategoryMap>(() => new Map());
   const [counts, setCounts] = useState<StatusCounts>(initialCounts);
   const [meta, setMeta] = useState<ListResult<ArtistApplication>["meta"]>();
@@ -82,22 +117,21 @@ export default function ApplicationsPage() {
       const result = await applicationsApi.list(apiFilters);
       setRows(result.items);
       setMeta(result.meta);
-      setSelectedIds(new Set());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Arizalar yuklanmadi");
+      setError(caught instanceof Error ? caught.message : getApplicationLabels(locale).loadFailed);
     } finally {
       setLoading(false);
     }
-  }, [apiFilters]);
+  }, [apiFilters, locale]);
 
   const fetchCategories = useCallback(async () => {
     try {
       const result = await categoriesApi.list({});
       setCategoryMap(createCategoryMap(result.items));
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Kategoriyalar yuklanmadi");
+      toast.error(caught instanceof Error ? caught.message : getApplicationLabels(locale).categoriesLoadFailed);
     }
-  }, [toast]);
+  }, [locale, toast]);
 
   const fetchStatusCounts = useCallback(async () => {
     try {
@@ -134,8 +168,8 @@ export default function ApplicationsPage() {
   }, [fetchCategories, fetchStatusCounts]);
 
   const displayedRows = useMemo(
-    () => filterRows(rows, uiFilters, categoryMap),
-    [rows, uiFilters, categoryMap],
+    () => filterRows(rows, uiFilters, categoryMap, locale),
+    [rows, uiFilters, categoryMap, locale],
   );
 
   const changeStatus = (status: ApplicationStatusKey) => {
@@ -181,7 +215,7 @@ export default function ApplicationsPage() {
       const detail = await applicationsApi.detail(application.id);
       setDetailApplication({ ...application, ...detail });
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Ariza tafsilotlari yuklanmadi");
+      toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
     } finally {
       setSubmitting(false);
     }
@@ -205,14 +239,21 @@ export default function ApplicationsPage() {
 
   const approveApplication = async () => {
     if (dialog?.type !== "approve" || !dialog.application.id) return;
+    if (!canApproveApplication(dialog.application)) {
+      toast.error(labels.alreadyProcessed);
+      setDialog(null);
+      await Promise.all([fetchApplications(), fetchStatusCounts()]);
+      return;
+    }
     setSubmitting(true);
     try {
       await applicationsApi.approve(dialog.application.id);
-      toast.success("Ariza tasdiqlandi");
+      toast.success(labels.approvedToast);
       setDialog(null);
+      setDetailApplication(null);
       await Promise.all([fetchApplications(), fetchStatusCounts()]);
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Tasdiqlash bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : labels.approveFailed);
     } finally {
       setSubmitting(false);
     }
@@ -220,39 +261,24 @@ export default function ApplicationsPage() {
 
   const rejectApplication = async (reason: string) => {
     if (dialog?.type !== "reject" || !dialog.application.id) return;
+    if (!canRejectApplication(dialog.application)) {
+      toast.error(labels.alreadyProcessed);
+      setDialog(null);
+      await Promise.all([fetchApplications(), fetchStatusCounts()]);
+      return;
+    }
     setSubmitting(true);
     try {
       await applicationsApi.reject(dialog.application.id, reason);
-      toast.success("Ariza rad etildi");
+      toast.success(labels.rejectedToast);
       setDialog(null);
+      setDetailApplication(null);
       await Promise.all([fetchApplications(), fetchStatusCounts()]);
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Rad etish bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : labels.rejectFailed);
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const toggleAll = (checked: boolean) => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      displayedRows.forEach((row) => {
-        if (typeof row.id !== "number") return;
-        if (checked) next.add(row.id);
-        else next.delete(row.id);
-      });
-      return next;
-    });
-  };
-
-  const toggleRow = (application: ArtistApplication, checked: boolean) => {
-    if (typeof application.id !== "number") return;
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (checked) next.add(application.id as number);
-      else next.delete(application.id as number);
-      return next;
-    });
   };
 
   const pageCount =
@@ -261,24 +287,20 @@ export default function ApplicationsPage() {
   return (
     <section className="space-y-5">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-500">Arizalar</p>
-        <h1 className="mt-2 text-3xl font-bold text-slate-950 dark:text-white">Arizalar</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-500">{labels.pageEyebrow}</p>
+        <h1 className="mt-2 text-3xl font-bold text-slate-950 dark:text-white">{labels.pageTitle}</h1>
         <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-          Artist bo&apos;lish uchun yuborilgan arizalarni ko&apos;rish va boshqarish.
+          {labels.pageDescription}
         </p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111827]">
-        <ApplicationStatusTabs active={activeStatus} counts={counts} onChange={changeStatus} />
-        <div className="pt-4">
-          <ApplicationsFilterBar
-            value={uiFilters}
-            categoryMap={categoryMap}
-            onChange={changeFilters}
-            onReset={resetFilters}
-          />
-        </div>
-      </div>
+      <ApplicationStatusTabs active={activeStatus} counts={counts} onChange={changeStatus} />
+      <ApplicationsFilterBar
+        value={uiFilters}
+        categoryMap={categoryMap}
+        onChange={changeFilters}
+        onReset={resetFilters}
+      />
 
       {loading ? (
         <LoadingState />
@@ -292,9 +314,6 @@ export default function ApplicationsPage() {
           categoryMap={categoryMap}
           page={page}
           pageSize={pageSize}
-          selectedIds={selectedIds}
-          onToggleAll={toggleAll}
-          onToggleRow={toggleRow}
           onOpenDetail={(application) => void openDetail(application)}
           onOpenContact={(application) => void openContact(application)}
           onApprove={(application) => setDialog({ type: "approve", application })}
@@ -325,6 +344,8 @@ export default function ApplicationsPage() {
         application={detailApplication}
         categoryMap={categoryMap}
         onClose={() => setDetailApplication(null)}
+        onApprove={(application) => setDialog({ type: "approve", application })}
+        onReject={(application) => setDialog({ type: "reject", application })}
       />
 
       <ApplicationContactDrawer
@@ -337,9 +358,10 @@ export default function ApplicationsPage() {
       {dialog?.type === "approve" ? (
         <ConfirmDialog
           loading={submitting}
-          title="Arizani tasdiqlash"
-          message={`Ariza #${toDisplay(dialog.application.id)} tasdiqlansinmi?`}
-          confirmLabel="Tasdiqlash"
+          title={labels.approveDialogTitle}
+          message={labels.approveDialogMessage(toDisplay(dialog.application.id))}
+          confirmLabel={labels.approveAction}
+          cancelLabel={labels.cancelAction}
           onCancel={() => setDialog(null)}
           onConfirm={approveApplication}
         />
@@ -349,6 +371,7 @@ export default function ApplicationsPage() {
         <RejectApplicationModal
           loading={submitting}
           application={dialog.application}
+          locale={locale}
           onClose={() => setDialog(null)}
           onSubmit={rejectApplication}
         />
@@ -360,31 +383,34 @@ export default function ApplicationsPage() {
 function RejectApplicationModal({
   application,
   loading,
+  locale,
   onClose,
   onSubmit,
 }: {
   application: ArtistApplication;
   loading: boolean;
+  locale: Locale;
   onClose: () => void;
   onSubmit: (reason: string) => Promise<void>;
 }) {
+  const labels = getApplicationLabels(locale);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!reason.trim()) {
-      setError("Majburiy maydon");
+      setError(labels.requiredField);
       return;
     }
     await onSubmit(reason.trim());
   };
 
   return (
-    <Modal title={`Ariza #${toDisplay(application.id)} rad etish`} onClose={onClose} width="max-w-md">
+    <Modal title={labels.rejectDialogTitle(toDisplay(application.id))} onClose={onClose} width="max-w-md">
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Sabab</label>
+          <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{labels.reason}</label>
           <Input.TextArea
             rows={4}
             value={reason}
@@ -402,14 +428,14 @@ function RejectApplicationModal({
             onClick={onClose}
             className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
           >
-            Bekor qilish
+            {labels.cancelAction}
           </button>
           <button
             type="submit"
             disabled={loading}
             className="h-10 rounded-lg bg-rose-500 px-4 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Bajarilmoqda..." : "Rad etish"}
+            {loading ? labels.submitting : labels.rejectAction}
           </button>
         </div>
       </form>
@@ -429,13 +455,25 @@ function getResultCount(result: ListResult<ArtistApplication>) {
   return Number(result.meta?.totalCount ?? result.meta?.total ?? result.items.length) || 0;
 }
 
+function getInitialApplicationStatus(
+  searchParams: Pick<URLSearchParams, "get"> | null,
+): InitialApplicationStatus {
+  const status = String(searchParams?.get("status") ?? "").trim().toLowerCase();
+  if (!status) return "all";
+  if (status === "pending" || status === "10") return "pending";
+  if (status === "approved" || status === "20") return "approved";
+  if (status === "rejected" || status === "30") return "rejected";
+  return "all";
+}
+
 function filterRows(
   rows: ArtistApplication[],
   filters: ApplicationsFilterState,
   categoryMap: CategoryMap,
+  locale: Locale,
 ) {
   return rows.filter((row) => {
-    if (filters.search && !matchesSearch(row, filters.search, categoryMap)) return false;
+    if (filters.search && !matchesSearch(row, filters.search, categoryMap, locale)) return false;
     if (filters.categoryId && !matchesCategory(row, Number(filters.categoryId))) return false;
     if (filters.dateRange !== "all" && !matchesDateRange(row, filters.dateRange, filters.customDateRange)) return false;
     if (filters.status !== "all" && applicationStatusKey(row) !== filters.status) return false;
@@ -443,7 +481,12 @@ function filterRows(
   });
 }
 
-function matchesSearch(application: ArtistApplication, search: string, categoryMap: CategoryMap) {
+function matchesSearch(
+  application: ArtistApplication,
+  search: string,
+  categoryMap: CategoryMap,
+  locale: Locale,
+) {
   const query = search.trim().toLowerCase();
   if (!query) return true;
 
@@ -453,12 +496,12 @@ function matchesSearch(application: ArtistApplication, search: string, categoryM
     application.bio,
     application.rejection_reason,
     application.administrator_name,
-    getApplicationTitle(application, categoryMap),
+    getApplicationTitle(application, categoryMap, locale),
     getApplicationUserName(application),
     getContactValue(application, ["phone", "extra_phone", "administrator_phone", "email"]),
-    ...getCategoryList(application.category_ids, categoryMap),
-    ...getCategoryList(application.sub_category_ids, categoryMap),
-    formatDateParts(application.created_at).full,
+    ...getCategoryList(application.category_ids, categoryMap, locale),
+    ...getCategoryList(application.sub_category_ids, categoryMap, locale),
+    formatDateParts(application.created_at, locale).full,
   ]
     .map((value) => String(value ?? "").toLowerCase())
     .join(" ");

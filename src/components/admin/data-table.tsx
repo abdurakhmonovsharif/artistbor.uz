@@ -4,6 +4,7 @@ import { ArrowDownUp } from "lucide-react";
 import { getValue, normalizeDate, toDisplay } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { UnknownRecord } from "@/types/api";
 
 export type DataTableColumn<T extends object = UnknownRecord> = {
@@ -24,6 +25,8 @@ export function DataTable<T extends object>({
   getRowKey?: (row: T, index: number) => string | number;
   actions?: (row: T) => React.ReactNode;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827] dark:shadow-black/20">
       <div className="admin-table-scroll overflow-x-auto">
@@ -43,7 +46,7 @@ export function DataTable<T extends object>({
               ))}
               {actions ? (
                 <th className="px-5 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">
-                  Amallar
+                  {t("common.actions")}
                 </th>
               ) : null}
             </tr>
@@ -66,7 +69,11 @@ export function DataTable<T extends object>({
                     )}
                   </td>
                 ))}
-                {actions ? <td className="px-5 py-4 text-right">{actions(row)}</td> : null}
+                {actions ? (
+                  <td className="px-5 py-4 text-right [&_button:not(:disabled)]:cursor-pointer">
+                    {actions(row)}
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

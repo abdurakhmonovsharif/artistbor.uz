@@ -1,59 +1,25 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { ExternalLink, Search, X } from "lucide-react";
+import { Button, Select } from "antd";
+import { ExternalLink, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
+import {
+  AdminFilterForm,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
-import { FormField } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { artistsApi, artistVideosApi, type ArtistVideoFilters } from "@/lib/api/admin-content";
-import { getArtistSelectOptions } from "@/lib/artist-display";
-import { isRecord, normalizeDate, toDisplay } from "@/lib/utils";
-import type { ArtistProfile, ArtistVideoRecord, UnknownRecord } from "@/types/api";
+import { getArtistId, getArtistName, getArtistSelectOptions } from "@/lib/artist-display";
+import { normalizeDate } from "@/lib/utils";
+import type { ArtistProfile, ArtistVideoRecord } from "@/types/api";
 
 const initialFilters: ArtistVideoFilters = {
   artist_id: "",
 };
-
-const columns: DataTableColumn<ArtistVideoRecord>[] = [
-  { key: "id", label: "ID", kind: "number" },
-  { key: "artist_id", label: "Artist ID", kind: "number" },
-  {
-    key: "thumbnail_url",
-    label: "Ko'rinish",
-    render: (row) => <VideoPreview row={row} />,
-  },
-  {
-    key: "title",
-    label: "Sarlavha",
-    render: (row) => (
-      <div className="min-w-48">
-        <p className="line-clamp-2 font-black text-slate-900 dark:text-white">
-          {row.title || row.title_uz || row.title_ru || `Video #${row.id ?? "—"}`}
-        </p>
-        {row.title_uz || row.title_ru ? (
-          <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {[row.title_uz, row.title_ru].filter(Boolean).join(" / ")}
-          </p>
-        ) : null}
-      </div>
-    ),
-  },
-  {
-    key: "youtube_url",
-    label: "YouTube",
-    render: (row) => <VideoLink value={row.youtube_url ?? row.embed_url} />,
-  },
-  { key: "sort_order", label: "Tartib", kind: "number" },
-  { key: "is_active", label: "Faol", render: (row) => <StatusBadge value={row.is_active} /> },
-  { key: "created_at", label: "Yaratilgan", render: (row) => normalizeDate(row.created_at) },
-  {
-    key: "__extra",
-    label: "Qo'shimcha",
-    render: (row) => <ObjectSummary record={row} />,
-  },
-];
 
 export default function ArtistVideosPage() {
   const router = useRouter();
@@ -64,6 +30,15 @@ export default function ArtistVideosPage() {
   const [rows, setRows] = useState<ArtistVideoRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const artistNameById = new Map(
+    artistOptions
+      .map((artist) => {
+        const artistId = getArtistId(artist);
+        return artistId === undefined ? undefined : [String(artistId), getArtistName(artist)] as const;
+      })
+      .filter(Boolean) as [string, string][],
+  );
+  const columns = getVideoColumns(artistNameById);
 
   const fetchVideos = useCallback(async () => {
     setLoading(true);
@@ -106,6 +81,13 @@ export default function ArtistVideosPage() {
     syncUrl(draftFilters, router);
   };
 
+  const applyArtistFilter = (artist_id: ArtistVideoFilters["artist_id"]) => {
+    const nextFilters = { artist_id };
+    setDraftFilters(nextFilters);
+    setFilters(nextFilters);
+    syncUrl(nextFilters, router);
+  };
+
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
@@ -119,53 +101,37 @@ export default function ArtistVideosPage() {
           Videolar
         </p>
         <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-          Artist videolari
+          Sanatkor videolari
         </h1>
         <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-          Artistlarga biriktirilgan videolarni ko&apos;rish va artist bo&apos;yicha filterlash.
+          Sanatkorlarga biriktirilgan videolarni ko&apos;rish va sanatkor bo&apos;yicha filterlash.
         </p>
       </div>
 
-      <form
+      <AdminFilterForm
         onSubmit={applyFilters}
-        className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
+        gridClassName="md:grid-cols-[minmax(180px,1fr)_auto] md:items-center"
+        mobileLabel="Qidirish"
       >
-        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-          <FormField
-            label={artistsLoading ? "Artist yuklanmoqda..." : "Artist"}
-            type="select"
+          <Select
+            className={`${adminFilterControlClass} h-10`}
+            loading={artistsLoading}
             value={draftFilters.artist_id ?? ""}
-            options={getArtistSelectOptions(artistOptions, draftFilters.artist_id)}
-            onChange={(artist_id) => setDraftFilters((current) => ({ ...current, artist_id }))}
+            options={[
+              { label: artistsLoading ? "Sanatkor yuklanmoqda..." : "Sanatkor: Barchasi", value: "" },
+              ...getArtistSelectOptions(artistOptions, draftFilters.artist_id),
+            ]}
+            onChange={applyArtistFilter}
           />
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
-            >
-              <X className="size-4" />
-              Tozalash
-            </button>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
-            >
-              <Search className="size-4" />
-              Qidirish
-            </button>
-          </div>
-        </div>
-      </form>
-
-      <div className="rounded-[24px] border border-slate-100 bg-white p-4 dark:border-white/10 dark:bg-slate-950">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-          Natija
-        </p>
-        <p className="mt-1 text-2xl font-black text-slate-950 dark:text-white">
-          {rows.length}
-        </p>
-      </div>
+          <Button
+            htmlType="button"
+            className={`${adminFilterActionClass} h-10`}
+            icon={<RotateCcw className="size-4" />}
+            onClick={resetFilters}
+          >
+            Tozalash
+          </Button>
+      </AdminFilterForm>
 
       {loading ? (
         <LoadingState label="Videolar yuklanmoqda..." />
@@ -182,6 +148,45 @@ export default function ArtistVideosPage() {
       )}
     </section>
   );
+}
+
+function getVideoColumns(artistNameById: Map<string, string>): DataTableColumn<ArtistVideoRecord>[] {
+  return [
+    { key: "id", label: "ID", kind: "number" },
+    {
+      key: "artist_id",
+      label: "Sanatkor",
+      render: (row) => artistNameById.get(String(row.artist_id)) ?? `Sanatkor #${row.artist_id ?? "—"}`,
+    },
+    {
+      key: "thumbnail_url",
+      label: "Ko'rinish",
+      render: (row) => <VideoPreview row={row} />,
+    },
+    {
+      key: "title",
+      label: "Sarlavha",
+      render: (row) => (
+        <div className="min-w-48">
+          <p className="line-clamp-2 font-black text-slate-900 dark:text-white">
+            {row.title || row.title_uz || row.title_ru || `Video #${row.id ?? "—"}`}
+          </p>
+          {row.title_uz || row.title_ru ? (
+            <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {[row.title_uz, row.title_ru].filter(Boolean).join(" / ")}
+            </p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "youtube_url",
+      label: "YouTube",
+      render: (row) => <VideoLink value={row.youtube_url ?? row.embed_url} />,
+    },
+    { key: "is_active", label: "Faol", render: (row) => <StatusBadge value={row.is_active} /> },
+    { key: "created_at", label: "Yaratilgan", render: (row) => normalizeDate(row.created_at) },
+  ];
 }
 
 function VideoPreview({ row }: { row: ArtistVideoRecord }) {
@@ -215,48 +220,6 @@ function VideoLink({ value }: { value: unknown }) {
       <ExternalLink className="size-4" />
     </a>
   );
-}
-
-function ObjectSummary({ record }: { record: UnknownRecord }) {
-  const hiddenKeys = new Set([
-    "id",
-    "artist_id",
-    "thumbnail_url",
-    "title",
-    "title_uz",
-    "title_ru",
-    "youtube_url",
-    "embed_url",
-    "sort_order",
-    "is_active",
-    "created_at",
-  ]);
-  const entries = Object.entries(record)
-    .filter(([key, value]) => !hiddenKeys.has(key) && value !== undefined && value !== null && value !== "")
-    .slice(0, 4);
-
-  if (!entries.length) return <span>—</span>;
-
-  return (
-    <div className="space-y-1 text-xs leading-5">
-      {entries.map(([key, value]) => (
-        <p key={key} className="line-clamp-1">
-          <span className="font-black uppercase text-slate-400">{humanizeKey(key)}:</span>{" "}
-          <span>{formatValue(value)}</span>
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function formatValue(value: unknown) {
-  if (Array.isArray(value)) return value.length ? `${value.length} ta` : "—";
-  if (isRecord(value)) return toDisplay(value);
-  return toDisplay(value);
-}
-
-function humanizeKey(key: string) {
-  return key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll("_", " ").toLowerCase();
 }
 
 function filtersFromUrl(): ArtistVideoFilters {

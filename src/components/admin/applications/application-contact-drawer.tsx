@@ -4,11 +4,13 @@ import { Drawer } from "antd";
 import { AtSign, Copy, MapPin, Phone, UserRound, X } from "lucide-react";
 import type { ArtistApplication } from "@/types/api";
 import { toDisplay } from "@/lib/utils";
+import { getApplicationLabels } from "@/components/admin/applications/application-labels";
 import {
   getApplicationTitle,
   getContactValue,
   type CategoryMap,
 } from "@/components/admin/applications/application-utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function ApplicationContactDrawer({
   application,
@@ -21,35 +23,38 @@ export function ApplicationContactDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  const { locale } = useI18n();
+  const labels = getApplicationLabels(locale);
+
   if (!application) return null;
 
   const rows = [
     {
-      label: "Telefon asosiy",
+      label: labels.primaryPhone,
       value: getContactValue(application, ["phone", "main_phone"]),
       icon: <Phone className="size-4" />,
       copyable: true,
     },
     {
-      label: "Qo‘shimcha telefon",
+      label: labels.extraPhone,
       value: getContactValue(application, ["extra_phone", "additional_phone"]),
       icon: <Phone className="size-4" />,
       copyable: true,
     },
     {
-      label: "Administrator telefoni",
+      label: labels.adminPhone,
       value: getContactValue(application, ["administrator_phone", "admin_phone"]),
       icon: <UserRound className="size-4" />,
       copyable: true,
     },
     {
-      label: "Email",
+      label: labels.email,
       value: getContactValue(application, ["email"]),
       icon: <AtSign className="size-4" />,
       copyable: true,
     },
     {
-      label: "Manzil",
+      label: labels.address,
       value: getContactValue(application, ["address", "location", "manzil"]),
       icon: <MapPin className="size-4" />,
     },
@@ -81,9 +86,9 @@ export function ApplicationContactDrawer({
       }}
       title={
         <div className="min-w-0">
-          <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">Aloqa</p>
+          <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">{labels.contactTitle}</p>
           <p className="mt-1 truncate text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            Ariza #{toDisplay(application.id)} · {getApplicationTitle(application, categoryMap)}
+            {labels.drawerTitle(toDisplay(application.id))} · {getApplicationTitle(application, categoryMap, locale)}
           </p>
         </div>
       }
@@ -93,7 +98,7 @@ export function ApplicationContactDrawer({
           onClick={onClose}
           className="h-10 w-full cursor-pointer rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.05]"
         >
-          Yopish
+          {labels.closeAction}
         </button>
       }
       styles={{
@@ -125,7 +130,7 @@ export function ApplicationContactDrawer({
                   type="button"
                   onClick={() => void handleCopy(row.value)}
                   className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
-                  aria-label={`${row.label} qiymatini nusxalash`}
+                  aria-label={labels.copyValue(row.label)}
                 >
                   <Copy className="size-4" />
                 </button>

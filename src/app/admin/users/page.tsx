@@ -1,12 +1,22 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Ban, Pencil, Search, Unlock } from "lucide-react";
+import { Button, Input, Select } from "antd";
+import { Ban, Pencil, RotateCcw, Search, Unlock, X } from "lucide-react";
+import {
+  AdminFilterForm,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
+import {
+  adminActionButtonClass,
+  adminPrimaryActionButtonClass,
+} from "@/components/admin/admin-action-button";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
-import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -14,6 +24,7 @@ import {
   type UpdateUserPayload,
   type UserFilters,
 } from "@/lib/api/admin-content";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { ListResult, User } from "@/types/api";
 
 type DialogState =
@@ -25,23 +36,6 @@ type DialogState =
 const limit = 20;
 const clientRole = 10;
 
-const userStatusOptions = [
-  { label: "Faol", value: "10" },
-  { label: "Nofaol", value: "9" },
-  { label: "Bloklangan", value: "20" },
-  { label: "O'chirilgan", value: "0" },
-];
-
-const columns: DataTableColumn<User>[] = [
-  { key: "id", label: "ID", kind: "number" },
-  { key: "first_name", label: "Ism" },
-  { key: "last_name", label: "Familiya" },
-  { key: "phone", label: "Telefon" },
-  { key: "email", label: "Email" },
-  { key: "status", label: "Holat", render: (row) => formatUserStatus(row.status) },
-  { key: "created_at", label: "Yaratilgan", kind: "date" },
-];
-
 const initialFilters: UserFilters = {
   role: clientRole,
   status: "",
@@ -51,6 +45,10 @@ const initialFilters: UserFilters = {
 };
 
 export default function UsersPage() {
+  const { locale, t } = useI18n();
+  const labels = getUserLabels(locale);
+  const userStatusOptions = getUserStatusOptions(labels);
+  const columns = getUserColumns(labels);
   const [filters, setFilters] = useState<UserFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<UserFilters>(initialFilters);
   const [rows, setRows] = useState<User[]>([]);
@@ -69,11 +67,11 @@ export default function UsersPage() {
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Foydalanuvchilar yuklanmadi");
+      setError(caught instanceof Error ? caught.message : getUserLabels(locale).loadFailed);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, locale]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -107,15 +105,15 @@ export default function UsersPage() {
     try {
       if (dialog.type === "block") {
         await usersApi.block(dialog.user.id);
-        toast.success("Foydalanuvchi bloklandi");
+        toast.success(labels.blocked);
       } else {
         await usersApi.unblock(dialog.user.id);
-        toast.success("Foydalanuvchi blokdan chiqarildi");
+        toast.success(labels.unblocked);
       }
       setDialog(null);
       await fetchUsers();
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Amal bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
     } finally {
       setSubmitting(false);
     }
@@ -133,53 +131,45 @@ export default function UsersPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
-            Foydalanuvchilar
+            {labels.eyebrow}
           </p>
           <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-            Foydalanuvchilar
+            {labels.title}
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-            Oddiy mijoz foydalanuvchilarni ko&apos;rish, tahrirlash va bloklash.
+            {labels.description}
           </p>
         </div>
       </div>
 
-      <form
+      <AdminFilterForm
         onSubmit={applyFilters}
-        className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
+        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
+        mobileLabel={t("actions.search")}
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <FormField
-            label="Qidiruv"
+          <Input
+            allowClear
+            prefix={<Search className="size-4 text-slate-400" />}
             value={draftFilters.search ?? ""}
-            placeholder="Ism, telefon yoki email"
-            onChange={(value) => setDraftFilters((current) => ({ ...current, search: value }))}
+            placeholder={labels.searchPlaceholder}
+            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+            className={`${adminFilterControlClass} h-10`}
           />
-          <FormField
-            label="Holat"
-            type="select"
+          <Select
+            className={`${adminFilterControlClass} h-10`}
             value={draftFilters.status ?? ""}
-            options={userStatusOptions}
-            onChange={(value) => setDraftFilters((current) => ({ ...current, status: value }))}
+            onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
+            options={[{ label: `${labels.status}: ${labels.all}`, value: "" }, ...userStatusOptions]}
           />
-        </div>
-        <div className="mt-4 flex flex-wrap justify-end gap-3">
-          <button
-            type="button"
+          <Button
+            htmlType="button"
+            className={`${adminFilterActionClass} h-10`}
+            icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
-            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
           >
-            Tozalash
-          </button>
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
-          >
-            <Search className="size-4" />
-            Qidirish
-          </button>
-        </div>
-      </form>
+            {t("actions.clear")}
+          </Button>
+      </AdminFilterForm>
 
       {loading ? (
         <LoadingState />
@@ -194,15 +184,15 @@ export default function UsersPage() {
           getRowKey={(row, index) => row.id ?? index}
           actions={(row) => (
             <div className="flex justify-end gap-2">
-              <IconButton label="Tahrirlash" onClick={() => setDialog({ type: "edit", user: row })}>
+              <IconButton label={t("actions.edit")} onClick={() => setDialog({ type: "edit", user: row })}>
                 <Pencil className="size-4" />
               </IconButton>
               {isBlockedUser(row) ? (
-                <IconButton label="Blokdan chiqarish" onClick={() => setDialog({ type: "unblock", user: row })}>
+                <IconButton label={labels.unblockAction} onClick={() => setDialog({ type: "unblock", user: row })}>
                   <Unlock className="size-4" />
                 </IconButton>
               ) : (
-                <IconButton danger label="Bloklash" onClick={() => setDialog({ type: "block", user: row })}>
+                <IconButton danger label={labels.blockAction} onClick={() => setDialog({ type: "block", user: row })}>
                   <Ban className="size-4" />
                 </IconButton>
               )}
@@ -230,7 +220,9 @@ export default function UsersPage() {
       )}
 
       {dialog?.type === "edit" ? (
-        <EditUserModal
+        <EditUserDrawer
+          labels={labels}
+          statusOptions={userStatusOptions}
           user={dialog.user}
           loading={submitting}
           onClose={() => setDialog(null)}
@@ -239,11 +231,11 @@ export default function UsersPage() {
             setSubmitting(true);
             try {
               await usersApi.update(dialog.user.id, payload);
-              toast.success("Foydalanuvchi yangilandi");
+              toast.success(labels.updated);
               setDialog(null);
               await fetchUsers();
             } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : "Yangilash bajarilmadi");
+              toast.error(caught instanceof Error ? caught.message : t("crud.updateFailed"));
             } finally {
               setSubmitting(false);
             }
@@ -255,9 +247,9 @@ export default function UsersPage() {
         <ConfirmDialog
           danger
           loading={submitting}
-          title="Foydalanuvchini bloklash"
-          message="Foydalanuvchini bloklashni tasdiqlaysizmi?"
-          confirmLabel="Bloklash"
+          title={labels.blockTitle}
+          message={labels.blockConfirm}
+          confirmLabel={labels.blockAction}
           onCancel={() => setDialog(null)}
           onConfirm={runConfirmedAction}
         />
@@ -266,9 +258,9 @@ export default function UsersPage() {
       {dialog?.type === "unblock" ? (
         <ConfirmDialog
           loading={submitting}
-          title="Blokdan chiqarish"
-          message="Foydalanuvchini blokdan chiqarishni tasdiqlaysizmi?"
-          confirmLabel="Blokdan chiqarish"
+          title={labels.unblockTitle}
+          message={labels.unblockConfirm}
+          confirmLabel={labels.unblockAction}
           onCancel={() => setDialog(null)}
           onConfirm={runConfirmedAction}
         />
@@ -277,12 +269,16 @@ export default function UsersPage() {
   );
 }
 
-function EditUserModal({
+function EditUserDrawer({
+  labels,
+  statusOptions,
   user,
   loading,
   onClose,
   onSubmit,
 }: {
+  labels: UserLabels;
+  statusOptions: { label: string; value: string }[];
   user: User;
   loading: boolean;
   onClose: () => void;
@@ -296,10 +292,11 @@ function EditUserModal({
     status: user.status === undefined ? "" : String(user.status),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const formId = "user-edit-form";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const nextErrors = validateRequired(values, ["first_name", "phone", "status"]);
+    const nextErrors = validateRequired(values, ["first_name", "phone", "status"], labels.requiredField);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     await onSubmit({
@@ -312,45 +309,62 @@ function EditUserModal({
   };
 
   return (
-    <Modal title="Foydalanuvchini tahrirlash" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5">
+    <AdminDrawer
+      title={labels.editTitle}
+      onClose={onClose}
+      footer={<FormActions labels={labels} loading={loading} onClose={onClose} form={formId} />}
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5 p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <FormField label="Ism" required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
-          <FormField label="Familiya" value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
-          <FormField label="Telefon" required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
-          <FormField label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
+          <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+          <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+          <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
+          <FormField compact label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
           <FormField
-            label="Holat"
+            compact
+            label={labels.status}
             type="select"
             required
             value={values.status}
             error={errors.status}
-            options={userStatusOptions}
+            options={statusOptions}
             onChange={(status) => setValues((current) => ({ ...current, status }))}
           />
         </div>
-        <FormActions loading={loading} onClose={onClose} />
       </form>
-    </Modal>
+    </AdminDrawer>
   );
 }
 
-function FormActions({ loading, onClose }: { loading: boolean; onClose: () => void }) {
+function FormActions({
+  labels,
+  form,
+  loading,
+  onClose,
+}: {
+  labels: UserLabels;
+  form?: string;
+  loading: boolean;
+  onClose: () => void;
+}) {
   return (
-    <div className="flex justify-end gap-3">
+    <div className="grid grid-cols-2 gap-2">
       <button
         type="button"
         onClick={onClose}
-        className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
+        className={adminActionButtonClass}
       >
-        Bekor qilish
+        <X className="size-4" />
+        {labels.cancel}
       </button>
       <button
         type="submit"
+        form={form}
         disabled={loading}
-        className="rounded-2xl bg-amber-400 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-lg shadow-amber-400/25 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+        className={adminPrimaryActionButtonClass}
       >
-        {loading ? "Saqlanmoqda..." : "Saqlash"}
+        <Pencil className="size-4" />
+        {loading ? labels.saving : labels.save}
       </button>
     </div>
   );
@@ -373,7 +387,7 @@ function IconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`rounded-xl border p-2 transition ${
+      className={`cursor-pointer rounded-xl border p-2 transition ${
         danger
           ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
           : "border-slate-200 text-slate-500 hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
@@ -384,10 +398,10 @@ function IconButton({
   );
 }
 
-function validateRequired(values: Record<string, string>, keys: string[]) {
+function validateRequired(values: Record<string, string>, keys: string[], message: string) {
   const errors: Record<string, string> = {};
   for (const key of keys) {
-    if (!values[key]) errors[key] = "Majburiy maydon";
+    if (!values[key]) errors[key] = message;
   }
   return errors;
 }
@@ -397,13 +411,108 @@ function isBlockedUser(user: User) {
   return status.includes("block") || status === "20";
 }
 
-function formatUserStatus(value: User["status"]) {
+function formatUserStatus(value: User["status"], labels: UserLabels) {
   const status = String(value ?? "");
-  const labels: Record<string, string> = {
-    "0": "O'chirilgan",
-    "9": "Nofaol",
-    "10": "Faol",
-    "20": "Bloklangan",
+  const statusLabels: Record<string, string> = {
+    "0": labels.deletedStatus,
+    "9": labels.inactiveStatus,
+    "10": labels.activeStatus,
+    "20": labels.blockedStatus,
   };
-  return labels[status] ?? (status || "—");
+  return statusLabels[status] ?? (status || "—");
+}
+
+type UserLabels = ReturnType<typeof getUserLabels>;
+
+function getUserColumns(labels: UserLabels): DataTableColumn<User>[] {
+  return [
+    { key: "id", label: "ID", kind: "number" },
+    { key: "first_name", label: labels.firstName },
+    { key: "last_name", label: labels.lastName },
+    { key: "phone", label: labels.phone },
+    { key: "email", label: "Email" },
+    { key: "status", label: labels.status, render: (row) => formatUserStatus(row.status, labels) },
+    { key: "created_at", label: labels.createdAt, kind: "date" },
+  ];
+}
+
+function getUserStatusOptions(labels: UserLabels) {
+  return [
+    { label: labels.activeStatus, value: "10" },
+    { label: labels.inactiveStatus, value: "9" },
+    { label: labels.blockedStatus, value: "20" },
+    { label: labels.deletedStatus, value: "0" },
+  ];
+}
+
+function getUserLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      actionFailed: "Не удалось выполнить действие",
+      activeStatus: "Активный",
+      all: "Все",
+      blockAction: "Заблокировать",
+      blockConfirm: "Подтвердите блокировку пользователя.",
+      blocked: "Пользователь заблокирован",
+      blockedStatus: "Заблокирован",
+      blockTitle: "Блокировка пользователя",
+      cancel: "Отмена",
+      createdAt: "Создан",
+      deletedStatus: "Удален",
+      description: "Просмотр, редактирование и блокировка обычных клиентских пользователей.",
+      editTitle: "Редактирование пользователя",
+      eyebrow: "Пользователи",
+      firstName: "Имя",
+      inactiveStatus: "Неактивный",
+      lastName: "Фамилия",
+      loadFailed: "Не удалось загрузить пользователей",
+      phone: "Телефон",
+      requiredField: "Обязательное поле",
+      save: "Сохранить",
+      saving: "Сохранение...",
+      search: "Поиск",
+      searchPlaceholder: "Имя, телефон или email",
+      status: "Статус",
+      title: "Пользователи",
+      unblockAction: "Разблокировать",
+      unblockConfirm: "Подтвердите разблокировку пользователя.",
+      unblocked: "Пользователь разблокирован",
+      unblockTitle: "Разблокировка",
+      updated: "Пользователь обновлен",
+    };
+  }
+
+  return {
+    actionFailed: "Amal bajarilmadi",
+    activeStatus: "Faol",
+    all: "Barchasi",
+    blockAction: "Bloklash",
+    blockConfirm: "Foydalanuvchini bloklashni tasdiqlaysizmi?",
+    blocked: "Foydalanuvchi bloklandi",
+    blockedStatus: "Bloklangan",
+    blockTitle: "Foydalanuvchini bloklash",
+    cancel: "Bekor qilish",
+    createdAt: "Yaratilgan",
+    deletedStatus: "O'chirilgan",
+    description: "Oddiy mijoz foydalanuvchilarni ko'rish, tahrirlash va bloklash.",
+    editTitle: "Foydalanuvchini tahrirlash",
+    eyebrow: "Foydalanuvchilar",
+    firstName: "Ism",
+    inactiveStatus: "Nofaol",
+    lastName: "Familiya",
+    loadFailed: "Foydalanuvchilar yuklanmadi",
+    phone: "Telefon",
+    requiredField: "Majburiy maydon",
+    save: "Saqlash",
+    saving: "Saqlanmoqda...",
+    search: "Qidiruv",
+    searchPlaceholder: "Ism, telefon yoki email",
+    status: "Holat",
+    title: "Foydalanuvchilar",
+    unblockAction: "Blokdan chiqarish",
+    unblockConfirm: "Foydalanuvchini blokdan chiqarishni tasdiqlaysizmi?",
+    unblocked: "Foydalanuvchi blokdan chiqarildi",
+    unblockTitle: "Blokdan chiqarish",
+    updated: "Foydalanuvchi yangilandi",
+  };
 }

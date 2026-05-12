@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { cn } from "@/lib/utils";
 import type { PaginationMeta } from "@/types/api";
 
@@ -91,6 +92,7 @@ function PaginationShell({
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 }) {
+  const { t } = useI18n();
   const canGoPrevious = page > 1;
   const canGoNext = pageCount ? page < pageCount : (rowsCount ?? 0) >= pageSize;
   const firstItem = (page - 1) * pageSize + 1;
@@ -98,20 +100,20 @@ function PaginationShell({
     ? Math.min(page * pageSize, total)
     : (page - 1) * pageSize + (rowsCount ?? pageSize);
   const rangeLabel = total
-    ? `${firstItem} dan ${lastItem} gacha, jami ${total} ta`
-    : `${firstItem} dan ${lastItem} gacha`;
+    ? t("pagination.rangeTotal", { from: firstItem, to: lastItem, total })
+    : t("pagination.range", { from: firstItem, to: lastItem });
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2 rounded-[22px] border border-slate-100 bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827] dark:text-slate-400">
       <PaginationIconButton
-        label="Birinchi sahifa"
+        label={t("pagination.first")}
         disabled={!canGoPrevious}
         onClick={() => onPageChange(1)}
       >
         <ChevronsLeft className="size-4" />
       </PaginationIconButton>
       <PaginationIconButton
-        label="Oldingi sahifa"
+        label={t("pagination.previous")}
         disabled={!canGoPrevious}
         onClick={() => onPageChange(page - 1)}
       >
@@ -144,14 +146,14 @@ function PaginationShell({
       )}
 
       <PaginationIconButton
-        label="Keyingi sahifa"
+        label={t("pagination.next")}
         disabled={!canGoNext}
         onClick={() => onPageChange(page + 1)}
       >
         <ChevronRight className="size-4" />
       </PaginationIconButton>
       <PaginationIconButton
-        label="Oxirgi sahifa"
+        label={t("pagination.last")}
         disabled={!pageCount || !canGoNext}
         onClick={() => pageCount && onPageChange(pageCount)}
       >
@@ -167,7 +169,7 @@ function PaginationShell({
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}
           className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition hover:border-slate-300 focus:border-teal-500 dark:border-slate-600 dark:bg-[#0f172a] dark:text-slate-100 dark:hover:border-slate-500"
-          aria-label="Sahifadagi yozuvlar soni"
+          aria-label={t("pagination.perPage")}
         >
           {pageSizeOptions.map((option) => (
             <option key={option} value={option}>

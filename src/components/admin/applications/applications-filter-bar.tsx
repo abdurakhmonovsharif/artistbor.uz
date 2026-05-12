@@ -3,8 +3,15 @@
 import { Button, DatePicker, Input, Select } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import { RotateCcw, Search, SlidersHorizontal } from "lucide-react";
-import type { CategoryMap, ApplicationStatusKey } from "@/components/admin/applications/application-utils";
+import { RotateCcw, Search } from "lucide-react";
+import {
+  AdminFilterCard,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
+import { getLocalizedCategoryName, type CategoryMap, type ApplicationStatusKey } from "@/components/admin/applications/application-utils";
+import { getApplicationLabels } from "@/components/admin/applications/application-labels";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const { RangePicker } = DatePicker;
 
@@ -35,35 +42,40 @@ export function ApplicationsFilterBar({
   onChange: (value: ApplicationsFilterState) => void;
   onReset: () => void;
 }) {
+  const { locale } = useI18n();
+  const labels = getApplicationLabels(locale);
   const categoryOptions = Array.from(categoryMap.values())
     .filter((category) => typeof category.id === "number")
     .map((category) => ({
       value: String(category.id),
-      label: category.name_uz || category.name_ru || category.name_en || `#${category.id}`,
+      label: getLocalizedCategoryName(category, locale) || `#${category.id}`,
     }));
 
   return (
-    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111827] md:grid-cols-[minmax(180px,1.25fr)_minmax(170px,0.9fr)_minmax(150px,0.7fr)_auto_auto] md:items-center xl:grid-cols-[minmax(180px,1.25fr)_minmax(170px,0.9fr)_minmax(150px,0.7fr)_minmax(230px,1fr)_auto_auto]">
+    <AdminFilterCard
+      gridClassName="md:grid-cols-[minmax(180px,1.25fr)_minmax(170px,0.9fr)_minmax(150px,0.7fr)_auto] md:items-center xl:grid-cols-[minmax(180px,1.25fr)_minmax(170px,0.9fr)_minmax(150px,0.7fr)_minmax(230px,1fr)_auto]"
+      mobileLabel={labels.filterSettings}
+    >
       <Input
         allowClear
         prefix={<Search className="size-4 text-slate-400" />}
-        placeholder="Qidirish..."
+        placeholder={labels.searchPlaceholder}
         value={value.search}
         onChange={(event) => onChange({ ...value, search: event.target.value })}
-        className="h-10"
+        className={`${adminFilterControlClass} h-10`}
       />
 
       <Select
-        className="h-10"
+        className={`${adminFilterControlClass} h-10`}
         value={value.categoryId}
         onChange={(categoryId) => onChange({ ...value, categoryId })}
-        options={[{ value: "", label: "Kategoriya: Barchasi" }, ...categoryOptions]}
+        options={[{ value: "", label: labels.categoryAll }, ...categoryOptions]}
         showSearch
         optionFilterProp="label"
       />
 
       <Select
-        className="h-10"
+        className={`${adminFilterControlClass} h-10`}
         value={value.dateRange}
         onChange={(dateRange) =>
           onChange({
@@ -73,17 +85,17 @@ export function ApplicationsFilterBar({
           })
         }
         options={[
-          { value: "all", label: "Sana: Barchasi" },
-          { value: "today", label: "Bugun" },
-          { value: "week", label: "7 kun" },
-          { value: "month", label: "30 kun" },
-          { value: "custom", label: "Custom" },
+          { value: "all", label: labels.dateAll },
+          { value: "today", label: labels.today },
+          { value: "week", label: labels.week },
+          { value: "month", label: labels.month },
+          { value: "custom", label: labels.custom },
         ]}
       />
 
       {value.dateRange === "custom" ? (
         <RangePicker
-          className="h-10"
+          className={`${adminFilterControlClass} h-10`}
           format="YYYY-MM-DD"
           value={toRangePickerValue(value.customDateRange)}
           onChange={(_, dateStrings) => {
@@ -98,12 +110,10 @@ export function ApplicationsFilterBar({
         <div className="hidden xl:block" />
       )}
 
-      <Button className="h-10" icon={<RotateCcw className="size-4" />} onClick={onReset}>
-        Reset
+      <Button className={`${adminFilterActionClass} h-10`} icon={<RotateCcw className="size-4" />} onClick={onReset}>
+        {labels.reset}
       </Button>
-
-      <Button className="h-10" icon={<SlidersHorizontal className="size-4" />} aria-label="Filter sozlamalari" />
-    </div>
+    </AdminFilterCard>
   );
 }
 

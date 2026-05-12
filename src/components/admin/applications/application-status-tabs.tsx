@@ -3,6 +3,7 @@ import {
   applicationStatusLabel,
   type ApplicationStatusKey,
 } from "@/components/admin/applications/application-utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const tabs: ApplicationStatusKey[] = ["all", "pending", "approved", "rejected"];
 
@@ -15,9 +16,11 @@ export function ApplicationStatusTabs({
   counts: Record<Exclude<ApplicationStatusKey, "unknown">, number>;
   onChange: (status: ApplicationStatusKey) => void;
 }) {
+  const { locale } = useI18n();
+
   return (
     <div className="border-b border-slate-200 dark:border-white/10">
-      <div className="flex gap-7 overflow-x-auto">
+      <div className="flex gap-7 overflow-x-auto overflow-y-hidden">
         {tabs.map((tab) => {
           const selected = tab === active;
           const count = counts[tab as Exclude<ApplicationStatusKey, "unknown">] ?? 0;
@@ -34,7 +37,7 @@ export function ApplicationStatusTabs({
                   : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
               )}
             >
-              <span>{applicationStatusLabel(tab)}</span>
+              <span>{applicationStatusLabel(tab, locale)}</span>
               <span
                 className={cn(
                   "rounded-full px-2 py-0.5 text-xs font-bold",
@@ -46,7 +49,7 @@ export function ApplicationStatusTabs({
                 {count}
               </span>
               {selected ? (
-                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-600 dark:bg-amber-400" />
+                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-blue-600 dark:bg-amber-400" />
               ) : null}
             </button>
           );

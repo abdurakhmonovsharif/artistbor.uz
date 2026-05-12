@@ -1,12 +1,12 @@
 "use client";
 
-import { Checkbox } from "antd";
 import { Eye, Phone } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ArtistApplication } from "@/types/api";
 import { cn, toDisplay } from "@/lib/utils";
 import { ApplicationActionsDropdown } from "@/components/admin/applications/application-actions-dropdown";
 import { ApplicationStatusBadge } from "@/components/admin/applications/application-status-badge";
+import { getApplicationLabels } from "@/components/admin/applications/application-labels";
 import {
   formatDateParts,
   getApplicationAvatar,
@@ -15,15 +15,13 @@ import {
   getPrimarySubcategoryLabel,
   type CategoryMap,
 } from "@/components/admin/applications/application-utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function ApplicationsTable({
   rows,
   categoryMap,
   page,
   pageSize,
-  selectedIds,
-  onToggleAll,
-  onToggleRow,
   onOpenDetail,
   onOpenContact,
   onApprove,
@@ -33,59 +31,38 @@ export function ApplicationsTable({
   categoryMap: CategoryMap;
   page: number;
   pageSize: number;
-  selectedIds: Set<number>;
-  onToggleAll: (checked: boolean) => void;
-  onToggleRow: (application: ArtistApplication, checked: boolean) => void;
   onOpenDetail: (application: ArtistApplication) => void;
   onOpenContact: (application: ArtistApplication) => void;
   onApprove: (application: ArtistApplication) => void;
   onReject: (application: ArtistApplication) => void;
 }) {
-  const selectableRows = rows.filter((row) => typeof row.id === "number");
-  const allSelected = selectableRows.length > 0 && selectableRows.every((row) => selectedIds.has(row.id as number));
-  const partiallySelected = selectableRows.some((row) => selectedIds.has(row.id as number)) && !allSelected;
+  const { locale } = useI18n();
+  const labels = getApplicationLabels(locale);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111827]">
       <div className="admin-table-scroll overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse">
+        <table className="w-full min-w-[920px] border-collapse">
           <thead>
             <tr className="h-11 border-b border-slate-200 bg-slate-50 text-left dark:border-white/10 dark:bg-white/[0.03]">
-              <TableHead className="w-11">
-                <Checkbox
-                  checked={allSelected}
-                  indeterminate={partiallySelected}
-                  onChange={(event) => onToggleAll(event.target.checked)}
-                  aria-label="Barchasini tanlash"
-                />
-              </TableHead>
               <TableHead className="w-14">#</TableHead>
-              <TableHead>Ariza</TableHead>
-              <TableHead>Kategoriya</TableHead>
-              <TableHead>Holat</TableHead>
-              <TableHead>Yuborilgan vaqt</TableHead>
-              <TableHead>Aloqa</TableHead>
-              <TableHead className="text-right">Amallar</TableHead>
+              <TableHead>{labels.tableApplication}</TableHead>
+              <TableHead>{labels.tableCategory}</TableHead>
+              <TableHead>{labels.tableStatus}</TableHead>
+              <TableHead>{labels.tableSubmittedAt}</TableHead>
+              <TableHead>{labels.tableContact}</TableHead>
+              <TableHead className="text-right">{labels.tableActions}</TableHead>
             </tr>
           </thead>
           <tbody>
             {rows.map((application, index) => {
-              const id = typeof application.id === "number" ? application.id : undefined;
-              const date = formatDateParts(application.created_at);
+              const date = formatDateParts(application.created_at, locale);
 
               return (
                 <tr
                   key={String(application.id ?? index)}
                   className="h-16 border-b border-slate-100 transition last:border-0 hover:bg-slate-50/80 dark:border-white/10 dark:hover:bg-white/[0.035]"
                 >
-                  <TableCell>
-                    <Checkbox
-                      checked={id ? selectedIds.has(id) : false}
-                      disabled={!id}
-                      onChange={(event) => onToggleRow(application, event.target.checked)}
-                      aria-label={`Ariza ${toDisplay(application.id)} tanlash`}
-                    />
-                  </TableCell>
                   <TableCell className="text-slate-500 dark:text-slate-400">
                     {(page - 1) * pageSize + index + 1}
                   </TableCell>
@@ -94,21 +71,23 @@ export function ApplicationsTable({
                       <ApplicationAvatar application={application} />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-950 dark:text-white">
-                          {getApplicationTitle(application, categoryMap)}
+                          {getApplicationTitle(application, categoryMap, locale)}
                         </p>
                         <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-                          ID: {toDisplay(application.id)}
-                          {application.profile_photo_id ? ` · Photo ID: ${application.profile_photo_id}` : ""}
+                          {labels.idLabel}: {toDisplay(application.id)}
+                          {application.profile_photo_id
+                            ? ` · ${labels.photoIdLabel}: ${application.profile_photo_id}`
+                            : ""}
                         </p>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                      {getPrimaryCategoryLabel(application, categoryMap)}
+                      {getPrimaryCategoryLabel(application, categoryMap, locale)}
                     </p>
                     <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-                      Sub: {getPrimarySubcategoryLabel(application, categoryMap)}
+                      {labels.subLabel}: {getPrimarySubcategoryLabel(application, categoryMap, locale)}
                     </p>
                   </TableCell>
                   <TableCell>
@@ -125,7 +104,7 @@ export function ApplicationsTable({
                       className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
                     >
                       <Phone className="size-3.5" />
-                      Aloqa
+                      {labels.contactAction}
                     </button>
                   </TableCell>
                   <TableCell>
@@ -134,7 +113,7 @@ export function ApplicationsTable({
                         type="button"
                         onClick={() => onOpenDetail(application)}
                         className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
-                        aria-label="Ko'rish"
+                        aria-label={labels.viewAction}
                       >
                         <Eye className="size-4" />
                       </button>
@@ -156,6 +135,8 @@ export function ApplicationsTable({
 }
 
 function ApplicationAvatar({ application }: { application: ArtistApplication }) {
+  const { locale } = useI18n();
+  const labels = getApplicationLabels(locale);
   const avatar = getApplicationAvatar(application);
 
   if (!avatar) {
@@ -170,7 +151,7 @@ function ApplicationAvatar({ application }: { application: ArtistApplication }) 
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={avatar}
-      alt={`Ariza #${toDisplay(application.id)}`}
+      alt={labels.drawerTitle(toDisplay(application.id))}
       className="size-10 shrink-0 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/10"
     />
   );

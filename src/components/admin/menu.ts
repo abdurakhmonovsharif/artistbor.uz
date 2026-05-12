@@ -15,65 +15,66 @@ import {
   Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { TranslationKey } from "@/lib/i18n/translations";
 
 export type AdminMenuItem = {
-  label: string;
+  labelKey: TranslationKey;
   href: string;
   icon: LucideIcon;
 };
 
 export type AdminMenuGroup = {
   key: string;
-  label: string;
+  labelKey: TranslationKey;
   children: AdminMenuItem[];
 };
 
 export const adminMenuGroups: AdminMenuGroup[] = [
   {
     key: "main",
-    label: "ASOSIY",
-    children: [{ label: "Boshqaruv paneli", href: "/admin", icon: Home }],
+    labelKey: "menu.main",
+    children: [{ labelKey: "menu.dashboard", href: "/admin", icon: Home }],
   },
   {
     key: "users",
-    label: "FOYDALANUVCHILAR",
+    labelKey: "menu.usersGroup",
     children: [
-      { label: "Foydalanuvchilar", href: "/admin/users", icon: Users },
-      { label: "Operatorlar", href: "/admin/operators", icon: UserCog },
-      { label: "Artistlar", href: "/admin/artists", icon: Paintbrush },
-      { label: "Arizalar", href: "/admin/applications", icon: ClipboardList },
+      { labelKey: "menu.artists", href: "/admin/artists", icon: Paintbrush },
+      { labelKey: "menu.users", href: "/admin/users", icon: Users },
+      { labelKey: "menu.operators", href: "/admin/operators", icon: UserCog },
+      { labelKey: "menu.applications", href: "/admin/applications", icon: ClipboardList },
     ],
   },
   {
     key: "catalog",
-    label: "KATALOG",
+    labelKey: "menu.catalog",
     children: [
-      { label: "Kategoriyalar", href: "/admin/categories", icon: FolderTree },
-      { label: "Xizmatlar", href: "/admin/services", icon: Wrench },
+      { labelKey: "menu.categories", href: "/admin/categories", icon: FolderTree },
+      { labelKey: "menu.services", href: "/admin/services", icon: Wrench },
     ],
   },
   {
     key: "orders",
-    label: "BUYURTMALAR",
+    labelKey: "menu.ordersGroup",
     children: [
-      { label: "Buyurtmalar", href: "/admin/orders", icon: PackageCheck },
-      { label: "Izohlar", href: "/admin/comments", icon: MessageSquare },
-      { label: "Reytinglar", href: "/admin/ratings", icon: Star },
+      { labelKey: "menu.orders", href: "/admin/orders", icon: PackageCheck },
+      { labelKey: "menu.comments", href: "/admin/comments", icon: MessageSquare },
+      { labelKey: "menu.ratings", href: "/admin/ratings", icon: Star },
     ],
   },
   {
     key: "content",
-    label: "KONTENT",
+    labelKey: "menu.content",
     children: [
-      { label: "Videolar", href: "/admin/videos", icon: Video },
-      { label: "Xabarnomalar", href: "/admin/notifications", icon: Bell },
-      { label: "Savol-javob", href: "/admin/faq", icon: HelpCircle },
+      { labelKey: "menu.videos", href: "/admin/videos", icon: Video },
+      { labelKey: "menu.notifications", href: "/admin/notifications", icon: Bell },
+      { labelKey: "menu.faq", href: "/admin/faq", icon: HelpCircle },
     ],
   },
   {
     key: "system",
-    label: "TIZIM",
-    children: [{ label: "O‘chirilganlar", href: "/admin/trash", icon: Trash2 }],
+    labelKey: "menu.system",
+    children: [{ labelKey: "menu.trash", href: "/admin/trash", icon: Trash2 }],
   },
 ];
 

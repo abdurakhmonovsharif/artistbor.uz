@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthProvider } from "@/lib/auth/auth-provider";
+import { I18nProvider } from "@/lib/i18n/i18n-provider";
 import { ThemeProvider } from "@/lib/theme/theme-provider";
 import { useTheme } from "@/lib/theme/theme-provider";
 import { ToastProvider } from "@/components/ui/toast";
@@ -9,11 +10,13 @@ import { ConfigProvider, theme as antdTheme } from "antd";
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <AntdThemeProvider>
-        <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ToastProvider>
-      </AntdThemeProvider>
+      <I18nProvider>
+        <AntdThemeProvider>
+          <ToastProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ToastProvider>
+        </AntdThemeProvider>
+      </I18nProvider>
     </ThemeProvider>
   );
 }

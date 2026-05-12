@@ -55,19 +55,30 @@ export function EntityName({
   );
 }
 
-export function MoneyText({ value }: { value: unknown }) {
+export function MoneyText({
+  value,
+  emptyLabel = "Narx belgilanmagan",
+  currencyLabel = "so'm",
+  locale = "uz",
+}: {
+  value: unknown;
+  emptyLabel?: string;
+  currencyLabel?: string;
+  locale?: "uz" | "ru";
+}) {
   if (value === null || value === undefined || value === "") {
-    return <span className="text-xs font-semibold text-slate-400">Narx belgilanmagan</span>;
+    return <span className="text-xs font-semibold text-slate-400">{emptyLabel}</span>;
   }
 
   const amount = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(amount)) {
-    return <span className="text-xs font-semibold text-slate-400">Narx belgilanmagan</span>;
+    return <span className="text-xs font-semibold text-slate-400">{emptyLabel}</span>;
   }
 
   return (
     <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-      {new Intl.NumberFormat("uz-UZ", { maximumFractionDigits: 0 }).format(amount)}{" so'm"}
+      {new Intl.NumberFormat(locale === "ru" ? "ru-RU" : "uz-UZ", { maximumFractionDigits: 0 }).format(amount)}{" "}
+      {currencyLabel}
     </span>
   );
 }
@@ -169,7 +180,7 @@ export function ActionsCell({
         <button
           type="button"
           onClick={onPrimary}
-          className="grid size-10 place-items-center rounded-xl border border-emerald-400/40 bg-emerald-500/15 text-emerald-600 transition hover:border-emerald-400 hover:bg-emerald-500/25 hover:text-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-400/20"
+          className="grid size-10 cursor-pointer place-items-center rounded-xl border border-emerald-400/40 bg-emerald-500/15 text-emerald-600 transition hover:border-emerald-400 hover:bg-emerald-500/25 hover:text-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-400/20"
           aria-label={primaryLabel}
           title={primaryLabel}
         >
@@ -179,7 +190,7 @@ export function ActionsCell({
       <button
         type="button"
         onClick={onDetails}
-        className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+        className="grid size-10 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
         aria-label="View details"
         title="View details"
       >
@@ -188,7 +199,7 @@ export function ActionsCell({
       <button
         type="button"
         onClick={onDetails}
-        className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+        className="grid size-10 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
         aria-label="More actions"
         title="More actions"
       >

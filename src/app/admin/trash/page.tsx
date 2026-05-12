@@ -2,12 +2,17 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import {
+  AdminFilterForm,
+  adminFilterActionClass,
+  adminFilterControlClass,
+} from "@/components/admin/admin-filter-form";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
-import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -32,16 +37,16 @@ const trashModels: { label: string; value: TrashModel }[] = [
   { label: "User", value: "user" },
   { label: "Booking", value: "booking" },
   { label: "Order", value: "order" },
-  { label: "Artist busy slot", value: "artist-busy-slot" },
+  { label: "Sanatkor band vaqti", value: "artist-busy-slot" },
   { label: "Service", value: "service" },
-  { label: "Artist application", value: "artist-application" },
-  { label: "Artist profile", value: "artist-profile" },
+  { label: "Sanatkor arizasi", value: "artist-application" },
+  { label: "Sanatkor profili", value: "artist-profile" },
   { label: "Mijoz profili", value: "client-profile" },
   { label: "User profile", value: "user-profile" },
   { label: "Category", value: "category" },
-  { label: "Artist service", value: "artist-service" },
+  { label: "Sanatkor xizmati", value: "artist-service" },
   { label: "File", value: "file" },
-  { label: "Artist gallery", value: "artist-gallery" },
+  { label: "Sanatkor galereyasi", value: "artist-gallery" },
 ];
 
 const limit = 20;
@@ -290,15 +295,18 @@ export default function TrashPage() {
 
       <StatsSection stats={stats} loading={statsLoading} error={statsError} />
 
-      <form
+      <AdminFilterForm
         onSubmit={applyFilters}
-        className="rounded-[28px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
+        gridClassName="md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.75fr)_minmax(120px,0.5fr)_minmax(120px,0.5fr)_auto_auto] md:items-center"
+        mobileLabel="Filter"
       >
-        <div className="grid gap-3 md:grid-cols-4">
           <FormField
             label="Qidiruv"
             value={draftFilters.q}
             placeholder="q"
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             onChange={(q) => setDraftFilters((current) => ({ ...current, q }))}
           />
           <FormField
@@ -307,6 +315,9 @@ export default function TrashPage() {
             required
             value={draftFilters.model}
             options={trashModels}
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             onChange={(model) =>
               setDraftFilters((current) => ({ ...current, model: model as TrashModel | "" }))
             }
@@ -315,6 +326,9 @@ export default function TrashPage() {
             label="Page"
             type="number"
             value={draftFilters.page}
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             onChange={(value) =>
               setDraftFilters((current) => ({ ...current, page: Number(value) || 1 }))
             }
@@ -323,35 +337,33 @@ export default function TrashPage() {
             label="Limit"
             type="number"
             value={draftFilters.limit}
+            className={adminFilterControlClass}
+            hideLabel
+            compact
             onChange={(value) =>
               setDraftFilters((current) => ({ ...current, limit: Number(value) || limit }))
             }
           />
-        </div>
-        <div className="mt-4 flex flex-wrap justify-between gap-3">
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+          <p className={`${adminFilterActionClass} text-sm font-semibold text-slate-500 dark:text-slate-400 md:col-span-4`}>
             {isSearchMode
               ? "Qidiruv rejimida natijalar kalit so'z bo'yicha chiqariladi."
               : `${selectedModelLabel} bo'yicha o'chirilgan yozuvlar ko'rsatiladi.`}
           </p>
-          <div className="flex flex-wrap justify-end gap-3">
             <button
               type="button"
               onClick={resetFilters}
-              className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300"
+              className={`${adminFilterActionClass} h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300`}
             >
               Tozalash
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+              className={`${adminFilterActionClass} inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950`}
             >
               <Search className="size-4" />
               Qidirish
             </button>
-          </div>
-        </div>
-      </form>
+      </AdminFilterForm>
 
       {loading ? (
         <LoadingState />
@@ -391,9 +403,11 @@ export default function TrashPage() {
       ) : null}
 
       {dialog?.type === "view" ? (
-        <Modal title="O'chirilgan yozuv tafsilotlari" onClose={() => setDialog(null)} width="max-w-5xl">
-          <DetailGrid record={dialog.record} fields={trashDetailFields} />
-        </Modal>
+        <AdminDrawer title="O'chirilgan yozuv tafsilotlari" onClose={() => setDialog(null)} size="min(100vw, 720px)">
+          <div className="p-4">
+            <DetailGrid record={dialog.record} fields={trashDetailFields} />
+          </div>
+        </AdminDrawer>
       ) : null}
 
       {dialog?.type === "restore" ? (
@@ -509,7 +523,7 @@ function IconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`rounded-xl border p-2 transition ${
+      className={`cursor-pointer rounded-xl border p-2 transition ${
         danger
           ? "border-rose-200 text-rose-500 hover:border-rose-300 hover:bg-rose-50 dark:border-rose-400/20 dark:hover:bg-rose-400/10"
           : "border-slate-200 text-slate-500 hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"

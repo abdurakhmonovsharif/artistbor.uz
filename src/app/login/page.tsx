@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { LockKeyhole, Phone, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { getToken } from "@/lib/api/client";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { useToast } from "@/components/ui/toast";
+import { LanguageToggle } from "@/components/admin/language-toggle";
 import { ThemeToggle } from "@/components/admin/theme-toggle";
 
 export default function LoginPage() {
@@ -13,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
+  const { t } = useI18n();
   const toast = useToast();
   const router = useRouter();
 
@@ -25,9 +28,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(phone, password);
-      toast.success("Tizimga muvaffaqiyatli kirildi");
+      toast.success(t("login.success"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Login bajarilmadi");
+      toast.error(error instanceof Error ? error.message : t("login.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -44,24 +47,23 @@ export default function LoginPage() {
             </div>
             <div>
               <p className="text-sm font-black uppercase tracking-[0.28em]">Artistbor</p>
-              <p className="text-xs font-semibold text-white/50">Admin dashboard</p>
+              <p className="text-xs font-semibold text-white/50">{t("menu.dashboard")}</p>
             </div>
           </div>
           <div className="max-w-xl">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-300">
-              Secure access
+              {t("login.secureAccess")}
             </p>
             <h1 className="mt-5 text-5xl font-black leading-tight">
-              Artistbor boshqaruv paneli
+              {t("login.heroTitle")}
             </h1>
             <p className="mt-5 text-base leading-7 text-white/65">
-              Platforma resurslarini xavfsiz boshqarish uchun administrator
-              kirish oynasi.
+              {t("login.description")}
             </p>
           </div>
           <div className="flex items-center gap-3 text-sm font-semibold text-white/60">
             <ShieldCheck className="size-5 text-amber-300" />
-            Bearer token authorization
+            {t("login.bearerAuth")}
           </div>
         </div>
       </section>
@@ -77,21 +79,28 @@ export default function LoginPage() {
                 <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-950 dark:text-white">
                   Artistbor
                 </p>
-                <p className="text-xs font-semibold text-slate-400">Administrator</p>
+                <p className="text-xs font-semibold text-slate-400">
+                  {t("common.administrator")}
+                </p>
               </div>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <LanguageToggle />
+              <ThemeToggle />
+            </div>
           </div>
 
-          <h2 className="text-2xl font-black text-slate-950 dark:text-white">Kirish</h2>
+          <h2 className="text-2xl font-black text-slate-950 dark:text-white">
+            {t("login.title")}
+          </h2>
           <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-            Admin telefon raqami va parolni kiriting.
+            {t("login.subtitle")}
           </p>
 
           <form onSubmit={submit} className="mt-8 space-y-4">
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                Telefon
+                {t("login.phone")}
               </span>
               <span className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-amber-400 focus-within:ring-4 focus-within:ring-amber-400/10 dark:border-white/10 dark:bg-white/[0.03]">
                 <Phone className="size-4 text-slate-400" />
@@ -106,7 +115,7 @@ export default function LoginPage() {
             </label>
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                Parol
+                {t("login.password")}
               </span>
               <span className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-amber-400 focus-within:ring-4 focus-within:ring-amber-400/10 dark:border-white/10 dark:bg-white/[0.03]">
                 <LockKeyhole className="size-4 text-slate-400" />
@@ -124,7 +133,7 @@ export default function LoginPage() {
               disabled={submitting}
               className="mt-2 w-full rounded-2xl bg-amber-400 px-5 py-3.5 text-sm font-black uppercase tracking-[0.18em] text-slate-950 shadow-xl shadow-amber-400/25 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Tekshirilmoqda..." : "Kirish"}
+              {submitting ? t("login.submitting") : t("login.submit")}
             </button>
           </form>
         </div>

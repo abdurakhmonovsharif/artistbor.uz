@@ -1,4 +1,5 @@
 import type { ArtistApplication, Category, Service, UnknownRecord } from "@/types/api";
+import type { Locale } from "@/lib/i18n/translations";
 import { isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 
 export type ApplicationStatusKey = "all" | "pending" | "approved" | "rejected" | "unknown";
@@ -30,7 +31,15 @@ export function applicationStatusKey(application: ArtistApplication): Applicatio
   return "unknown";
 }
 
-export function applicationStatusLabel(status: ApplicationStatusKey) {
+export function applicationStatusLabel(status: ApplicationStatusKey, locale: Locale = "uz") {
+  if (locale === "ru") {
+    if (status === "pending") return "Ожидает";
+    if (status === "approved") return "Подтверждена";
+    if (status === "rejected") return "Отклонена";
+    if (status === "all") return "Все";
+    return "—";
+  }
+
   if (status === "pending") return "Kutilmoqda";
   if (status === "approved") return "Tasdiqlangan";
   if (status === "rejected") return "Bekor qilingan";
@@ -39,15 +48,21 @@ export function applicationStatusLabel(status: ApplicationStatusKey) {
 }
 
 export function canApproveApplication(application: ArtistApplication) {
-  return Boolean(application.id) && applicationStatusKey(application) !== "approved";
+  const status = applicationStatusKey(application);
+  return Boolean(application.id) && (status === "pending" || status === "rejected");
 }
 
 export function canRejectApplication(application: ArtistApplication) {
-  return Boolean(application.id) && applicationStatusKey(application) !== "rejected";
+  const status = applicationStatusKey(application);
+  return Boolean(application.id) && (status === "pending" || status === "approved");
 }
 
-export function getApplicationTitle(application: ArtistApplication, categoryMap: CategoryMap) {
-  const category = getPrimaryCategoryLabel(application, categoryMap);
+export function getApplicationTitle(
+  application: ArtistApplication,
+  categoryMap: CategoryMap,
+  locale: Locale = "uz",
+) {
+  const category = getPrimaryCategoryLabel(application, categoryMap, locale);
   if (category !== "—") return category;
 
   const userName = getApplicationUserName(application);
@@ -56,7 +71,7 @@ export function getApplicationTitle(application: ArtistApplication, categoryMap:
   const bio = getString(application.bio);
   if (bio) return bio.length > 42 ? `${bio.slice(0, 42).trim()}...` : bio;
 
-  return `Ariza #${toDisplay(application.id)}`;
+  return `${locale === "ru" ? "Заявка" : "Ariza"} #${toDisplay(application.id)}`;
 }
 
 export function getApplicationUserName(application: ArtistApplication) {
@@ -90,24 +105,38 @@ export function getApplicationAvatar(application: ArtistApplication) {
     : undefined;
 }
 
-export function getPrimaryCategoryLabel(application: ArtistApplication, categoryMap: CategoryMap) {
-  return getCategoryList(application.category_ids, categoryMap)[0] ?? "—";
+export function getPrimaryCategoryLabel(
+  application: ArtistApplication,
+  categoryMap: CategoryMap,
+  locale: Locale = "uz",
+) {
+  return getCategoryList(application.category_ids, categoryMap, locale)[0] ?? "—";
 }
 
-export function getPrimarySubcategoryLabel(application: ArtistApplication, categoryMap: CategoryMap) {
-  return getCategoryList(application.sub_category_ids, categoryMap)[0] ?? "—";
+export function getPrimarySubcategoryLabel(
+  application: ArtistApplication,
+  categoryMap: CategoryMap,
+  locale: Locale = "uz",
+) {
+  return getCategoryList(application.sub_category_ids, categoryMap, locale)[0] ?? "—";
 }
 
-export function getCategoryList(values: number[] | undefined, categoryMap: CategoryMap) {
-  return values?.length ? values.map((value) => getCategoryLabel(value, categoryMap)) : [];
+export function getCategoryList(values: number[] | undefined, categoryMap: CategoryMap, locale: Locale = "uz") {
+  return values?.length ? values.map((value) => getCategoryLabel(value, categoryMap, locale)) : [];
 }
 
-export function getCategoryLabel(id: number, categoryMap: CategoryMap) {
+export function getCategoryLabel(id: number, categoryMap: CategoryMap, locale: Locale = "uz") {
   const category = categoryMap.get(id);
-  return category ? category.name_uz || category.name_ru || category.name_en || `#${id}` : `#${id}`;
+  return category ? getLocalizedCategoryName(category, locale) || `#${id}` : `#${id}`;
 }
 
-export function formatDateParts(value: unknown) {
+export function getLocalizedCategoryName(category: Category, locale: Locale = "uz") {
+  return locale === "ru"
+    ? category.name_ru || category.name_uz || category.name_en
+    : category.name_uz || category.name_ru || category.name_en;
+}
+
+export function formatDateParts(value: unknown, locale: Locale = "uz") {
   if (typeof value !== "number" && typeof value !== "string") {
     return { date: "—", time: "—", full: "—" };
   }
@@ -118,12 +147,13 @@ export function formatDateParts(value: unknown) {
     return { date: fallback, time: "—", full: fallback };
   }
 
-  const dateText = new Intl.DateTimeFormat("uz-UZ", {
+  const formatterLocale = locale === "ru" ? "ru-RU" : "uz-UZ";
+  const dateText = new Intl.DateTimeFormat(formatterLocale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date);
-  const timeText = new Intl.DateTimeFormat("uz-UZ", {
+  const timeText = new Intl.DateTimeFormat(formatterLocale, {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
@@ -148,12 +178,19 @@ export function toDate(value: unknown) {
   return undefined;
 }
 
-export function getServiceName(service: Service) {
-  return service.name_uz || service.name_ru || service.name_en || service.slug || `Xizmat #${toDisplay(service.id)}`;
+export function getServiceName(service: Service, locale: Locale = "uz") {
+  const localizedName =
+    locale === "ru"
+      ? service.name_ru || service.name_uz || service.name_en
+      : service.name_uz || service.name_ru || service.name_en;
+
+  return localizedName || service.slug || `${locale === "ru" ? "Услуга" : "Xizmat"} #${toDisplay(service.id)}`;
 }
 
-export function getServiceDescription(service: Service) {
-  return service.description_uz || service.description_ru || service.description_en || "—";
+export function getServiceDescription(service: Service, locale: Locale = "uz") {
+  return locale === "ru"
+    ? service.description_ru || service.description_uz || service.description_en || "—"
+    : service.description_uz || service.description_ru || service.description_en || "—";
 }
 
 export function getContactValue(application: ArtistApplication, keys: string[]) {
