@@ -122,18 +122,18 @@ function ApplicationDrawerActions({
   return (
     <div className="grid grid-cols-2 gap-2">
       <ApplicationDrawerActionButton
-        disabled={!canApproveApplication(application)}
-        icon={<CheckCircle2 className="size-4" />}
-        label={labels.approveAction}
-        tone="approve"
-        onClick={onApprove}
-      />
-      <ApplicationDrawerActionButton
         disabled={!canRejectApplication(application)}
         icon={<XCircle className="size-4" />}
         label={labels.rejectAction}
         tone="reject"
         onClick={onReject}
+      />
+      <ApplicationDrawerActionButton
+        disabled={!canApproveApplication(application)}
+        icon={<CheckCircle2 className="size-4" />}
+        label={labels.approveAction}
+        tone="approve"
+        onClick={onApprove}
       />
     </div>
   );

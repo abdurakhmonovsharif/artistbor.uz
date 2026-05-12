@@ -744,15 +744,15 @@ function ArtistDrawerActions({
   return (
     <div className="grid grid-cols-2 gap-2">
       <ArtistDrawerActionButton
+        icon={<X className="size-4" />}
+        label={t("actions.close")}
+        onClick={onClose}
+      />
+      <ArtistDrawerActionButton
         icon={<Pencil className="size-4" />}
         label={t("actions.edit")}
         tone="primary"
         onClick={onEdit}
-      />
-      <ArtistDrawerActionButton
-        icon={<X className="size-4" />}
-        label={t("actions.close")}
-        onClick={onClose}
       />
     </div>
   );
@@ -1407,7 +1407,15 @@ function ScheduleManagementDrawer({
         </div>
       }
       footer={
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+          >
+            <X className="size-4" />
+            {t("actions.close")}
+          </button>
           <button
             type="button"
             disabled
@@ -1415,14 +1423,6 @@ function ScheduleManagementDrawer({
           >
             <Save className="size-4" />
             {t("actions.save")}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
-          >
-            <X className="size-4" />
-            {t("actions.close")}
           </button>
         </div>
       }

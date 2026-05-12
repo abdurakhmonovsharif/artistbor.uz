@@ -381,7 +381,11 @@ input[type="time"] {
 }
 
 .artistbor-application-drawer .ant-drawer-close {
-  color: rgb(71 85 105);
+  background: transparent;
+  border: 1.5px solid rgb(251 113 133);
+  border-radius: 10px;
+  box-shadow: none;
+  color: rgb(244 63 94);
   display: grid;
   height: 32px;
   margin-inline-end: 2px;
@@ -389,42 +393,30 @@ input[type="time"] {
   width: 32px;
 }
 
-.artistbor-application-drawer .ant-drawer-close:hover {
-  background: rgb(241 245 249);
-  color: rgb(15 23 42);
-}
-
-.artistbor-order-drawer .ant-drawer-close {
-  background: rgb(255 241 242);
-  border: 1.5px solid rgb(251 113 133);
-  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
-  color: rgb(244 63 94);
-}
-
-.artistbor-order-drawer .ant-drawer-close svg {
+.artistbor-application-drawer .ant-drawer-close svg {
   color: rgb(244 63 94);
   stroke: currentColor;
 }
 
-.artistbor-order-drawer .ant-drawer-close:hover {
+.artistbor-application-drawer .ant-drawer-close:hover {
   background: rgb(255 241 242);
   border-color: rgb(225 29 72);
-  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.16);
+  box-shadow: none;
   color: rgb(225 29 72);
 }
 
-.artistbor-order-drawer .ant-drawer-close:focus-visible {
+.artistbor-application-drawer .ant-drawer-close:focus-visible {
   outline: 2px solid rgb(244 63 94);
   outline-offset: 2px;
 }
 
-.artistbor-order-drawer .ant-drawer-close:hover svg {
+.artistbor-application-drawer .ant-drawer-close:hover svg {
   color: rgb(225 29 72);
 }
 
 .artistbor-contact-drawer .ant-drawer-header-title {
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .artistbor-contact-drawer .ant-drawer-close {
@@ -476,33 +468,24 @@ input[type="time"] {
 }
 
 .dark .artistbor-application-drawer .ant-drawer-close {
-  color: rgb(203 213 225);
+  background: transparent;
+  border-color: rgba(251, 113, 133, 0.7);
+  box-shadow: none;
+  color: rgb(251 113 133);
+}
+
+.dark .artistbor-application-drawer .ant-drawer-close svg {
+  color: rgb(251 113 133);
 }
 
 .dark .artistbor-application-drawer .ant-drawer-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgb(255 255 255);
-}
-
-.dark .artistbor-order-drawer .ant-drawer-close {
-  background: rgba(244, 63, 94, 0.12);
-  border-color: rgba(251, 113, 133, 0.7);
-  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.18);
-  color: rgb(251 113 133);
-}
-
-.dark .artistbor-order-drawer .ant-drawer-close svg {
-  color: rgb(251 113 133);
-}
-
-.dark .artistbor-order-drawer .ant-drawer-close:hover {
   background: rgba(244, 63, 94, 0.12);
   border-color: rgba(253, 164, 175, 0.9);
-  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.24);
+  box-shadow: none;
   color: rgb(253 164 175);
 }
 
-.dark .artistbor-order-drawer .ant-drawer-close:hover svg {
+.dark .artistbor-application-drawer .ant-drawer-close:hover svg {
   color: rgb(253 164 175);
 }
 
