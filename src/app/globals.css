@@ -342,6 +342,84 @@ input[type="time"] {
   box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.18);
 }
 
+.artistbor-confirm-modal .ant-modal-content {
+  background: #ffffff;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  padding: 24px;
+}
+
+.artistbor-confirm-modal .ant-modal-header {
+  background: transparent;
+  border-bottom: 0;
+  margin: 0 40px 12px 0;
+  padding: 0;
+}
+
+.artistbor-confirm-modal .ant-modal-title {
+  color: rgb(15 23 42);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 24px;
+}
+
+.artistbor-confirm-modal .ant-modal-body {
+  padding: 0;
+}
+
+.artistbor-confirm-modal .ant-modal-footer {
+  margin-top: 18px;
+  padding: 0;
+}
+
+.artistbor-confirm-modal .ant-modal-close {
+  background: transparent;
+  border: 1.5px solid rgb(251 113 133);
+  border-radius: 12px;
+  color: rgb(244 63 94);
+  height: 32px;
+  inset-inline-end: 18px;
+  top: 18px;
+  width: 32px;
+}
+
+.artistbor-confirm-modal .ant-modal-close:hover {
+  background: rgb(255 241 242);
+  border-color: rgb(225 29 72);
+  color: rgb(225 29 72);
+}
+
+.artistbor-confirm-modal .ant-modal-close-x {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+.dark .artistbor-confirm-modal .ant-modal-content {
+  background: #202020;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42);
+}
+
+.dark .artistbor-confirm-modal .ant-modal-title {
+  color: #ffffff;
+}
+
+.dark .artistbor-confirm-modal .ant-modal-close {
+  background: transparent;
+  border-color: rgba(244, 63, 94, 0.8);
+  color: rgb(251 113 133);
+}
+
+.dark .artistbor-confirm-modal .ant-modal-close:hover {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(253, 164, 175, 0.9);
+  color: rgb(253 164 175);
+}
+
 .artistbor-application-drawer .ant-drawer-content {
   background: #ffffff;
   border-inline-start: 1px solid rgb(226 232 240);
@@ -369,14 +447,42 @@ input[type="time"] {
 
 .artistbor-application-drawer .ant-drawer-body {
   background: #ffffff;
+  box-sizing: border-box;
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-x: hidden;
+  scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.48);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.72);
+  background-clip: padding-box;
 }
 
 .artistbor-application-drawer .ant-drawer-footer {
   border-top-color: rgb(226 232 240);
+  box-sizing: border-box;
   flex: none;
+  overflow-x: hidden;
   padding: 12px 16px;
 }
 
@@ -448,6 +554,130 @@ input[type="time"] {
   border-bottom-color: rgb(226 232 240);
 }
 
+.artistbor-drawer-form .ant-form-item {
+  margin-bottom: 0;
+}
+
+.artistbor-drawer-form {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+.artistbor-drawer-form .ant-row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  row-gap: 16px !important;
+  width: 100%;
+}
+
+.artistbor-drawer-form .ant-col {
+  box-sizing: border-box;
+  flex: 0 0 100% !important;
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.artistbor-drawer-form .ant-form-item-label {
+  padding-bottom: 6px;
+}
+
+.artistbor-drawer-form .ant-form-item-label > label {
+  color: rgb(100 116 139);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.artistbor-drawer-form .ant-input,
+.artistbor-drawer-form .ant-input-password,
+.artistbor-drawer-form .ant-input-number,
+.artistbor-drawer-form .ant-picker,
+.artistbor-drawer-form .ant-select-selector {
+  background: #ffffff !important;
+  border-color: rgb(226 232 240) !important;
+  border-radius: 0.75rem !important;
+  color: rgb(15 23 42) !important;
+  min-height: 44px;
+  box-shadow: none !important;
+  width: 100%;
+}
+
+.artistbor-drawer-form .ant-input-password input,
+.artistbor-drawer-form .ant-input-number-input,
+.artistbor-drawer-form .ant-picker-input > input,
+.artistbor-drawer-form .ant-select-selection-item {
+  color: rgb(15 23 42) !important;
+  font-weight: 600;
+}
+
+.artistbor-drawer-form textarea.ant-input {
+  min-height: 96px;
+}
+
+.artistbor-drawer-form .ant-select-disabled .ant-select-selector,
+.artistbor-drawer-form .ant-input-disabled,
+.artistbor-drawer-form .ant-input-number-disabled,
+.artistbor-drawer-form .ant-picker-disabled {
+  background: rgb(248 250 252) !important;
+  border-color: rgb(226 232 240) !important;
+  color: rgb(148 163 184) !important;
+}
+
+.artistbor-drawer-form .ant-input:focus,
+.artistbor-drawer-form .ant-input-focused,
+.artistbor-drawer-form .ant-input-password-focused,
+.artistbor-drawer-form .ant-input-number-focused,
+.artistbor-drawer-form .ant-picker-focused,
+.artistbor-drawer-form .ant-select-focused .ant-select-selector {
+  border-color: rgb(251 191 36) !important;
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1) !important;
+}
+
+.artistbor-drawer-form .ant-input::placeholder,
+.artistbor-drawer-form .ant-input-password input::placeholder,
+.artistbor-drawer-form .ant-input-number-input::placeholder,
+.artistbor-drawer-form .ant-picker-input > input::placeholder,
+.artistbor-drawer-form .ant-select-selection-placeholder {
+  color: rgb(148 163 184) !important;
+}
+
+.artistbor-drawer-select .ant-select-selector {
+  background: #ffffff !important;
+  border: 1px solid rgb(226 232 240) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: none !important;
+  min-height: 44px;
+  padding: 4px 12px !important;
+}
+
+.artistbor-drawer-select.ant-select-focused .ant-select-selector {
+  border-color: rgb(251 191 36) !important;
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1) !important;
+}
+
+.artistbor-drawer-select .ant-select-selection-placeholder,
+.artistbor-drawer-select .ant-select-selection-item {
+  color: rgb(15 23 42);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.artistbor-drawer-select .ant-select-selection-placeholder {
+  color: rgb(148 163 184);
+}
+
+.artistbor-drawer-select .ant-select-arrow,
+.artistbor-drawer-select .ant-select-clear {
+  color: rgb(148 163 184);
+}
+
+.artistbor-drawer-select-popup .ant-select-item-option-selected {
+  background: rgba(251, 191, 36, 0.16) !important;
+}
+
 .dark .artistbor-application-drawer .ant-drawer-content {
   background: #111827;
   border-inline-start-color: rgba(255, 255, 255, 0.1);
@@ -460,6 +690,21 @@ input[type="time"] {
 
 .dark .artistbor-application-drawer .ant-drawer-body {
   background: #111827;
+  scrollbar-color: rgba(125, 146, 178, 0.58) rgba(15, 23, 42, 0.72);
+}
+
+.dark .artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.dark .artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar-thumb {
+  background: rgba(125, 146, 178, 0.58);
+  border: 2px solid rgba(15, 23, 42, 0.72);
+  border-radius: 999px;
+}
+
+.dark .artistbor-application-drawer .ant-drawer-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.75);
 }
 
 .dark .artistbor-application-drawer .ant-drawer-footer {
@@ -499,6 +744,74 @@ input[type="time"] {
 
 .dark .artistbor-drawer-tabs .ant-tabs-ink-bar {
   background: rgb(251 191 36);
+}
+
+.dark .artistbor-drawer-form .ant-form-item-label > label {
+  color: rgb(148 163 184);
+}
+
+.dark .artistbor-drawer-form .ant-input,
+.dark .artistbor-drawer-form .ant-input-password,
+.dark .artistbor-drawer-form .ant-input-number,
+.dark .artistbor-drawer-form .ant-picker,
+.dark .artistbor-drawer-form .ant-select-selector {
+  background: #121a2a !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.dark .artistbor-drawer-form .ant-input-password input,
+.dark .artistbor-drawer-form .ant-input-number-input,
+.dark .artistbor-drawer-form .ant-picker-input > input,
+.dark .artistbor-drawer-form .ant-select-selection-item {
+  color: #ffffff !important;
+}
+
+.dark .artistbor-drawer-form .ant-select-disabled .ant-select-selector,
+.dark .artistbor-drawer-form .ant-input-disabled,
+.dark .artistbor-drawer-form .ant-input-number-disabled,
+.dark .artistbor-drawer-form .ant-picker-disabled {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgb(100 116 139) !important;
+}
+
+.dark .artistbor-drawer-form .ant-input:focus,
+.dark .artistbor-drawer-form .ant-input-focused,
+.dark .artistbor-drawer-form .ant-input-password-focused,
+.dark .artistbor-drawer-form .ant-input-number-focused,
+.dark .artistbor-drawer-form .ant-picker-focused,
+.dark .artistbor-drawer-form .ant-select-focused .ant-select-selector {
+  border-color: rgba(251, 191, 36, 0.6) !important;
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1) !important;
+}
+
+.dark .artistbor-drawer-form .ant-input::placeholder,
+.dark .artistbor-drawer-form .ant-input-password input::placeholder,
+.dark .artistbor-drawer-form .ant-input-number-input::placeholder,
+.dark .artistbor-drawer-form .ant-picker-input > input::placeholder,
+.dark .artistbor-drawer-form .ant-select-selection-placeholder {
+  color: rgb(148 163 184) !important;
+}
+
+.dark .artistbor-drawer-select .ant-select-selector {
+  background: #121a2a !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .artistbor-drawer-select.ant-select-focused .ant-select-selector {
+  border-color: rgba(251, 191, 36, 0.6) !important;
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1) !important;
+}
+
+.dark .artistbor-drawer-select .ant-select-selection-item {
+  color: #ffffff;
+}
+
+.dark .artistbor-drawer-select .ant-select-selection-placeholder,
+.dark .artistbor-drawer-select .ant-select-arrow,
+.dark .artistbor-drawer-select .ant-select-clear {
+  color: rgb(148 163 184);
 }
 
 .dark .artistbor-drawer-tabs .ant-tabs-nav::before {

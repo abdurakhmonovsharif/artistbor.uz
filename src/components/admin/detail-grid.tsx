@@ -25,19 +25,19 @@ export function DetailGrid({
           {entries.map(({ key, label, value }) => (
             <div
               key={key}
-              className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.03]"
+              className="min-h-[86px] rounded-2xl border border-slate-200 bg-white p-4 dark:border-[#334057] dark:bg-[#172033]"
             >
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
                 {label}
               </p>
-              <div className="mt-2 break-words text-sm font-black leading-6 text-slate-950 dark:text-white">
+              <div className="mt-4 break-words text-sm font-black leading-6 text-slate-950 dark:text-white">
                 {formatDetailValue(key, value)}
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-500 dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-500 dark:border-[#334057] dark:bg-[#172033]">
           Ko&apos;rsatiladigan ma&apos;lumot topilmadi.
         </div>
       )}

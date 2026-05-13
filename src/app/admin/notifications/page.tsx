@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Eye, Send, SendToBack, Search, X } from "lucide-react";
+import { CheckCircle2, Eye, SendToBack, X } from "lucide-react";
 import {
   AdminFilterForm,
   adminFilterActionClass,
@@ -24,14 +24,12 @@ import {
   notificationsApi,
   type NotificationFilters,
   type SendAllNotificationPayload,
-  type SendNotificationPayload,
 } from "@/lib/api/admin-content";
 import type { ListResult, NotificationRecord } from "@/types/api";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 
 type DialogState =
   | { type: "view"; notification: NotificationRecord }
-  | { type: "send-filtered" }
   | { type: "send-all" }
   | null;
 
@@ -133,9 +131,10 @@ export default function NotificationsPage() {
     }
   };
 
-  const applyFilters = (event: FormEvent) => {
-    event.preventDefault();
-    setFilters({ ...draftFilters, page: 1, limit: Number(filters.limit) || limit });
+  const changeFilters = (nextFilters: NotificationFilters) => {
+    const normalized = { ...nextFilters, page: 1, limit: Number(filters.limit) || limit };
+    setDraftFilters(normalized);
+    setFilters(normalized);
   };
 
   const resetFilters = () => {
@@ -173,14 +172,6 @@ export default function NotificationsPage() {
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => setDialog({ type: "send-filtered" })}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
-          >
-            <Send className="size-4" />
-            Filter bo&apos;yicha
-          </button>
-          <button
-            type="button"
             onClick={() => setDialog({ type: "send-all" })}
             className={adminActionButtonLargeClass}
           >
@@ -191,8 +182,8 @@ export default function NotificationsPage() {
       </div>
 
       <AdminFilterForm
-        onSubmit={applyFilters}
-        gridClassName="md:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_auto_auto] md:items-center"
+        onSubmit={(event) => event.preventDefault()}
+        gridClassName="md:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_auto] md:items-center"
         mobileLabel="Filter"
       >
           <FormField
@@ -203,7 +194,7 @@ export default function NotificationsPage() {
             compact
             value={draftFilters.type ?? ""}
             options={notificationTypes}
-            onChange={(type) => setDraftFilters((current) => ({ ...current, type }))}
+            onChange={(type) => changeFilters({ ...draftFilters, type })}
           />
           <FormField
             label="Sanadan"
@@ -212,7 +203,7 @@ export default function NotificationsPage() {
             hideLabel
             compact
             value={draftFilters.date_from ?? ""}
-            onChange={(date_from) => setDraftFilters((current) => ({ ...current, date_from }))}
+            onChange={(date_from) => changeFilters({ ...draftFilters, date_from })}
           />
           <FormField
             label="Sanagacha"
@@ -221,7 +212,7 @@ export default function NotificationsPage() {
             hideLabel
             compact
             value={draftFilters.date_to ?? ""}
-            onChange={(date_to) => setDraftFilters((current) => ({ ...current, date_to }))}
+            onChange={(date_to) => changeFilters({ ...draftFilters, date_to })}
           />
           <button
             type="button"
@@ -229,13 +220,6 @@ export default function NotificationsPage() {
             className={`${adminFilterActionClass} h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300`}
           >
             Tozalash
-          </button>
-          <button
-            type="submit"
-            className={`${adminFilterActionClass} inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950`}
-          >
-            <Search className="size-4" />
-            Qidirish
           </button>
       </AdminFilterForm>
 
@@ -286,30 +270,6 @@ export default function NotificationsPage() {
         </AdminDrawer>
       ) : null}
 
-      {dialog?.type === "send-filtered" ? (
-        <SendFilteredModal
-          loading={submitting}
-          onClose={() => setDialog(null)}
-          onSubmit={async (payload) => {
-            setSubmitting(true);
-            try {
-              const result = await notificationsApi.send(payload);
-              const count =
-                typeof result.recipient_count === "number"
-                  ? ` Qabul qiluvchilar: ${result.recipient_count}`
-                  : "";
-              toast.success(`Xabarnoma yuborildi.${count}`);
-              setDialog(null);
-              await fetchNotifications();
-            } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : "Xabarnoma yuborilmadi");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-        />
-      ) : null}
-
       {dialog?.type === "send-all" ? (
         <SendAllModal
           loading={submitting}
@@ -333,57 +293,6 @@ export default function NotificationsPage() {
   );
 }
 
-function SendFilteredModal({
-  loading,
-  onClose,
-  onSubmit,
-}: {
-  loading: boolean;
-  onClose: () => void;
-  onSubmit: (payload: SendNotificationPayload) => Promise<void>;
-}) {
-  const [values, setValues] = useState({
-    title: "",
-    message: "",
-    type: "system",
-    role: "",
-    region_id: "",
-    district_id: "",
-    data: "",
-  });
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    const payload: SendNotificationPayload = {
-      title: values.title,
-      message: values.message,
-    };
-    if (values.type) payload.type = values.type;
-    if (values.role) payload.role = values.role;
-    if (values.region_id) payload.region_id = Number(values.region_id);
-    if (values.district_id) payload.district_id = Number(values.district_id);
-    const data = parseData(values.data);
-    if (data.error) {
-      setError(data.error);
-      return;
-    }
-    if (data.value) payload.data = data.value;
-    await onSubmit(payload);
-  };
-
-  return (
-    <AdminDrawer title="Filter bo'yicha xabarnoma yuborish" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5 p-4">
-        <NotificationBaseFields values={values} setValues={setValues} includeRole />
-        {error ? <p className="text-sm font-semibold text-rose-500">{error}</p> : null}
-        <FormActions loading={loading} onClose={onClose} />
-      </form>
-    </AdminDrawer>
-  );
-}
-
 function SendAllModal({
   loading,
   onClose,
@@ -397,9 +306,6 @@ function SendAllModal({
     title: "",
     message: "",
     type: "system",
-    role: "",
-    region_id: "",
-    district_id: "",
     data: "",
   });
   const [error, setError] = useState<string | null>(null);
@@ -435,19 +341,14 @@ function SendAllModal({
 function NotificationBaseFields({
   values,
   setValues,
-  includeRole,
 }: {
   values: {
     title: string;
     message: string;
     type: string;
-    role: string;
-    region_id: string;
-    district_id: string;
     data: string;
   };
   setValues: React.Dispatch<React.SetStateAction<typeof values>>;
-  includeRole?: boolean;
 }) {
   return (
     <>
@@ -476,35 +377,6 @@ function NotificationBaseFields({
         value={values.message}
         onChange={(message) => setValues((current) => ({ ...current, message }))}
       />
-      {includeRole ? (
-        <div className="grid gap-4 md:grid-cols-3">
-          <FormField
-            compact
-            label="Role"
-            type="select"
-            value={values.role}
-            options={[
-              { label: "Mijoz", value: "client" },
-              { label: "Sanatkor", value: "artist" },
-            ]}
-            onChange={(role) => setValues((current) => ({ ...current, role }))}
-          />
-          <FormField
-            compact
-            label="Region ID"
-            type="number"
-            value={values.region_id}
-            onChange={(region_id) => setValues((current) => ({ ...current, region_id }))}
-          />
-          <FormField
-            compact
-            label="District ID"
-            type="number"
-            value={values.district_id}
-            onChange={(district_id) => setValues((current) => ({ ...current, district_id }))}
-          />
-        </div>
-      ) : null}
       <FormField
         label="Data JSON"
         type="textarea"

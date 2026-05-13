@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, Drawer, Input, Select, Tabs } from "antd";
 import {
@@ -13,6 +13,7 @@ import {
   Eye,
   Folder,
   IdCard,
+  ImagePlus,
   Languages,
   ListChecks,
   Mail,
@@ -34,9 +35,11 @@ import {
   adminFilterActionClass,
   adminFilterControlClass,
 } from "@/components/admin/admin-filter-form";
-import { adminPrimaryActionButtonClass } from "@/components/admin/admin-action-button";
+import { adminActionButtonLargeClass, adminPrimaryActionButtonClass } from "@/components/admin/admin-action-button";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { Pagination } from "@/components/admin/pagination";
+import { FormField, type FormFieldOption } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import { useToast } from "@/components/ui/toast";
@@ -47,16 +50,24 @@ import {
   artistServicesApi,
   artistVideosApi,
   artistsApi,
+  categoriesApi,
   commentsApi,
+  districtsApi,
+  filesApi,
   ratingsApi,
+  regionsApi,
+  servicesApi,
+  type CreateArtistPayload,
   type ArtistFilters,
   type UpdateArtistPayload,
+  type UploadedFileRecord,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { cn, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
-import type { ArtistProfile, ListResult, UnknownRecord } from "@/types/api";
+import type { ArtistProfile, Category, District, ListResult, Region, UnknownRecord } from "@/types/api";
 
 type DialogState =
+  | { type: "create" }
   | { type: "view"; artist: ArtistProfile }
   | { type: "edit"; artist: ArtistProfile }
   | null;
@@ -95,29 +106,7 @@ function getArtistColumns(labels: ArtistsLabels): DataTableColumn<ArtistProfile>
     {
       key: "full_name",
       label: labels.artist,
-      render: (row) => (
-        <div className="flex items-center gap-3">
-          {row.avatar_url ? (
-            <div
-              aria-label={getArtistName(row, labels)}
-              className="size-10 shrink-0 rounded-full border border-slate-200 bg-cover bg-center dark:border-white/10"
-              style={{ backgroundImage: `url(${row.avatar_url})` }}
-            />
-          ) : (
-            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-              {getArtistInitials(row, labels)}
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="truncate font-black text-slate-900 dark:text-white">
-              {getArtistName(row, labels)}
-            </p>
-            <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {row.email || row.phone || "—"}
-            </p>
-          </div>
-        </div>
-      ),
+      render: (row) => <ArtistTableIdentity artist={row} labels={labels} />,
     },
     { key: "phone", label: labels.phone, render: (row) => row.phone || row.extra_phone || "—" },
     {
@@ -125,8 +114,6 @@ function getArtistColumns(labels: ArtistsLabels): DataTableColumn<ArtistProfile>
       label: labels.status,
       render: (row) => <LocalizedStatusBadge fieldKey="status" labels={labels} value={row.status_label ?? row.status} />,
     },
-    { key: "region_id", label: labels.region, kind: "number" },
-    { key: "district_id", label: labels.district, kind: "number" },
     { key: "created_at", label: labels.createdAt, kind: "date" },
     { key: "rating", label: labels.rating, kind: "number" },
     {
@@ -134,7 +121,6 @@ function getArtistColumns(labels: ArtistsLabels): DataTableColumn<ArtistProfile>
       label: labels.verified,
       render: (row) => <LocalizedStatusBadge fieldKey="is_verified" labels={labels} value={row.is_verified} />,
     },
-    { key: "is_top", label: labels.top, render: (row) => <LocalizedStatusBadge fieldKey="is_top" labels={labels} value={row.is_top} /> },
   ];
 }
 
@@ -148,6 +134,69 @@ function getDetailTabs(labels: ArtistsLabels): { key: DetailTab; label: string }
     { key: "comments", label: labels.comments },
     { key: "ratings", label: labels.ratings },
   ];
+}
+
+function mergeArtistCategoryFallback(row: ArtistProfile, detail: ArtistProfile): ArtistProfile {
+  const rowRecord = row as UnknownRecord;
+  const detailRecord = detail as UnknownRecord;
+  const merged: UnknownRecord = { ...detailRecord };
+
+  for (const key of ["categories", "category", "category_ids", "category_id"]) {
+    if (!hasMeaningfulValue(merged[key]) && hasMeaningfulValue(rowRecord[key])) {
+      merged[key] = rowRecord[key];
+    }
+  }
+
+  const rowArtistProfile = firstRecordValue(rowRecord, ["artistProfile", "artist_profile"]);
+  const detailArtistProfile = firstRecordValue(detailRecord, ["artistProfile", "artist_profile"]);
+  if (rowArtistProfile) {
+    const nested = { ...(detailArtistProfile ?? {}) };
+    for (const key of ["categories", "category", "category_ids", "category_id"]) {
+      if (!hasMeaningfulValue(nested[key]) && hasMeaningfulValue(rowArtistProfile[key])) {
+        nested[key] = rowArtistProfile[key];
+      }
+    }
+    if (Object.keys(nested).length) {
+      merged.artistProfile = nested;
+    }
+  }
+
+  return merged as ArtistProfile;
+}
+
+function ArtistTableIdentity({
+  artist,
+  labels,
+}: {
+  artist: ArtistProfile;
+  labels: ArtistsLabels;
+}) {
+  const photoUrl = getArtistPhotoUrl(artist);
+  const artistName = getArtistName(artist, labels);
+
+  return (
+    <div className="flex items-center gap-3">
+      {photoUrl ? (
+        <div
+          aria-label={artistName}
+          className="size-10 shrink-0 rounded-full border border-slate-200 bg-cover bg-center dark:border-white/10"
+          style={{ backgroundImage: `url(${photoUrl})` }}
+        />
+      ) : (
+        <div className="grid size-10 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+          {getArtistInitials(artist, labels)}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate font-black text-slate-900 dark:text-white">
+          {artistName}
+        </p>
+        <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {artist.email || artist.phone || "—"}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function ArtistsPage() {
@@ -191,7 +240,7 @@ export default function ArtistsPage() {
     setSubmitting(true);
     try {
       const artist = await artistsApi.detail(artistId);
-      setDialog({ type, artist });
+      setDialog({ type, artist: mergeArtistCategoryFallback(row, artist) });
     } catch (caught) {
       if (type === "view") {
         setDialog({ type, artist: row });
@@ -225,16 +274,26 @@ export default function ArtistsPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
-          {labels.eyebrow}
-        </p>
-        <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-          {labels.title}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-          {labels.description}
-        </p>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+            {labels.eyebrow}
+          </p>
+          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+            {labels.title}
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+            {labels.description}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDialog({ type: "create" })}
+          className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
+        >
+          <Plus className="size-4" />
+          {labels.createArtist}
+        </button>
       </div>
 
       <AdminFilterForm
@@ -320,14 +379,14 @@ export default function ArtistsPage() {
       />
 
       <ArtistDrawer
-        artist={dialog?.artist ?? null}
-        mode={dialog?.type ?? "view"}
+        artist={dialog && dialog.type !== "create" ? dialog.artist : null}
+        mode={dialog && dialog.type !== "create" ? dialog.type : "view"}
         loading={submitting}
-        open={Boolean(dialog)}
+        open={Boolean(dialog && dialog.type !== "create")}
         onClose={() => setDialog(null)}
         onEdit={(artist) => setDialog({ type: "edit", artist })}
         onSubmit={async (payload) => {
-          if (!dialog?.artist) return;
+          if (!dialog || dialog.type === "create") return;
           const artistId = getArtistId(dialog.artist);
           if (!artistId) return;
           setSubmitting(true);
@@ -343,6 +402,28 @@ export default function ArtistsPage() {
           }
         }}
       />
+
+      {dialog?.type === "create" ? (
+        <CreateArtistDrawer
+          open
+          loading={submitting}
+          labels={labels}
+          onClose={() => setDialog(null)}
+          onSubmit={async (payload) => {
+            setSubmitting(true);
+            try {
+              await artistsApi.create(payload);
+              toast.success(labels.created);
+              setDialog(null);
+              await fetchArtists();
+            } catch (caught) {
+              toast.error(caught instanceof Error ? caught.message : labels.createFailed);
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -467,14 +548,14 @@ function ArtistDrawer({
         />
       }
       styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 64, padding: "0 16px" },
+        body: { padding: "20px 20px 88px", overflow: "auto", overflowX: "hidden", scrollbarGutter: "stable" },
+        footer: { padding: "12px 20px" },
+        header: { minHeight: 64, padding: "0 20px" },
         mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
         section: { boxShadow: "none" },
       }}
     >
-      <div className="space-y-3.5 p-4">
+      <div className="space-y-3.5">
         <ArtistDrawerProfile artist={artist} labels={labels} />
 
         {mode === "edit" ? (
@@ -532,6 +613,216 @@ function ArtistDrawer({
       onClose={() => setScheduleDrawer(null)}
     />
     </>
+  );
+}
+
+function CreateArtistDrawer({
+  open,
+  loading,
+  labels,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  loading: boolean;
+  labels: ArtistsLabels;
+  onClose: () => void;
+  onSubmit: (payload: CreateArtistPayload) => Promise<void>;
+}) {
+  const formId = "artist-create-form";
+  const [values, setValues] = useState(() => initialCreateArtistValues());
+  const [errors, setErrors] = useState<Partial<Record<keyof ReturnType<typeof initialCreateArtistValues>, string>>>({});
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const toast = useToast();
+  const selectedRegionId = values.region_id;
+  const profilePhotoId = values.profile_photo_id;
+  const profilePhotoUrl = values.profile_photo_url;
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadOptions() {
+      try {
+        const [regionsResult, districtsResult, categoriesResult] = await Promise.all([
+          regionsApi.list({ page: 1, limit: 1000 }),
+          districtsApi.list({ page: 1, limit: 1000 }),
+          categoriesApi.list({ page: 1, limit: 1000 }),
+        ]);
+        if (ignore) return;
+        setRegions(regionsResult.items);
+        setDistricts(districtsResult.items);
+        setCategories(categoriesResult.items);
+      } catch {
+        if (ignore) return;
+        setRegions([]);
+        setDistricts([]);
+        setCategories([]);
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const filteredDistricts = districts.filter((district) => {
+    if (!selectedRegionId) return false;
+    const regionId = Number(selectedRegionId);
+    if (!Number.isFinite(regionId)) return true;
+    return Number(district.region_id) === regionId;
+  });
+
+  const uploadProfilePhoto = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const uploaded = await filesApi.upload([file], "image");
+      const fileRecord = firstUploadedFile(uploaded);
+      const fileId = uploadedFileId(fileRecord);
+      if (!fileId) throw new Error(labels.uploadFailed);
+      setValues((current) => ({
+        ...current,
+        profile_photo_id: String(fileId),
+        profile_photo_url: uploadedFileUrl(fileRecord),
+      }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : labels.uploadFailed;
+      setUploadError(message);
+      toast.error(message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextErrors: Partial<Record<keyof ReturnType<typeof initialCreateArtistValues>, string>> = {};
+    if (!values.first_name.trim()) nextErrors.first_name = labels.requiredField(labels.firstName);
+    if (!values.phone.trim()) nextErrors.phone = labels.requiredField(labels.phone);
+    if (!values.password.trim()) nextErrors.password = labels.requiredField(labels.password);
+    if (!values.category_ids) nextErrors.category_ids = labels.requiredField(labels.category);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    await onSubmit(buildCreateArtistPayload(values));
+  };
+
+  return (
+    <AdminDrawer
+      open={open}
+      title={labels.createTitle}
+      onClose={onClose}
+      footer={
+        <div className="grid grid-cols-2 gap-2">
+          <ArtistDrawerActionButton
+            icon={<X className="size-4" />}
+            label={labels.cancel}
+            onClick={onClose}
+          />
+          <ArtistDrawerActionButton
+            form={formId}
+            icon={<CheckCircle2 className="size-4" />}
+            label={loading ? labels.creating : labels.create}
+            loading={loading || uploading}
+            tone="save"
+            type="submit"
+          />
+        </div>
+      }
+    >
+      <form
+        id={formId}
+        onSubmit={submit}
+        className="space-y-6 p-4"
+      >
+        <ArtistFormSection title={labels.mainInfo}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+            <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+            <FormField compact label={labels.gender} type="select" value={values.gender} options={genderOptions(labels)} onChange={(gender) => setValues((current) => ({ ...current, gender }))} />
+            <FormField compact label={labels.birthDate} type="date" value={values.birth_date} onChange={(birth_date) => setValues((current) => ({ ...current, birth_date }))} />
+          </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.contactInfo}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998" })))} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
+            <FormField compact label={labels.extraPhone} value={values.extra_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998" })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone }))} />
+            <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
+          </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.locationInfo}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField
+              compact
+              label={labels.region}
+              type="select"
+              value={values.region_id}
+              placeholder={labels.region}
+              options={regionOptions(regions, labels)}
+              onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))}
+            />
+            <FormField
+              compact
+              label={labels.district}
+              type="select"
+              value={values.district_id}
+              disabled={!selectedRegionId}
+              placeholder={selectedRegionId ? labels.district : labels.selectRegionFirst}
+              options={districtOptions(filteredDistricts, labels)}
+              onChange={(district_id) => setValues((current) => ({ ...current, district_id }))}
+            />
+          </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.artistInfo}>
+          <div className="grid gap-4">
+            <FormField compact label={labels.category} type="select" required value={values.category_ids} error={errors.category_ids} placeholder={labels.categoryPlaceholder} options={categoryOptions(categories, labels)} onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))} />
+            <FormField compact label={labels.bio} type="textarea" rows={4} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
+            <ArtistPhotoField
+              disabled={uploading || loading}
+              error={uploadError}
+              labels={labels}
+              photoId={profilePhotoId}
+              photoUrl={profilePhotoUrl}
+              uploading={uploading}
+              onFile={uploadProfilePhoto}
+            />
+          </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.adminInfo}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
+            <FormField compact label={labels.adminPhone} value={values.administrator_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998" })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone }))} />
+          </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.accountStatus}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField compact label={labels.password} type="password" required value={values.password} error={errors.password} placeholder={labels.password} autoComplete="new-password" onChange={(password) => setValues((current) => ({ ...current, password }))} />
+            <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
+            <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
+            <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
+          </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.statistics}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField compact label={labels.albumsCount} type="number" value={values.albums_count} placeholder={labels.albumsCount} onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
+            <FormField compact label={labels.fansCount} type="number" value={values.fans_count} placeholder={labels.fansCount} onChange={(fans_count) => setValues((current) => ({ ...current, fans_count }))} />
+          </div>
+        </ArtistFormSection>
+      </form>
+    </AdminDrawer>
   );
 }
 
@@ -620,7 +911,7 @@ function ArtistDrawerProfile({
 function getArtistPhotoUrl(artist: ArtistProfile) {
   const record = artist as UnknownRecord;
   const directKeys = ["avatar_url", "profile_photo_url", "photo_url", "image_url"];
-  const nestedKeys = ["user", "profile", "artist_profile"];
+  const nestedKeys = ["user", "profile", "artistProfile", "artist_profile"];
 
   for (const key of directKeys) {
     const value = getStringRecordValue(record, key);
@@ -763,13 +1054,15 @@ function ArtistDrawerActionButton({
   label,
   loading,
   tone = "default",
+  onClick,
   ...buttonProps
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   loading?: boolean;
   tone?: "default" | "primary" | "save";
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const buttonType = buttonProps.type ?? "button";
   const toneClass =
     tone === "save" || tone === "primary"
       ? "border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-transparent dark:text-emerald-300 dark:hover:bg-emerald-500/10"
@@ -778,8 +1071,15 @@ function ArtistDrawerActionButton({
   return (
     <button
       {...buttonProps}
-      type={buttonProps.type ?? "button"}
+      type={buttonType}
       disabled={loading || buttonProps.disabled}
+      onClick={(event) => {
+        if (buttonType !== "submit") {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        onClick?.(event);
+      }}
       className={cn(
         "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:opacity-70 dark:disabled:border-white/10 dark:disabled:bg-white/[0.04] dark:disabled:text-slate-500",
         toneClass,
@@ -844,9 +1144,9 @@ function ArtistInfoCell({
   value,
   className,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   className?: string;
 }) {
   const isMissing = value === null || value === undefined || value === "";
@@ -924,7 +1224,7 @@ function ArtistSection({
   children,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="space-y-3">
@@ -995,125 +1295,523 @@ function EditArtistForm({
 }) {
   const { locale } = useI18n();
   const labels = getArtistsLabels(locale);
+  const artistServiceLookupId = getArtistProfileId(artist) ?? getArtistId(artist);
   const [values, setValues] = useState(() => initialArtistFormValues(artist));
+  const [errors, setErrors] = useState<Partial<Record<keyof ReturnType<typeof initialArtistFormValues>, string>>>({});
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const toast = useToast();
+  const selectedRegionId = values.region_id;
+  const profilePhotoId = values.profile_photo_id;
+  const profilePhotoUrl = values.profile_photo_url;
 
-  const submit = async (event: FormEvent) => {
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadOptions() {
+      try {
+        const [regionsResult, districtsResult, categoriesResult, artistServicesResult, servicesResult] = await Promise.all([
+          regionsApi.list({ page: 1, limit: 1000 }),
+          districtsApi.list({ page: 1, limit: 1000 }),
+          categoriesApi.list({ page: 1, limit: 1000 }),
+          artistServiceLookupId ? artistServicesApi.list({ artist_id: artistServiceLookupId }) : Promise.resolve({ items: [] }),
+          servicesApi.list({ page: 1, limit: 1000 }),
+        ]);
+        if (ignore) return;
+        setRegions(regionsResult.items);
+        setDistricts(districtsResult.items);
+        setCategories(categoriesResult.items);
+        setValues((current) => {
+          if (current.category_ids) return current;
+          const categoryId = inferCategoryIdFromArtistServices(
+            artistServicesResult.items,
+            servicesResult.items,
+          );
+          return categoryId ? { ...current, category_ids: categoryId } : current;
+        });
+      } catch {
+        if (ignore) return;
+        setRegions([]);
+        setDistricts([]);
+        setCategories([]);
+      }
+    }
+
+    void loadOptions();
+
+    return () => {
+      ignore = true;
+    };
+  }, [artistServiceLookupId]);
+
+  const filteredDistricts = districts.filter((district) => {
+    if (!selectedRegionId) return false;
+    const regionId = Number(selectedRegionId);
+    if (!Number.isFinite(regionId)) return true;
+    return Number(district.region_id) === regionId;
+  });
+
+  const uploadProfilePhoto = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const uploaded = await filesApi.upload([file], "image");
+      const fileRecord = firstUploadedFile(uploaded);
+      const fileId = uploadedFileId(fileRecord);
+      if (!fileId) throw new Error(labels.uploadFailed);
+      setValues((current) => ({
+        ...current,
+        profile_photo_id: String(fileId),
+        profile_photo_url: uploadedFileUrl(fileRecord),
+      }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : labels.uploadFailed;
+      setUploadError(message);
+      toast.error(message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const nextErrors: Partial<Record<keyof ReturnType<typeof initialArtistFormValues>, string>> = {};
+    if (!values.first_name.trim()) nextErrors.first_name = labels.requiredField(labels.firstName);
+    if (!values.phone.trim()) nextErrors.phone = labels.requiredField(labels.phone);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
     await onSubmit(buildArtistPayload(values));
   };
 
   return (
-    <form id={formId} onSubmit={submit} className="space-y-3">
-      <ArtistEditField
-        label={labels.bio}
-        type="textarea"
-        value={values.bio}
-        rows={4}
-        onChange={(bio) => setValues((current) => ({ ...current, bio }))}
-      />
+    <form
+      id={formId}
+      onSubmit={submit}
+      className="space-y-6"
+    >
+      <ArtistFormSection title={labels.mainInfo}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+          <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+          <FormField compact label={labels.gender} type="select" value={values.gender} placeholder={labels.gender} options={genderOptions(labels)} onChange={(gender) => setValues((current) => ({ ...current, gender }))} />
+          <FormField compact label={labels.birthDate} type="date" value={values.birth_date} onChange={(birth_date) => setValues((current) => ({ ...current, birth_date }))} />
+        </div>
+      </ArtistFormSection>
 
-      <div className="grid gap-3 min-[440px]:grid-cols-2">
-        <ArtistEditField
-          label={labels.extraPhone}
-          value={values.extra_phone}
-          onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone }))}
-        />
-        <ArtistEditField
-          label={labels.adminName}
-          value={values.administrator_name}
-          onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))}
-        />
-        <ArtistEditField
-          label={labels.adminPhone}
-          value={values.administrator_phone}
-          onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone }))}
-        />
-        <ArtistEditField
-          label={labels.topArtist}
-          type="select"
-          value={values.is_top}
-          options={[
-            { label: labels.yes, value: "true" },
-            { label: labels.no, value: "false" },
-          ]}
-          onChange={(is_top) => setValues((current) => ({ ...current, is_top }))}
-        />
-      </div>
+      <ArtistFormSection title={labels.contactInfo}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998" })))} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
+          <FormField compact label={labels.extraPhone} value={values.extra_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998" })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone }))} />
+          <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
+        </div>
+      </ArtistFormSection>
+
+      <ArtistFormSection title={labels.locationInfo}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField
+            compact
+            label={labels.region}
+            type="select"
+            value={values.region_id}
+            placeholder={labels.region}
+            options={regionOptions(regions, labels)}
+            onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))}
+          />
+          <FormField
+            compact
+            label={labels.district}
+            type="select"
+            value={values.district_id}
+            disabled={!selectedRegionId}
+            placeholder={selectedRegionId ? labels.district : labels.selectRegionFirst}
+            options={districtOptions(filteredDistricts, labels)}
+            onChange={(district_id) => setValues((current) => ({ ...current, district_id }))}
+          />
+        </div>
+      </ArtistFormSection>
+
+      <ArtistFormSection title={labels.artistInfo}>
+        <div className="grid gap-4">
+          <FormField compact label={labels.category} type="select" value={values.category_ids} placeholder={labels.categoryPlaceholder} options={categoryOptions(categories, labels)} onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))} />
+          <FormField compact label={labels.bio} type="textarea" rows={4} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
+          <ArtistPhotoField
+            disabled={uploading}
+            error={uploadError}
+            labels={labels}
+            photoId={profilePhotoId}
+            photoUrl={profilePhotoUrl}
+            uploading={uploading}
+            onFile={uploadProfilePhoto}
+          />
+        </div>
+      </ArtistFormSection>
+
+      <ArtistFormSection title={labels.adminInfo}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
+          <FormField compact label={labels.adminPhone} value={values.administrator_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998" })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone }))} />
+        </div>
+      </ArtistFormSection>
+
+      <ArtistFormSection title={labels.accountStatus}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
+          <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
+          <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
+        </div>
+      </ArtistFormSection>
+
+      <ArtistFormSection title={labels.statistics}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField compact label={labels.albumsCount} type="number" value={values.albums_count} placeholder={labels.albumsCount} onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
+          <FormField compact label={labels.fansCount} type="number" value={values.fans_count} placeholder={labels.fansCount} onChange={(fans_count) => setValues((current) => ({ ...current, fans_count }))} />
+          <FormField compact label={labels.rating} type="number" value={values.rating} placeholder={labels.rating} onChange={(rating) => setValues((current) => ({ ...current, rating }))} />
+        </div>
+      </ArtistFormSection>
     </form>
   );
 }
 
-function ArtistEditField({
-  label,
-  value,
-  onChange,
-  type = "text",
-  options,
-  rows = 3,
+function ArtistFormSection({
+  title,
+  children,
 }: {
-  label: string;
-  value: string | number;
-  onChange: (value: string) => void;
-  type?: "text" | "textarea" | "select";
-  options?: { label: string; value: string | number }[];
-  rows?: number;
+  title: string;
+  children: ReactNode;
 }) {
-  const { t } = useI18n();
-  const controlClass =
-    "w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/10 dark:border-white/10 dark:bg-[#121a2a] dark:text-white dark:focus:border-amber-400/60";
+  return (
+    <section className="space-y-3 pt-1 first:pt-0">
+      <p className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-slate-500 dark:text-slate-400">
+        {title}
+      </p>
+      {children}
+    </section>
+  );
+}
+
+function ArtistPhotoField({
+  disabled,
+  error,
+  labels,
+  photoId,
+  photoUrl,
+  uploading,
+  onFile,
+}: {
+  disabled?: boolean;
+  error?: string;
+  labels: ArtistsLabels;
+  photoId: string;
+  photoUrl: string;
+  uploading: boolean;
+  onFile: (file: File) => void;
+}) {
+  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) onFile(file);
+  };
 
   return (
-    <label className="block min-w-0">
-      <span className="mb-1.5 block text-xs font-bold leading-4 text-slate-500 dark:text-slate-400">
+    <div className="block">
+      <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+        {labels.profilePhoto}
+      </span>
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-200/90 bg-white p-3 dark:border-white/10 dark:bg-slate-900">
+        <div className="flex items-center gap-3">
+          {photoUrl ? (
+            <div
+              className="size-14 shrink-0 rounded-xl border border-slate-200 bg-cover bg-center dark:border-white/10"
+              style={{ backgroundImage: `url(${photoUrl})` }}
+            />
+          ) : (
+            <div className="grid size-14 shrink-0 place-items-center rounded-xl border border-dashed border-slate-300 text-slate-400 dark:border-white/15">
+              <ImagePlus className="size-5" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-slate-950 dark:text-white">
+              {photoId ? labels.selectedPhoto(Number(photoId)) : labels.noProfilePhoto}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {labels.profilePhotoHint}
+            </p>
+          </div>
+        </div>
+        <label
+          className={cn(
+            "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200/90 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300",
+            disabled && "pointer-events-none cursor-not-allowed opacity-60",
+          )}
+        >
+          <ImagePlus className="size-4" />
+          {uploading ? labels.uploading : labels.uploadProfilePhoto}
+          <input
+            type="file"
+            accept="image/png,image/jpeg"
+            className="sr-only"
+            disabled={disabled}
+            onChange={onChange}
+          />
+        </label>
+        {error ? <p className="text-xs font-semibold text-rose-500">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function ArtistToggleField({
+  checked,
+  label,
+  labels,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  labels: ArtistsLabels;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
         {label}
       </span>
-      {type === "textarea" ? (
-        <textarea
-          className={cn(controlClass, "min-h-24 resize-y py-3 leading-5")}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          rows={rows}
-        />
-      ) : type === "select" ? (
-        <span className="relative block">
-          <select
-            className={cn(controlClass, "h-11 cursor-pointer appearance-none py-0 pr-10")}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          >
-            <option value="">{t("common.select")}</option>
-            {options?.map((option) => (
-              <option key={String(option.value)} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          "flex h-10 w-full cursor-pointer items-center justify-between rounded-lg border px-4 text-sm font-black transition",
+          checked
+            ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300"
+            : "border-slate-200/90 bg-white text-slate-600 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300",
+        )}
+      >
+        <span>{checked ? labels.yes : labels.no}</span>
+        <span
+          className={cn(
+            "relative h-5 w-9 rounded-full transition",
+            checked ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700",
+          )}
+        >
+          <span
+            className={cn(
+              "absolute top-0.5 size-4 rounded-full bg-white transition",
+              checked ? "left-4" : "left-0.5",
+            )}
+          />
         </span>
-      ) : (
-        <input
-          className={cn(controlClass, "h-11 py-0")}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      )}
+      </button>
     </label>
   );
 }
 
+function genderOptions(labels: ArtistsLabels): FormFieldOption[] {
+  return [
+    { label: labels.genderMale, value: "male" },
+    { label: labels.genderFemale, value: "female" },
+  ];
+}
+
+function artistStatusOptions(labels: ArtistsLabels): FormFieldOption[] {
+  return [
+    { label: labels.deletedStatus, value: "0" },
+    { label: labels.statusValueLabels.inactive, value: "9" },
+    { label: labels.statusValueLabels.active, value: "10" },
+    { label: labels.statusValueLabels.blocked, value: "20" },
+  ];
+}
+
+function regionOptions(regions: Region[], labels: ArtistsLabels): FormFieldOption[] {
+  return regions.map((region) => ({
+    label: getLocalizedEntityName(region, labels.locale),
+    value: String(region.id ?? ""),
+  }));
+}
+
+function districtOptions(districts: District[], labels: ArtistsLabels): FormFieldOption[] {
+  return districts.map((district) => ({
+    label: getLocalizedEntityName(district, labels.locale),
+    value: String(district.id ?? ""),
+  }));
+}
+
+function categoryOptions(categories: Category[], labels: ArtistsLabels): FormFieldOption[] {
+  return categories.map((category) => ({
+    label: getLocalizedEntityName(category, labels.locale),
+    value: String(category.id ?? ""),
+  }));
+}
+
 function initialArtistFormValues(artist: ArtistProfile) {
+  const profile = nestedArtistRecord(artist, "profile");
+  const artistProfile = nestedArtistRecord(artist, "artistProfile") ?? nestedArtistRecord(artist, "artist_profile");
+  const profilePhotoId = numberRecordValue(artistProfile, "profile_photo_id") ?? numberRecordValue(artist, "profile_photo_id");
+
   return {
-    category_ids: Array.isArray(artist.categories)
-      ? artist.categories.map((category) => categoryId(category)).filter(Boolean).join(", ")
-      : "",
-    bio: artist.bio ?? "",
-    albums_count: artist.albums_count === undefined ? "" : String(artist.albums_count),
-    extra_phone: artist.extra_phone ?? "",
-    administrator_name: artist.administrator_name ?? "",
-    administrator_phone: artist.administrator_phone ?? "",
-    is_top: artist.is_top === undefined ? "" : String(artist.is_top),
-    rating: artist.rating === undefined ? "" : String(artist.rating),
+    first_name: artist.first_name ?? getFirstNameFromArtist(artist),
+    last_name: artist.last_name ?? getLastNameFromArtist(artist),
+    phone: artist.phone ?? "",
+    email: artist.email ?? "",
+    status: artist.status === undefined || artist.status === null ? "10" : String(artist.status),
+    region_id: artist.region_id === undefined || artist.region_id === null ? "" : String(artist.region_id),
+    district_id: artist.district_id === undefined || artist.district_id === null ? "" : String(artist.district_id),
+    birth_date: stringRecordValue(profile, "birth_date") ?? artist.birth_date ?? "",
+    gender: normalizedGender(stringRecordValue(profile, "gender") ?? artist.gender),
+    category_ids: artistCategoryValue(artist),
+    bio: stringRecordValue(artistProfile, "bio") ?? artist.bio ?? stringRecordValue(profile, "bio") ?? "",
+    albums_count: stringifyOptionalNumber(numberRecordValue(artistProfile, "albums_count") ?? artist.albums_count),
+    fans_count: stringifyOptionalNumber(numberRecordValue(artistProfile, "fans_count") ?? artist.fans_count),
+    extra_phone: stringRecordValue(artistProfile, "extra_phone") ?? artist.extra_phone ?? "",
+    administrator_name: stringRecordValue(artistProfile, "administrator_name") ?? artist.administrator_name ?? "",
+    administrator_phone: stringRecordValue(artistProfile, "administrator_phone") ?? artist.administrator_phone ?? "",
+    profile_photo_id: profilePhotoId === undefined ? "" : String(profilePhotoId),
+    profile_photo_url: getArtistPhotoUrl(artist) ?? "",
+    is_verified: booleanRecordValue(artistProfile, "is_verified") ?? Boolean(artist.is_verified),
+    is_top: booleanRecordValue(artistProfile, "is_top") ?? Boolean(artist.is_top),
+    rating: stringifyOptionalNumber(numberRecordValue(artistProfile, "rating") ?? artist.rating),
   };
+}
+
+function stringifyOptionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  const number = Number(value);
+  return Number.isFinite(number) ? String(number) : "";
+}
+
+function nestedArtistRecord(artist: ArtistProfile, key: string) {
+  const value = (artist as UnknownRecord)[key];
+  return isRecord(value) ? value : undefined;
+}
+
+function stringRecordValue(record: UnknownRecord | undefined, key: string) {
+  if (!record) return undefined;
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberRecordValue(record: UnknownRecord | ArtistProfile | undefined, key: string) {
+  if (!record) return undefined;
+  const value = (record as UnknownRecord)[key];
+  if (value === null || value === undefined || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function booleanRecordValue(record: UnknownRecord | undefined, key: string) {
+  if (!record) return undefined;
+  const value = record[key];
+  if (typeof value === "boolean") return value;
+  if (value === 1 || value === "1" || value === "true") return true;
+  if (value === 0 || value === "0" || value === "false") return false;
+  return undefined;
+}
+
+function artistCategoryValue(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  const artistProfile = nestedArtistRecord(artist, "artistProfile") ?? nestedArtistRecord(artist, "artist_profile");
+  const candidates = [
+    record.categories,
+    record.category,
+    record.category_ids,
+    record.category_id,
+    artistProfile?.categories,
+    artistProfile?.category,
+    artistProfile?.category_ids,
+    artistProfile?.category_id,
+  ];
+
+  for (const candidate of candidates) {
+    const value = firstCategoryId(candidate);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function inferCategoryIdFromArtistServices(artistServices: object[], services: object[]) {
+  const serviceById = new Map<string, UnknownRecord>();
+  for (const service of services) {
+    if (!isRecord(service)) continue;
+    const id = service.id;
+    if (typeof id === "number" || typeof id === "string") {
+      serviceById.set(String(id), service);
+    }
+  }
+
+  for (const artistService of artistServices) {
+    if (!isRecord(artistService)) continue;
+
+    const directCategoryId = categoryIdFromServiceLike(artistService);
+    if (directCategoryId) return directCategoryId;
+
+    const nestedService = firstRecordValue(artistService, ["service", "service_data", "service_info"]);
+    const nestedCategoryId = categoryIdFromServiceLike(nestedService);
+    if (nestedCategoryId) return nestedCategoryId;
+
+    const serviceId = artistService.service_id;
+    if (typeof serviceId !== "number" && typeof serviceId !== "string") continue;
+
+    const service = serviceById.get(String(serviceId));
+    const serviceCategoryId = categoryIdFromServiceLike(service);
+    if (serviceCategoryId) return serviceCategoryId;
+  }
+
+  return "";
+}
+
+function categoryIdFromServiceLike(record: UnknownRecord | undefined) {
+  if (!record) return "";
+  const candidates = [
+    record.category_id,
+    record.category_ids,
+    record.category,
+    record.categories,
+    record.parent_category_id,
+  ];
+
+  for (const candidate of candidates) {
+    const value = firstCategoryId(candidate);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function firstCategoryId(value: unknown): string {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const id = firstCategoryId(item);
+      if (id) return id;
+    }
+    return "";
+  }
+
+  if (isRecord(value)) return categoryId(value);
+  if (typeof value === "number" || typeof value === "string") return String(value);
+  return "";
+}
+
+function getFirstNameFromArtist(artist: ArtistProfile) {
+  const fullName = artist.full_name?.trim();
+  if (!fullName) return "";
+  return fullName.split(/\s+/)[0] ?? "";
+}
+
+function getLastNameFromArtist(artist: ArtistProfile) {
+  const fullName = artist.full_name?.trim();
+  if (!fullName) return "";
+  return fullName.split(/\s+/).slice(1).join(" ");
+}
+
+function normalizedGender(value: ArtistProfile["gender"]) {
+  return value === "male" || value === "female" ? value : "";
 }
 
 function ArtistVideosSummary({
@@ -1427,7 +2125,7 @@ function ScheduleManagementDrawer({
         </div>
       }
       styles={{
-        body: { padding: 0, overflow: "auto" },
+        body: { padding: 0, overflow: "auto", overflowX: "hidden" },
         footer: { padding: "12px 16px" },
         header: { minHeight: 72, padding: "12px 16px" },
         mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
@@ -2510,6 +3208,17 @@ function getArtistId(artist: ArtistProfile) {
   return artist.user_id ?? artist.id;
 }
 
+function getArtistProfileId(artist: ArtistProfile) {
+  const artistProfile = firstRecordValue(artist as UnknownRecord, ["artistProfile", "artist_profile"]);
+  const id = artistProfile?.id;
+  if (typeof id === "number") return id;
+  if (typeof id === "string") {
+    const numericId = Number(id);
+    return Number.isFinite(numericId) ? numericId : undefined;
+  }
+  return undefined;
+}
+
 function getArtistName(artist: ArtistProfile, labels = getArtistsLabels("uz")) {
   const fromParts = [artist.first_name, artist.last_name].filter(Boolean).join(" ").trim();
   return artist.full_name || fromParts || artist.administrator_name || `${labels.artist} #${getArtistId(artist) ?? "—"}`;
@@ -2532,7 +3241,7 @@ function IconButton({
   onClick,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -2548,35 +3257,204 @@ function IconButton({
   );
 }
 
+function applyPhonePrefix(value: unknown, setValue: () => void) {
+  if (typeof value === "string" && value.trim()) return;
+  setValue();
+}
+
 function buildArtistPayload(values: {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  status: string;
+  region_id: string;
+  district_id: string;
+  birth_date: string;
+  gender: string;
   category_ids: string;
   bio: string;
-  albums_count: string;
+  albums_count: string | number | null;
+  fans_count: string | number | null;
   extra_phone: string;
   administrator_name: string;
   administrator_phone: string;
-  is_top: string;
-  rating: string;
+  profile_photo_id: string;
+  is_verified: boolean;
+  is_top: boolean;
+  rating: string | number | null;
 }) {
   const payload: UpdateArtistPayload = {};
-  const categoryIds = values.category_ids
+  assignUpdateString(payload, "first_name", values.first_name);
+  assignUpdateString(payload, "last_name", values.last_name);
+  assignUpdateString(payload, "phone", values.phone);
+  assignUpdateString(payload, "email", values.email);
+  assignUpdateNumber(payload, "status", values.status);
+  assignUpdateNumber(payload, "region_id", values.region_id);
+  assignUpdateNumber(payload, "district_id", values.district_id);
+  assignUpdateString(payload, "birth_date", values.birth_date);
+  if (values.gender === "male" || values.gender === "female") {
+    payload.gender = values.gender;
+  }
+  const categoryIds = parseIdList(values.category_ids);
+  if (categoryIds.length) payload.category_ids = categoryIds;
+  assignUpdateString(payload, "bio", values.bio);
+  assignUpdateString(payload, "artist_bio", values.bio);
+  assignUpdateNumber(payload, "albums_count", values.albums_count);
+  assignUpdateNumber(payload, "fans_count", values.fans_count);
+  assignUpdateString(payload, "extra_phone", values.extra_phone);
+  assignUpdateString(payload, "administrator_name", values.administrator_name);
+  assignUpdateString(payload, "administrator_phone", values.administrator_phone);
+  assignUpdateNumber(payload, "profile_photo_id", values.profile_photo_id);
+  payload.is_verified = Boolean(values.is_verified);
+  payload.is_top = Boolean(values.is_top);
+  assignUpdateNumber(payload, "rating", values.rating);
+  return payload;
+}
+
+function assignUpdateString(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value).trim();
+  if (normalized) {
+    (payload as Record<string, unknown>)[key] = normalized;
+  }
+}
+
+function assignUpdateNumber(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return;
+  const number = Number(value);
+  if (Number.isFinite(number)) {
+    (payload as Record<string, unknown>)[key] = number;
+  }
+}
+
+function initialCreateArtistValues() {
+  return {
+    first_name: "",
+    last_name: "",
+    phone: "",
+    email: "",
+    password: "",
+    status: "10",
+    region_id: "",
+    district_id: "",
+    bio: "",
+    birth_date: "",
+    gender: "male",
+    extra_phone: "",
+    administrator_name: "",
+    administrator_phone: "",
+    albums_count: "",
+    fans_count: "",
+    profile_photo_id: "",
+    profile_photo_url: "",
+    is_verified: true,
+    is_top: false,
+    category_ids: "",
+  };
+}
+
+function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistValues>): CreateArtistPayload {
+  const payload: CreateArtistPayload = {
+    first_name: values.first_name.trim(),
+    phone: values.phone.trim(),
+    password: values.password,
+  };
+
+  assignString(payload, "last_name", values.last_name);
+  assignString(payload, "email", values.email);
+  assignNumber(payload, "status", values.status);
+  assignNumber(payload, "region_id", values.region_id);
+  assignNumber(payload, "district_id", values.district_id);
+  assignString(payload, "bio", values.bio);
+  assignString(payload, "birth_date", values.birth_date);
+  if (values.gender === "male" || values.gender === "female") {
+    payload.gender = values.gender;
+  }
+  assignString(payload, "artist_bio", values.bio);
+  assignString(payload, "extra_phone", values.extra_phone);
+  assignString(payload, "administrator_name", values.administrator_name);
+  assignString(payload, "administrator_phone", values.administrator_phone);
+  assignNumber(payload, "albums_count", values.albums_count);
+  assignNumber(payload, "fans_count", values.fans_count);
+  assignNumber(payload, "profile_photo_id", values.profile_photo_id);
+  assignBoolean(payload, "is_verified", values.is_verified);
+  assignBoolean(payload, "is_top", values.is_top);
+
+  const categoryIds = parseIdList(values.category_ids);
+  if (categoryIds.length) payload.category_ids = categoryIds;
+
+  return payload;
+}
+
+function assignString(payload: CreateArtistPayload, key: keyof CreateArtistPayload, value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value).trim();
+  if (normalized) {
+    (payload as Record<string, unknown>)[key] = normalized;
+  }
+}
+
+function assignNumber(payload: CreateArtistPayload, key: keyof CreateArtistPayload, value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return;
+  const number = Number(value);
+  if (Number.isFinite(number)) {
+    (payload as Record<string, unknown>)[key] = number;
+  }
+}
+
+function assignBoolean(payload: CreateArtistPayload, key: keyof CreateArtistPayload, value: string | boolean) {
+  if (typeof value === "boolean") {
+    (payload as Record<string, unknown>)[key] = value;
+    return;
+  }
+  if (value === "true") (payload as Record<string, unknown>)[key] = true;
+  if (value === "false") (payload as Record<string, unknown>)[key] = false;
+}
+
+function parseIdList(value: unknown) {
+  if (!value) return [];
+  return String(value)
     .split(",")
     .map((part) => Number(part.trim()))
-    .filter((part) => Number.isFinite(part));
-  if (categoryIds.length) payload.category_ids = categoryIds;
-  if (values.bio) payload.bio = values.bio;
-  if (values.albums_count) payload.albums_count = Number(values.albums_count);
-  if (values.extra_phone) payload.extra_phone = values.extra_phone;
-  if (values.administrator_name) payload.administrator_name = values.administrator_name;
-  if (values.administrator_phone) payload.administrator_phone = values.administrator_phone;
-  if (values.is_top) payload.is_top = values.is_top === "true";
-  if (values.rating) payload.rating = Number(values.rating);
-  return payload;
+    .filter((id) => Number.isFinite(id));
+}
+
+function firstUploadedFile(uploaded: UploadedFileRecord[] | UploadedFileRecord) {
+  if (Array.isArray(uploaded)) return uploaded[0];
+  const files = uploaded.files ?? uploaded.items ?? uploaded.data;
+  if (Array.isArray(files)) return files.find(isRecord) as UploadedFileRecord | undefined;
+  return uploaded;
+}
+
+function uploadedFileId(file: UploadedFileRecord | undefined) {
+  if (!file) return undefined;
+  const value = file.id ?? file.file_id ?? file.image_id;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : undefined;
+}
+
+function uploadedFileUrl(file: UploadedFileRecord | undefined) {
+  if (!file) return "";
+  const value = file.url ?? file.file_url ?? file.path ?? file.full_url;
+  return typeof value === "string" ? value : "";
+}
+
+type LocalizedEntity = {
+  id?: number;
+  name_uz?: string;
+  name_ru?: string;
+  name_en?: string;
+  slug?: string;
+};
+
+function getLocalizedEntityName(entity: LocalizedEntity, locale: Locale) {
+  const localized = locale === "ru" ? entity.name_ru : entity.name_uz;
+  return localized || entity.name_uz || entity.name_ru || entity.name_en || entity.slug || `#${entity.id ?? ""}`;
 }
 
 function getArtistsLabels(locale: string) {
   if (locale === "ru") {
     return {
+      locale: "ru" as Locale,
       adminName: "Имя администратора",
       adminPhone: "Телефон администратора",
       additionalInfo: "Дополнительная информация",
@@ -2605,8 +3483,20 @@ function getArtistsLabels(locale: string) {
       busyStatus: "Занято",
       busyDays: "Занятые дни",
       calendarPreview: "Календарь",
+      artistBio: "Bio артиста",
+      birthDate: "Дата рождения",
+      cancel: "Отмена",
+      category: "Категории",
+      categoryPlaceholder: "Выберите категорию",
       categoryIds: "ID категорий",
       comments: "Комментарии",
+      contactInfo: "Контактная информация",
+      create: "Создать",
+      createArtist: "Создать артиста",
+      createFailed: "Не удалось создать артиста",
+      createTitle: "Создание артиста",
+      created: "Артист создан",
+      creating: "Создается...",
       createdAt: "Создано",
       date: "Дата",
       dateFrom: "Дата с",
@@ -2625,6 +3515,8 @@ function getArtistsLabels(locale: string) {
       email: "Email",
       extraPhone: "Дополнительный телефон",
       eyebrow: "Артисты",
+      fansCount: "Количество поклонников",
+      firstName: "Имя",
       fieldLabels: {
         administrator_name: "Имя администратора",
         administrator_phone: "Телефон администратора",
@@ -2659,6 +3551,10 @@ function getArtistsLabels(locale: string) {
       } as Record<string, string>,
       fans: "Поклонники",
       gallery: "Галерея",
+      gender: "Пол",
+      genderFemale: "Женский",
+      genderMale: "Мужской",
+      genderOther: "Другое",
       loadFailed: "Не удалось загрузить артистов",
       loadingTitle: (title: string) => `${title} загружается...`,
       fullName: "Полное имя",
@@ -2677,15 +3573,23 @@ function getArtistsLabels(locale: string) {
       objectType: "Объект",
       oneObject: "1 объект",
       page: "Страница",
+      password: "Пароль",
       phone: "Телефон",
       price: "Цена",
       profile: "Профиль",
+      districtId: "ID района",
+      lastName: "Фамилия",
+      noProfilePhoto: "Фото не выбрано",
       profilePhotoId: "ID фото профиля",
+      profilePhoto: "Фото профиля",
+      profilePhotoHint: "JPG или PNG, до 5 MB.",
       rating: "Рейтинг",
       ratings: "Рейтинги",
       recordCount: (count: number) => `${count} записей`,
       recordNumber: (index: number) => `Запись #${index}`,
       region: "Регион",
+      regionId: "ID региона",
+      requiredField: (title: string) => `${title}: обязательное поле`,
       resourceLoadFailed: "Не удалось загрузить данные",
       reset: "Сбросить",
       role: "Роль",
@@ -2734,6 +3638,9 @@ function getArtistsLabels(locale: string) {
       title: "Артисты",
       top: "Топ",
       topArtist: "Топ артист",
+      uploadFailed: "Не удалось загрузить фото",
+      uploadProfilePhoto: "Загрузить фото",
+      uploading: "Загружается...",
       totalDays: "Всего дней",
       unknownType: "Неизвестно",
       updateFailed: "Не удалось обновить",
@@ -2745,11 +3652,19 @@ function getArtistsLabels(locale: string) {
       videosLoading: "Видео загружаются...",
       viewInTable: "Посмотреть в таблице",
       weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+      selectedPhoto: (id: number) => `Выбрано фото #${id}`,
+      selectRegionFirst: "Сначала выберите регион",
+      adminInfo: "Данные администратора",
+      accountStatus: "Аккаунт и статус",
+      artistInfo: "Данные артиста",
+      locationInfo: "Локация",
+      statistics: "Показатели",
       yes: "Да",
     };
   }
 
   return {
+    locale: "uz" as Locale,
     adminName: "Administrator ismi",
     adminPhone: "Administrator telefoni",
     additionalInfo: "Qo'shimcha ma'lumot",
@@ -2778,8 +3693,20 @@ function getArtistsLabels(locale: string) {
       busyStatus: "Band",
       busyDays: "Band kunlar",
     calendarPreview: "Kalendar",
+    artistBio: "Sanatkor bio",
+    birthDate: "Tug'ilgan sana",
+    cancel: "Bekor qilish",
+    category: "Kategoriya",
+    categoryPlaceholder: "Kategoriya tanlang",
     categoryIds: "Kategoriya IDlari",
     comments: "Izohlar",
+    contactInfo: "Kontakt ma'lumotlari",
+    create: "Yaratish",
+    createArtist: "Sanatkor yaratish",
+    createFailed: "Sanatkor yaratilmadi",
+    createTitle: "Sanatkor yaratish",
+    created: "Sanatkor yaratildi",
+    creating: "Yaratilmoqda...",
     createdAt: "Yaratilgan",
     date: "Sana",
     dateFrom: "Boshlanish sanasi",
@@ -2798,6 +3725,8 @@ function getArtistsLabels(locale: string) {
     email: "Email",
     extraPhone: "Qo'shimcha telefon",
     eyebrow: "Sanatkorlar",
+    fansCount: "Muxlislar soni",
+    firstName: "Ism",
     fieldLabels: {
       administrator_name: "Administrator ismi",
       administrator_phone: "Administrator telefoni",
@@ -2832,6 +3761,10 @@ function getArtistsLabels(locale: string) {
     } as Record<string, string>,
     fans: "Muxlislar",
     gallery: "Galereya",
+    gender: "Jinsi",
+    genderFemale: "Ayol",
+    genderMale: "Erkak",
+    genderOther: "Boshqa",
     loadFailed: "Sanatkorlar yuklanmadi",
     loadingTitle: (title: string) => `${title} yuklanmoqda...`,
     fullName: "To'liq ism",
@@ -2850,15 +3783,23 @@ function getArtistsLabels(locale: string) {
     objectType: "Obyekt",
     oneObject: "1 ta obyekt",
     page: "Sahifa",
+    password: "Parol",
     phone: "Telefon",
     price: "Narx",
     profile: "Profil",
+    districtId: "Tuman ID",
+    lastName: "Familiya",
+    noProfilePhoto: "Rasm tanlanmagan",
     profilePhotoId: "Profile photo ID",
+    profilePhoto: "Profil rasmi",
+    profilePhotoHint: "JPG yoki PNG format, 5 MB gacha.",
     rating: "Reyting",
     ratings: "Reytinglar",
     recordCount: (count: number) => `${count} ta yozuv`,
     recordNumber: (index: number) => `Yozuv #${index}`,
     region: "Viloyat",
+    regionId: "Viloyat ID",
+    requiredField: (title: string) => `${title} majburiy`,
     resourceLoadFailed: "Ma'lumot yuklanmadi",
     reset: "Tozalash",
     role: "Rol",
@@ -2907,6 +3848,9 @@ function getArtistsLabels(locale: string) {
     title: "Sanatkorlar",
     top: "Top",
     topArtist: "Top sanatkor",
+    uploadFailed: "Rasm yuklanmadi",
+    uploadProfilePhoto: "Rasm yuklash",
+    uploading: "Yuklanmoqda...",
     totalDays: "Jami kunlar",
     unknownType: "Noma'lum",
     updateFailed: "Yangilash bajarilmadi",
@@ -2918,12 +3862,19 @@ function getArtistsLabels(locale: string) {
     videosLoading: "Videolar yuklanmoqda...",
     viewInTable: "Jadvalda ko'rish",
     weekdays: ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"],
+    selectedPhoto: (id: number) => `Rasm #${id} tanlandi`,
+    selectRegionFirst: "Avval viloyat tanlang",
+    adminInfo: "Administrator ma'lumotlari",
+    accountStatus: "Account va holat",
+    artistInfo: "San'atkor ma'lumotlari",
+    locationInfo: "Joylashuv",
+    statistics: "Ko'rsatkichlar",
     yes: "Ha",
   };
 }
 
 function categoryId(category: unknown) {
   if (!isRecord(category)) return "";
-  const id = category.id;
+  const id = category.id ?? category.category_id;
   return typeof id === "number" || typeof id === "string" ? String(id) : "";
 }

@@ -2,8 +2,7 @@
 
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Drawer, Dropdown, Input, Select, Tabs } from "antd";
-import type { MenuProps } from "antd";
+import { Drawer, Input, Modal, Select, Tabs } from "antd";
 import {
   AtSign,
   CalendarClock,
@@ -15,7 +14,6 @@ import {
   Eye,
   Flag,
   MapPin,
-  MoreVertical,
   Pencil,
   Phone,
   RotateCcw,
@@ -27,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import {
   adminActionButtonClass,
   adminDangerActionButtonClass,
@@ -34,7 +33,6 @@ import {
 } from "@/components/admin/admin-action-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
-import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
@@ -54,7 +52,6 @@ import {
   servicesApi,
   usersApi,
   type OrderFilters,
-  type RescheduleOrderPayload,
   type UpdateOrderPayload,
 } from "@/lib/api/admin-content";
 import { getArtistName } from "@/lib/artist-display";
@@ -75,20 +72,18 @@ import type {
 } from "@/types/api";
 
 type DialogState =
-  | { type: "actions"; order: OrderRecord }
   | { type: "details"; order: OrderRecord }
   | { type: "contact"; order: OrderRecord }
   | { type: "edit"; order: OrderRecord }
   | { type: "confirm"; order: OrderRecord }
   | { type: "complete"; order: OrderRecord }
   | { type: "cancel"; order: OrderRecord }
-  | { type: "reschedule"; order: OrderRecord }
   | null;
 
 const limit = 20;
 const clientRole = 10;
 
-type OrderStatusTabKey = "all" | "pending" | "confirmed" | "completed" | "cancelled";
+type OrderStatusTabKey = "all" | "pending" | "payment_pending" | "confirmed" | "completed" | "cancelled";
 type OrderDateRange = "all" | "today" | "week" | "month";
 
 type OrderStatusTab = {
@@ -98,7 +93,8 @@ type OrderStatusTab = {
 
 const orderStatusTabValues: OrderStatusTab[] = [
   { key: "all", value: "" },
-  { key: "pending", value: "pending" },
+  { key: "pending", value: "10" },
+  { key: "payment_pending", value: "20" },
   { key: "confirmed", value: "confirmed" },
   { key: "completed", value: "completed" },
   { key: "cancelled", value: "cancelled" },
@@ -107,6 +103,7 @@ const orderStatusTabValues: OrderStatusTab[] = [
 const initialStatusCounts: Record<OrderStatusTabKey, number> = {
   all: 0,
   pending: 0,
+  payment_pending: 0,
   confirmed: 0,
   completed: 0,
   cancelled: 0,
@@ -328,7 +325,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     }
     setSubmitting(true);
     try {
-      const order = await ordersApi.detail(row.id);
+      const order = await ordersApi.detail(row.id, { expand: "client,artist,service,subService,region,district" });
       setDialog({ type: "details", order: { ...row, ...order } });
     } catch {
       setDialog({ type: "details", order: row });
@@ -503,7 +500,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
                 labels={labels}
                 onDetails={() => void openDetail(row)}
                 onContact={() => void openContact(row)}
-                onActions={() => setDialog({ type: "actions", order: row })}
                 onPrimary={(action) => setDialog({ type: action, order: row })}
               />
             ))}
@@ -517,11 +513,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
               labels={labels}
               onOpenDetail={(row) => void openDetail(row)}
               onOpenContact={(row) => void openContact(row)}
-              onEdit={(row) => void openDialog("edit", row)}
-              onConfirm={(row) => setDialog({ type: "confirm", order: row })}
-              onComplete={(row) => setDialog({ type: "complete", order: row })}
-              onReschedule={(row) => setDialog({ type: "reschedule", order: row })}
-              onCancel={(row) => setDialog({ type: "cancel", order: row })}
             />
           </div>
         </>
@@ -544,19 +535,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           onPageSizeChange={changePageSize}
         />
       )}
-
-      {dialog?.type === "actions" ? (
-        <OrderActionsModal
-          order={dialog.order}
-          labels={labels}
-          onClose={() => setDialog(null)}
-          onEdit={() => void openDialog("edit", dialog.order)}
-          onConfirm={() => setDialog({ type: "confirm", order: dialog.order })}
-          onComplete={() => setDialog({ type: "complete", order: dialog.order })}
-          onReschedule={() => setDialog({ type: "reschedule", order: dialog.order })}
-          onCancel={() => setDialog({ type: "cancel", order: dialog.order })}
-        />
-      ) : null}
 
       <OrderDetailDrawer
         open={dialog?.type === "details"}
@@ -592,9 +570,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         onComplete={() => {
           if (dialog?.type === "details") setDialog({ type: "complete", order: dialog.order });
         }}
-        onReschedule={() => {
-          if (dialog?.type === "details") setDialog({ type: "reschedule", order: dialog.order });
-        }}
         onCancel={() => {
           if (dialog?.type === "details") setDialog({ type: "cancel", order: dialog.order });
         }}
@@ -615,6 +590,9 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           order={dialog.order}
           loading={submitting}
           labels={labels}
+          services={services}
+          regions={regions}
+          districts={districts}
           onClose={() => setDialog(null)}
           onSubmit={async (payload) => {
             if (!dialog.order.id) return;
@@ -677,28 +655,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         />
       ) : null}
 
-      {dialog?.type === "reschedule" ? (
-        <RescheduleOrderModal
-          order={dialog.order}
-          loading={submitting}
-          labels={labels}
-          onClose={() => setDialog(null)}
-          onSubmit={async (payload) => {
-            if (!dialog.order.id) return;
-            setSubmitting(true);
-            try {
-              await ordersApi.reschedule(dialog.order.id, payload);
-              toast.success(labels.rescheduledToast);
-              setDialog(null);
-              await Promise.all([fetchOrders(), fetchStatusCounts()]);
-            } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : labels.rescheduleFailed);
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-        />
-      ) : null}
     </section>
   );
 }
@@ -827,11 +783,6 @@ function OrdersDataTable({
   labels,
   onOpenDetail,
   onOpenContact,
-  onEdit,
-  onConfirm,
-  onComplete,
-  onReschedule,
-  onCancel,
 }: {
   rows: OrderRecord[];
   clientMap: Map<number, User>;
@@ -840,11 +791,6 @@ function OrdersDataTable({
   labels: OrderLabels;
   onOpenDetail: (order: OrderRecord) => void;
   onOpenContact: (order: OrderRecord) => void;
-  onEdit: (order: OrderRecord) => void;
-  onConfirm: (order: OrderRecord) => void;
-  onComplete: (order: OrderRecord) => void;
-  onReschedule: (order: OrderRecord) => void;
-  onCancel: (order: OrderRecord) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111827]">
@@ -913,15 +859,6 @@ function OrdersDataTable({
                       >
                         <Eye className="size-4" />
                       </button>
-                      <OrderActionsDropdown
-                        order={row}
-                        labels={labels}
-                        onEdit={onEdit}
-                        onConfirm={onConfirm}
-                        onComplete={onComplete}
-                        onReschedule={onReschedule}
-                        onCancel={onCancel}
-                      />
                     </div>
                   </TableCell>
                 </tr>
@@ -931,76 +868,6 @@ function OrdersDataTable({
         </table>
       </div>
     </div>
-  );
-}
-
-function OrderActionsDropdown({
-  order,
-  labels,
-  onEdit,
-  onConfirm,
-  onComplete,
-  onReschedule,
-  onCancel,
-}: {
-  order: OrderRecord;
-  labels: OrderLabels;
-  onEdit: (order: OrderRecord) => void;
-  onConfirm: (order: OrderRecord) => void;
-  onComplete: (order: OrderRecord) => void;
-  onReschedule: (order: OrderRecord) => void;
-  onCancel: (order: OrderRecord) => void;
-}) {
-  const primaryAction = getPrimaryOrderAction(order, labels);
-  const items: MenuProps["items"] = [
-    {
-      key: "edit",
-      icon: <Pencil className="size-4" />,
-      label: labels.editAction,
-      onClick: () => onEdit(order),
-    },
-    primaryAction?.action === "confirm"
-      ? {
-          key: "confirm",
-          icon: <ShieldCheck className="size-4 text-sky-500" />,
-          label: labels.confirmAction,
-          onClick: () => onConfirm(order),
-        }
-      : null,
-    primaryAction?.action === "complete"
-      ? {
-          key: "complete",
-          icon: <Flag className="size-4 text-emerald-500" />,
-          label: labels.completeAction,
-          onClick: () => onComplete(order),
-        }
-      : null,
-    {
-      key: "reschedule",
-      icon: <CalendarClock className="size-4" />,
-      label: labels.rescheduleAction,
-      onClick: () => onReschedule(order),
-    },
-    {
-      key: "cancel",
-      danger: true,
-      icon: <XCircle className="size-4 text-rose-500" />,
-      label: labels.cancelOrderAction,
-      onClick: () => onCancel(order),
-    },
-  ].filter(Boolean) as MenuProps["items"];
-
-  return (
-    <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
-      <button
-        type="button"
-        className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-white"
-        aria-label={labels.actionsColumn}
-        onClick={(event) => event.preventDefault()}
-      >
-        <MoreVertical className="size-4" />
-      </button>
-    </Dropdown>
   );
 }
 
@@ -1050,7 +917,6 @@ function OrderDetailDrawer({
   onEdit,
   onConfirm,
   onComplete,
-  onReschedule,
   onCancel,
   labels,
 }: {
@@ -1066,7 +932,6 @@ function OrderDetailDrawer({
   onEdit: () => void;
   onConfirm: () => void;
   onComplete: () => void;
-  onReschedule: () => void;
   onCancel: () => void;
   labels: OrderLabels;
 }) {
@@ -1104,7 +969,6 @@ function OrderDetailDrawer({
           onEdit={onEdit}
           onConfirm={onConfirm}
           onComplete={onComplete}
-          onReschedule={onReschedule}
           onCancel={onCancel}
           labels={labels}
         />
@@ -1163,15 +1027,11 @@ function OrderDetailDrawer({
             },
             {
               key: "technical",
-              label: labels.technicalTab,
+              label: labels.historyTitle,
               children: (
-                <div className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-2">
-                  <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.orderStatusLabel} value={<OrderStatusBadge status={localizeOrderStatus(getOrderUiStatus(order), labels)} />} />
-                  <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.paymentStatusLabel} value={<PaymentStatusBadge order={order} labels={labels} />} />
-                  <OrderInfoCell icon={<CalendarClock className="size-4" />} label={labels.paymentDeadlineLabel} value={formatNullableUnixDate(order.payment_expires_at)} />
-                  <OrderInfoCell icon={<CalendarDays className="size-4" />} label={labels.createdAtLabel} value={formatNullableUnixDate(order.created_at)} />
-                  <OrderInfoCell icon={<CalendarDays className="size-4" />} label={labels.updatedAtLabel} value={formatNullableUnixDate(order.updated_at)} />
-                  <OrderInfoCell icon={<WalletCards className="size-4" />} label={labels.subServiceLabel} value={subService.primary || subService.fallback} />
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.historyTitle}</h4>
+                  <OrderLifecycleHistory order={order} labels={labels} />
                 </div>
               ),
             },
@@ -1187,7 +1047,6 @@ function OrderDrawerActions({
   onEdit,
   onConfirm,
   onComplete,
-  onReschedule,
   onCancel,
   labels,
 }: {
@@ -1195,7 +1054,6 @@ function OrderDrawerActions({
   onEdit: () => void;
   onConfirm: () => void;
   onComplete: () => void;
-  onReschedule: () => void;
   onCancel: () => void;
   labels: OrderLabels;
 }) {
@@ -1203,6 +1061,7 @@ function OrderDrawerActions({
 
   return (
     <div className="grid grid-cols-2 gap-2">
+      <DrawerActionButton icon={<XCircle className="size-4" />} label={labels.cancelOrderAction} tone="danger" onClick={onCancel} />
       <DrawerActionButton icon={<Pencil className="size-4" />} label={labels.editAction} onClick={onEdit} />
       {primaryAction?.action === "confirm" ? (
         <DrawerActionButton
@@ -1220,12 +1079,6 @@ function OrderDrawerActions({
           onClick={onComplete}
         />
       ) : null}
-      <DrawerActionButton
-        icon={<CalendarClock className="size-4" />}
-        label={labels.rescheduleAction}
-        onClick={onReschedule}
-      />
-      <DrawerActionButton icon={<XCircle className="size-4" />} label={labels.cancelOrderAction} tone="danger" onClick={onCancel} />
     </div>
   );
 }
@@ -1505,6 +1358,67 @@ function OrderInfoCell({
   );
 }
 
+function OrderLifecycleHistory({
+  order,
+  labels,
+}: {
+  order: OrderRecord;
+  labels: OrderLabels;
+}) {
+  const events = [
+    {
+      key: "created",
+      icon: <CalendarDays className="size-4" />,
+      label: labels.lifecycleCreated,
+      value: firstOrderTimestamp(order, ["created_at", "createdAt"]),
+    },
+    {
+      key: "confirmed",
+      icon: <CheckCircle2 className="size-4" />,
+      label: labels.lifecycleConfirmed,
+      value: firstOrderTimestamp(order, ["confirmed_at", "confirmedAt", "approved_at", "approvedAt", "accepted_at", "acceptedAt"]),
+    },
+    {
+      key: "paid",
+      icon: <CreditCard className="size-4" />,
+      label: labels.lifecyclePaid,
+      value: firstOrderTimestamp(order, ["paid_at", "paidAt", "payment_paid_at", "paymentPaidAt", "payment.paid_at", "payment.paidAt"]),
+    },
+    {
+      key: "completed",
+      icon: <Flag className="size-4" />,
+      label: labels.lifecycleCompleted,
+      value: firstOrderTimestamp(order, ["completed_at", "completedAt", "finished_at", "finishedAt", "done_at", "doneAt"]),
+    },
+  ];
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-[#121a2a]">
+      {events.map((event, index) => (
+        <div
+          key={event.key}
+          className="flex gap-3 border-b border-slate-100 p-3 last:border-b-0 dark:border-white/10"
+        >
+          <div className="relative flex flex-col items-center">
+            <span className="grid size-8 place-items-center rounded-lg bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-[#453821] dark:text-amber-400 dark:ring-amber-400/20">
+              {event.icon}
+            </span>
+            {index < events.length - 1 ? (
+              <span className="mt-2 h-full min-h-5 w-px bg-slate-200 dark:bg-white/10" />
+            ) : null}
+          </div>
+          <div className="min-w-0 pb-1">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{event.label}</p>
+            <p className="mt-1 break-words text-sm font-semibold text-slate-950 dark:text-white">
+              {formatNullableUnixDate(event.value)}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TableHead({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <th
@@ -1538,7 +1452,6 @@ function OrderMobileCard({
   subService,
   onDetails,
   onContact,
-  onActions,
   onPrimary,
   labels,
 }: {
@@ -1549,7 +1462,6 @@ function OrderMobileCard({
   subService: EntityDisplay;
   onDetails: () => void;
   onContact: () => void;
-  onActions: () => void;
   onPrimary: (action: PrimaryOrderAction["action"]) => void;
   labels: OrderLabels;
 }) {
@@ -1602,14 +1514,6 @@ function OrderMobileCard({
         >
           {labels.viewAction}
         </button>
-        <button
-          type="button"
-          onClick={onActions}
-          className="grid size-10 cursor-pointer place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
-          aria-label={labels.actionsColumn}
-        >
-          <MoreVertical className="size-4" />
-        </button>
       </div>
     </article>
   );
@@ -1649,28 +1553,74 @@ function EditOrderDrawer({
   order,
   loading,
   labels,
+  services,
+  regions,
+  districts,
   onClose,
   onSubmit,
 }: {
   order: OrderRecord;
   loading: boolean;
   labels: OrderLabels;
+  services: Service[];
+  regions: Region[];
+  districts: District[];
   onClose: () => void;
   onSubmit: (payload: UpdateOrderPayload) => Promise<void>;
 }) {
+  const initialServiceId = numberKey(order.service_id);
+  const initialRegionId = numberKey(order.region_id);
   const [values, setValues] = useState({
-    notes: typeof order.notes === "string" ? order.notes : "",
-    address: typeof order.address === "string" ? order.address : "",
+    date: stringValue(order.date) ?? "",
+    time: stringValue(order.time) ?? stringValue(order.start_time) ?? "",
+    time_to: stringValue(order.time_to) ?? stringValue(order.end_time) ?? "",
+    service_id: toInputValue(initialServiceId),
+    sub_service_id: toInputValue(numberKey(order.sub_service_id)),
+    region_id: toInputValue(initialRegionId),
+    district_id: toInputValue(numberKey(order.district_id)),
+    group_size: toInputValue(numberKey(order.group_size)),
+    total_price: formatNumberInput(order.total_price),
+    comment: stringValue(order.comment) ?? stringValue(order.notes) ?? "",
     lat: coordinateNumber(order.lat)?.toString() ?? "",
     lon: (coordinateNumber(order.lon) ?? coordinateNumber(order.lng) ?? coordinateNumber(order.long))?.toString() ?? "",
   });
+  const selectedServiceId = numberKey(values.service_id);
+  const selectedRegionId = numberKey(values.region_id);
+  const serviceOptions = createOrderSelectOptions(
+    services.filter((service) => service.parent_id === null || service.parent_id === undefined),
+    labels.locale,
+  );
+  const subServiceOptions = createOrderSelectOptions(
+    services.filter((service) => {
+      const parentId = numberKey(service.parent_id);
+      if (selectedServiceId !== undefined) return parentId === selectedServiceId;
+      return parentId !== undefined;
+    }),
+    labels.locale,
+  );
+  const regionOptions = createOrderSelectOptions(regions, labels.locale);
+  const districtOptions = createOrderSelectOptions(
+    districts.filter((district) => {
+      if (selectedRegionId === undefined) return true;
+      return numberKey(district.region_id) === selectedRegionId;
+    }),
+    labels.locale,
+  );
   const formId = `order-edit-form-${order.id ?? "unknown"}`;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const payload = compactPayload<UpdateOrderPayload>({
-      notes: values.notes,
-      address: values.address,
+    const payload = compactOrderUpdatePayload({
+      date: values.date,
+      time: values.time,
+      time_to: values.time_to,
+      service_id: parseNumberInput(values.service_id),
+      sub_service_id: parseNullableNumberInput(values.sub_service_id, order.sub_service_id),
+      region_id: parseNumberInput(values.region_id),
+      district_id: parseNumberInput(values.district_id),
+      group_size: parseNumberInput(values.group_size),
+      comment: values.comment,
+      total_price: parseNumberInput(values.total_price),
       lat: parseCoordinateInput(values.lat),
       lon: parseCoordinateInput(values.lon),
     });
@@ -1678,92 +1628,108 @@ function EditOrderDrawer({
   };
 
   return (
-    <Drawer
-      open
+    <AdminDrawer
+      title={labels.editModalTitle}
       onClose={onClose}
-      size="min(100vw, 480px)"
-      placement="right"
-      closable={{ placement: "start" }}
-      closeIcon={<X className="size-5" />}
-      rootClassName="artistbor-application-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
-      title={
-        <div className="min-w-0">
-          <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">{labels.editModalTitle}</p>
-          <p className="mt-1 truncate text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            {labels.orderTitle} #{toDisplay(order.id)}
-          </p>
-        </div>
-      }
       footer={<FormActions labels={labels} loading={loading} onClose={onClose} form={formId} />}
-      styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 82, padding: "12px 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      className="artistbor-order-drawer"
     >
       <form id={formId} onSubmit={submit} className="space-y-5 p-4">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-          <p className="mb-3 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
-            {labels.mainInfoTitle}
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <OrderEditInfo label="ID" value={`#${formatOrderId(order.id)}`} />
-            <OrderEditInfo label={labels.orderStatusLabel} value={localizeOrderStatus(getOrderUiStatus(order), labels).label} />
-            <OrderEditInfo label={labels.dateLabel} value={formatBookingDate(order.date)} />
-            <OrderEditInfo label={labels.timeLabel} value={formatBookingTimeRange(order.time ?? order.start_time, order.time_to ?? order.end_time).primary} />
-            <OrderEditInfo label={labels.priceLabel} value={order.total_price ? `${toDisplay(order.total_price)} ${labels.currency}` : labels.priceNotSet} />
-            <OrderEditInfo label={labels.paymentStatusLabel} value={getPaymentStatusDisplay(order, labels).label} />
-          </div>
-        </div>
-        <FormField
-          label={labels.noteLabel}
-          type="textarea"
-          rows={4}
-          value={values.notes}
-          onChange={(notes) => setValues((current) => ({ ...current, notes }))}
-        />
-        <FormField
-          label={labels.addressLabel}
-          type="textarea"
-          rows={4}
-          value={values.address}
-          onChange={(address) => setValues((current) => ({ ...current, address }))}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           <FormField
+            compact
+            label={labels.dateLabel}
+            type="date"
+            value={values.date}
+            onChange={(date) => setValues((current) => ({ ...current, date }))}
+          />
+          <FormField
+            compact
+            label={labels.startTime}
+            type="time"
+            value={values.time}
+            onChange={(time) => setValues((current) => ({ ...current, time }))}
+          />
+          <FormField
+            compact
+            label={labels.endTime}
+            type="time"
+            value={values.time_to}
+            onChange={(time_to) => setValues((current) => ({ ...current, time_to }))}
+          />
+          <FormField
+            compact
+            label={labels.serviceColumn}
+            type="select"
+            value={values.service_id}
+            options={serviceOptions}
+            onChange={(service_id) => setValues((current) => ({ ...current, service_id, sub_service_id: "" }))}
+          />
+          <FormField
+            compact
+            label={labels.serviceColumn}
+            type="select"
+            value={values.sub_service_id}
+            options={subServiceOptions}
+            onChange={(sub_service_id) => setValues((current) => ({ ...current, sub_service_id }))}
+          />
+          <FormField
+            compact
+            label={labels.regionLabel}
+            type="select"
+            value={values.region_id}
+            options={regionOptions}
+            onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))}
+          />
+          <FormField
+            compact
+            label={labels.districtLabel}
+            type="select"
+            value={values.district_id}
+            options={districtOptions}
+            onChange={(district_id) => setValues((current) => ({ ...current, district_id }))}
+          />
+          <FormField
+            compact
+            label={labels.groupSizeLabel}
+            type="number"
+            value={values.group_size}
+            onChange={(group_size) => setValues((current) => ({ ...current, group_size }))}
+          />
+          <FormField
+            compact
             label={labels.latitudeLabel}
             type="number"
             value={values.lat}
             onChange={(lat) => setValues((current) => ({ ...current, lat }))}
           />
           <FormField
+            compact
             label={labels.longitudeLabel}
             type="number"
             value={values.lon}
             onChange={(lon) => setValues((current) => ({ ...current, lon }))}
           />
+          <FormField
+            compact
+            className="md:col-span-2"
+            label={labels.noteLabel}
+            type="textarea"
+            rows={4}
+            value={values.comment}
+            onChange={(comment) => setValues((current) => ({ ...current, comment }))}
+          />
+          <FormField
+            compact
+            className="md:col-span-2"
+            label={labels.priceLabel}
+            placeholder="1 500 000"
+            value={values.total_price}
+            onChange={(total_price) => setValues((current) => ({ ...current, total_price: formatNumberInput(total_price) }))}
+          />
         </div>
       </form>
-    </Drawer>
-  );
-}
-
-function OrderEditInfo({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-slate-950">
-      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <div className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-white">
-        {value || "—"}
-      </div>
-    </div>
+    </AdminDrawer>
   );
 }
 
@@ -1780,6 +1746,7 @@ function CancelOrderModal({
 }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const formId = "order-cancel-form";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -1791,12 +1758,33 @@ function CancelOrderModal({
   };
 
   return (
-    <Modal title={labels.cancelModalTitle} onClose={onClose}>
-      <form onSubmit={submit} className="space-y-5">
+    <Modal
+      centered
+      open
+      className="artistbor-confirm-modal"
+      width={480}
+      title={labels.cancelModalTitle}
+      onCancel={onClose}
+      closeIcon={<X className="size-4" />}
+      footer={
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            form={formId}
+            disabled={loading}
+            className={`${adminDangerActionButtonClass} w-1/2`}
+          >
+            <XCircle className="size-4" />
+            {loading ? labels.processing : labels.cancelOrderAction}
+          </button>
+        </div>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5">
         <FormField
           label={labels.reasonLabel}
           type="textarea"
-          rows={4}
+          rows={7}
           required
           value={reason}
           error={error}
@@ -1805,238 +1793,8 @@ function CancelOrderModal({
             setError("");
           }}
         />
-        <FormActions danger labels={labels} loading={loading} onClose={onClose} submitLabel={labels.cancelOrderAction} />
       </form>
     </Modal>
-  );
-}
-
-function RescheduleOrderModal({
-  order,
-  loading,
-  labels,
-  onClose,
-  onSubmit,
-}: {
-  order: OrderRecord;
-  loading: boolean;
-  labels: OrderLabels;
-  onClose: () => void;
-  onSubmit: (payload: RescheduleOrderPayload) => Promise<void>;
-}) {
-  const [values, setValues] = useState({
-    date: "",
-    time: "",
-    time_to: "",
-    reason: "",
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [conflicts, setConflicts] = useState<unknown>(null);
-  const [conflictsLoading, setConflictsLoading] = useState(true);
-  const [conflictsError, setConflictsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!order.id) return;
-    const timer = window.setTimeout(async () => {
-      setConflictsLoading(true);
-      setConflictsError(null);
-      try {
-        const result = await ordersApi.conflicts(order.id as number);
-        setConflicts(result);
-      } catch (caught) {
-        setConflictsError(caught instanceof Error ? caught.message : labels.conflictCheckFailed);
-      } finally {
-        setConflictsLoading(false);
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [labels.conflictCheckFailed, order.id]);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const nextErrors: Record<string, string> = {};
-    if (!values.date) nextErrors.date = labels.requiredField;
-    if (!values.time) nextErrors.time = labels.requiredField;
-    if (!values.time_to) nextErrors.time_to = labels.requiredField;
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
-    await onSubmit({
-      date: values.date,
-      time: values.time,
-      time_to: values.time_to,
-      reason: values.reason || undefined,
-    });
-  };
-
-  return (
-    <Modal title={labels.rescheduleModalTitle} onClose={onClose}>
-      <div className="mb-5 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-          {labels.conflictCheck}
-        </p>
-        {conflictsLoading ? (
-          <div className="mt-3">
-            <LoadingState label={labels.conflictsLoading} />
-          </div>
-        ) : conflictsError ? (
-          <p className="mt-3 text-sm font-semibold text-rose-500">{conflictsError}</p>
-        ) : (
-          <div className="mt-3">
-            <ValueBlock fieldKey="conflicts" value={conflicts} />
-          </div>
-        )}
-      </div>
-      <form onSubmit={submit} className="space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField
-            label={labels.dateLabel}
-            type="date"
-            required
-            value={values.date}
-            error={errors.date}
-            onChange={(date) => setValues((current) => ({ ...current, date }))}
-          />
-          <FormField
-            label={labels.startTime}
-            type="time"
-            required
-            value={values.time}
-            error={errors.time}
-            onChange={(time) => setValues((current) => ({ ...current, time }))}
-          />
-          <FormField
-            label={labels.endTime}
-            type="time"
-            required
-            value={values.time_to}
-            error={errors.time_to}
-            onChange={(time_to) => setValues((current) => ({ ...current, time_to }))}
-          />
-          <FormField
-            label={labels.reasonLabel}
-            value={values.reason}
-            onChange={(reason) => setValues((current) => ({ ...current, reason }))}
-          />
-        </div>
-        <FormActions labels={labels} loading={loading} onClose={onClose} submitLabel={labels.rescheduleAction} />
-      </form>
-    </Modal>
-  );
-}
-
-function OrderActionsModal({
-  order,
-  labels,
-  onClose,
-  onEdit,
-  onConfirm,
-  onComplete,
-  onReschedule,
-  onCancel,
-}: {
-  order: OrderRecord;
-  labels: OrderLabels;
-  onClose: () => void;
-  onEdit: () => void;
-  onConfirm: () => void;
-  onComplete: () => void;
-  onReschedule: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Modal title={labels.actionsModalTitle(order.id ?? "—")} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.03] md:grid-cols-3">
-          <InfoCard label={labels.statusColumn} value={<OrderStatusBadge status={localizeOrderStatus(getOrderUiStatus(order), labels)} />} />
-          <InfoCard label={labels.dateLabel} value={formatBookingDate(order.date)} />
-          <InfoCard
-            label={labels.timeLabel}
-            value={formatBookingTimeRange(order.time ?? order.start_time, order.time_to ?? order.end_time).primary}
-          />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ActionButton label={labels.editAction} description={labels.editActionDescription} onClick={onEdit}>
-            <Pencil className="size-5" />
-          </ActionButton>
-          <ActionButton
-            tone="confirm"
-            label={labels.confirmAction}
-            description={labels.confirmActionDescription}
-            onClick={onConfirm}
-          >
-            <ShieldCheck className="size-5" />
-          </ActionButton>
-          <ActionButton
-            tone="complete"
-            label={labels.completeAction}
-            description={labels.completeActionDescription}
-            onClick={onComplete}
-          >
-            <Flag className="size-5" />
-          </ActionButton>
-          <ActionButton label={labels.rescheduleAction} description={labels.rescheduleActionDescription} onClick={onReschedule}>
-            <CalendarClock className="size-5" />
-          </ActionButton>
-          <ActionButton danger label={labels.cancelOrderAction} description={labels.cancelActionDescription} onClick={onCancel}>
-            <XCircle className="size-5" />
-          </ActionButton>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function ActionButton({
-  label,
-  description,
-  children,
-  danger,
-  tone = "default",
-  onClick,
-}: {
-  label: string;
-  description: string;
-  children: React.ReactNode;
-  danger?: boolean;
-  tone?: "default" | "confirm" | "complete" | "danger";
-  onClick: () => void;
-}) {
-  const resolvedTone = danger ? "danger" : tone;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-left transition ${actionToneClass(resolvedTone)}`}
-    >
-      <span className="mt-0.5">{children}</span>
-      <span>
-        <span className="block text-sm font-black">{label}</span>
-        <span className="mt-1 block text-xs font-semibold opacity-70">{description}</span>
-      </span>
-    </button>
-  );
-}
-
-function actionToneClass(tone: "default" | "confirm" | "complete" | "danger") {
-  if (tone === "confirm") {
-    return "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:border-sky-400/50 dark:hover:bg-sky-500/20 dark:hover:text-sky-200";
-  }
-  if (tone === "complete") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:border-emerald-400/50 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-200";
-  }
-  if (tone === "danger") {
-    return "border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:border-rose-400/50 dark:hover:bg-rose-500/20 dark:hover:text-rose-200";
-  }
-  return "border-slate-200 bg-white text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-amber-400/40 dark:hover:bg-amber-400/10 dark:hover:text-amber-200";
-}
-
-function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
-      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <div className="mt-2 text-sm font-black text-slate-950 dark:text-white">{value ?? "—"}</div>
-    </div>
   );
 }
 
@@ -2124,7 +1882,8 @@ function orderStatusTabFromValue(value: unknown): OrderStatusTabKey {
 function normalizeOrderStatusFilter(value: unknown) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (!normalized) return "";
-  if (normalized === "10" || normalized === "20" || normalized === "payment_pending") return "pending";
+  if (normalized === "10" || normalized === "pending") return "10";
+  if (normalized === "20" || normalized === "payment_pending") return "20";
   if (normalized === "30") return "confirmed";
   if (normalized === "50") return "completed";
   if (normalized === "40") return "cancelled";
@@ -2134,6 +1893,9 @@ function normalizeOrderStatusFilter(value: unknown) {
 function orderStatusCountClass(status: OrderStatusTabKey) {
   if (status === "pending") {
     return "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300";
+  }
+  if (status === "payment_pending") {
+    return "bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300";
   }
   if (status === "confirmed" || status === "completed") {
     return "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300";
@@ -2251,6 +2013,49 @@ function compactPayload<T extends Record<string, unknown>>(value: T) {
   ) as Partial<T>;
 }
 
+function compactOrderUpdatePayload(value: UpdateOrderPayload) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key, fieldValue]) => {
+      if (fieldValue === undefined) return false;
+      if (fieldValue === null) return key === "sub_service_id";
+      if (fieldValue === "") return key === "address" || key === "comment";
+      return true;
+    }),
+  ) as UpdateOrderPayload;
+}
+
+function createOrderSelectOptions<T extends DisplayEntity & { id?: number | string }>(items: T[], locale: Locale) {
+  return items
+    .filter((item) => item.id !== undefined && item.id !== null)
+    .map((item) => ({
+      label: getName(item, locale) ?? `#${item.id}`,
+      value: Number(item.id),
+    }));
+}
+
+function toInputValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function formatNumberInput(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function parseNumberInput(value: string) {
+  const trimmed = value.trim().replace(/\s/g, "");
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseNullableNumberInput(value: string, previousValue: unknown) {
+  const parsed = parseNumberInput(value);
+  if (parsed !== undefined) return parsed;
+  return numberKey(previousValue) !== undefined ? null : undefined;
+}
+
 function inferDateRange(filters: OrderFilters): OrderDateRange {
   const from = String(filters.date_from ?? "");
   const to = String(filters.date_to ?? "");
@@ -2313,6 +2118,14 @@ function getYandexMapUrl(order: OrderRecord) {
 function formatNullableUnixDate(value: unknown) {
   if (value === null || value === undefined || value === "") return "—";
   return formatUnixDateTime(value);
+}
+
+function firstOrderTimestamp(order: OrderRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = getValue(order, key);
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return undefined;
 }
 
 function entityText(entity: EntityDisplay) {
@@ -2390,20 +2203,22 @@ function getClientDisplay(row: OrderRecord, clientMap: Map<number, User>, labels
 }
 
 function getArtistDisplay(row: OrderRecord, artistMap: Map<number, ArtistProfile>, labels: OrderLabels): EntityDisplay {
-  const expandedArtist = asRecord(row.artist);
-  const artist = expandedArtist ?? getFromMap(artistMap, row.artist_id);
+  const artist = getOrderArtistRecord(row) ?? getFromMap(artistMap, row.artist_id);
+  if (!artist) return { fallback: fallbackWithId(labels.artistLabel, row.artist_id) };
 
-  if (artist && !expandedArtist) {
-    const primary = getArtistName(artist);
-    const secondary = getSecondaryText(primary, artist.phone, artist.email, artist.extra_phone);
-    return {
-      primary,
-      secondary,
-      fallback: fallbackWithId(labels.artistLabel, row.artist_id),
-    };
-  }
+  const user = asRecord(getValue(artist, "user")) ?? asRecord(getValue(artist, "artist.user"));
+  const nameSource = user ?? artist;
+  const firstName = stringValue(nameSource.first_name);
+  const lastName = stringValue(nameSource.last_name);
+  const fromParts = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const explicitName = stringValue(nameSource.full_name) ?? (fromParts || undefined);
+  const primary = explicitName ?? getArtistName(artist as ArtistProfile);
 
-  return getPersonDisplay(artist, row.artist_id, labels.artistLabel);
+  return {
+    primary,
+    secondary: getSecondaryText(primary, nameSource.phone, artist.phone, nameSource.email, artist.email, artist.extra_phone),
+    fallback: fallbackWithId(labels.artistLabel, row.artist_id),
+  };
 }
 
 function getServiceDisplay(
@@ -2568,6 +2383,7 @@ function getOrderLabels(locale: Locale) {
       dateTimeColumn: "Дата / время",
       description: "Отслеживание, подтверждение, завершение и перенос заказов.",
       detailLoadFailed: "Не удалось загрузить детали заказа",
+      districtLabel: "Район",
       editAction: "Редактировать",
       editActionDescription: "Обновить адрес или заметки.",
       editModalTitle: "Редактирование заказа",
@@ -2575,11 +2391,17 @@ function getOrderLabels(locale: Locale) {
       eyebrow: "Заказы",
       idNotFound: "ID заказа не найден",
       infoTab: "Информация",
+      historyTitle: "История",
       latitudeLabel: "Широта",
+      lifecycleCompleted: "Завершен",
+      lifecycleConfirmed: "Подтвержден",
+      lifecycleCreated: "Создан",
+      lifecyclePaid: "Оплата получена",
       loadFailed: "Не удалось загрузить заказы",
       longitudeLabel: "Долгота",
       mainInfoTitle: "Основная информация",
       mapLabel: "Карта",
+      groupSizeLabel: "Количество гостей",
       month: "30 дней",
       noteLabel: "Комментарий",
       openYandexMap: "Открыть в Яндекс Картах",
@@ -2613,6 +2435,7 @@ function getOrderLabels(locale: Locale) {
       statusTabs: {
         all: "Все",
         pending: "Ожидает",
+        payment_pending: "Ожидает оплаты",
         confirmed: "Подтвержден",
         completed: "Завершен",
         cancelled: "Отменен",
@@ -2674,6 +2497,7 @@ function getOrderLabels(locale: Locale) {
     dateTimeColumn: "Sana / vaqt",
     description: "Buyurtmalar holatini kuzatish, tasdiqlash, yakunlash va qayta rejalash.",
     detailLoadFailed: "Buyurtma tafsilotlari yuklanmadi",
+    districtLabel: "Tuman",
     editAction: "Tahrirlash",
     editActionDescription: "Manzil yoki izohlarni yangilash.",
     editModalTitle: "Buyurtmani tahrirlash",
@@ -2681,11 +2505,17 @@ function getOrderLabels(locale: Locale) {
     eyebrow: "Buyurtmalar",
     idNotFound: "Order ID topilmadi",
     infoTab: "Ma'lumot",
+    historyTitle: "Tarix",
     latitudeLabel: "Latitude",
+    lifecycleCompleted: "Yakunlandi",
+    lifecycleConfirmed: "Tasdiqlandi",
+    lifecycleCreated: "Yaratildi",
+    lifecyclePaid: "To'lov to'landi",
     loadFailed: "Buyurtmalar yuklanmadi",
     longitudeLabel: "Longitude",
     mainInfoTitle: "Asosiy ma'lumotlar",
     mapLabel: "Xarita",
+    groupSizeLabel: "Mehmonlar soni",
     month: "30 kun",
     noteLabel: "Izoh",
     openYandexMap: "Yandex xaritada ochish",
@@ -2719,6 +2549,7 @@ function getOrderLabels(locale: Locale) {
     statusTabs: {
       all: "Barchasi",
       pending: "Kutilmoqda",
+      payment_pending: "To'lov kutilmoqda",
       confirmed: "Tasdiqlangan",
       completed: "Yakunlangan",
       cancelled: "Bekor qilingan",

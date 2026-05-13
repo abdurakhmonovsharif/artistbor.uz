@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, Phone, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Phone, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { getToken } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -13,6 +13,7 @@ import { ThemeToggle } from "@/components/admin/theme-toggle";
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const { t } = useI18n();
@@ -123,9 +124,17 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   className="w-full bg-transparent text-sm font-semibold text-slate-950 outline-none placeholder:text-slate-400 dark:text-white"
                 />
+                <button
+                  type="button"
+                  className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-300 dark:hover:bg-white/10 dark:hover:text-white"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
               </span>
             </label>
             <button

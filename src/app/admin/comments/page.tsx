@@ -237,7 +237,7 @@ export default function CommentsPage() {
         </p>
       </div>
 
-      <div className="inline-flex rounded-[22px] border border-slate-100 bg-white p-1 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950">
+      <div className="inline-flex rounded-[22px] border border-slate-200 bg-white p-1 shadow-sm shadow-slate-950/[0.03] dark:border-white/10 dark:bg-[#111827]">
         <TabButton active={tab === "all"} onClick={() => changeTab("all")}>
           Barcha
         </TabButton>
@@ -543,10 +543,10 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-[18px] px-5 py-3 text-sm font-black transition",
+        "rounded-[18px] px-5 py-3 text-sm font-semibold transition",
         active
-          ? "bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/20"
-          : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white",
+          ? "bg-[#fff7e6] text-[#ad6800] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-[#453821] dark:text-amber-400 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.22)]"
+          : "text-slate-500 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.055] dark:hover:text-white",
       )}
     >
       {children}

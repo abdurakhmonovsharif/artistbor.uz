@@ -48,6 +48,8 @@ export type ArtistProfile = {
   email?: string | null;
   region_id?: number | null;
   district_id?: number | null;
+  birth_date?: string | null;
+  gender?: "male" | "female" | "other" | string | null;
   role?: number | string;
   role_label?: string;
   status?: number | string;
@@ -64,9 +66,17 @@ export type ArtistProfile = {
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;
+  profile_photo_id?: number | null;
+  profile_photo_url?: string | null;
   badges?: string[];
   categories?: UnknownRecord[];
+  category?: UnknownRecord | null;
+  category_id?: number | string | null;
+  category_ids?: Array<number | string>;
   gallery?: UnknownRecord[];
+  profile?: UnknownRecord | null;
+  artistProfile?: UnknownRecord | null;
+  artist_profile?: UnknownRecord | null;
 };
 
 export type ArtistApplication = {

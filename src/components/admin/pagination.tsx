@@ -25,11 +25,11 @@ export function Pagination({
   const limit = normalizePositiveNumber(pageSize ?? meta?.perPage ?? meta?.limit, defaultPageSizeOptions[0]);
   const currentPage = normalizePositiveNumber(meta?.currentPage ?? meta?.page ?? page, 1);
   const total = normalizeTotal(meta?.totalCount ?? meta?.total);
-  const pageCount =
+  const pageCount = Math.max(
+    1,
     normalizePositiveNumber(meta?.pageCount, 0) ||
-    (total ? Math.ceil(total / limit) : undefined);
-
-  if (!pageCount || pageCount <= 1) return null;
+      (typeof total === "number" && total > 0 ? Math.ceil(total / limit) : 1),
+  );
 
   return (
     <PaginationShell
@@ -59,8 +59,6 @@ export function FallbackPagination({
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 }) {
-  if (page <= 1 && rowsCount < pageSize) return null;
-
   return (
     <PaginationShell
       page={page}
@@ -95,10 +93,13 @@ function PaginationShell({
   const { t } = useI18n();
   const canGoPrevious = page > 1;
   const canGoNext = pageCount ? page < pageCount : (rowsCount ?? 0) >= pageSize;
-  const firstItem = (page - 1) * pageSize + 1;
+  const isKnownEmpty = total === 0 || rowsCount === 0;
+  const firstItem = isKnownEmpty ? 0 : (page - 1) * pageSize + 1;
   const lastItem = total
     ? Math.min(page * pageSize, total)
-    : (page - 1) * pageSize + (rowsCount ?? pageSize);
+    : isKnownEmpty
+      ? 0
+      : (page - 1) * pageSize + (rowsCount ?? pageSize);
   const rangeLabel = total
     ? t("pagination.rangeTotal", { from: firstItem, to: lastItem, total })
     : t("pagination.range", { from: firstItem, to: lastItem });
@@ -130,7 +131,7 @@ function PaginationShell({
               className={cn(
                 "grid size-9 place-items-center rounded-full text-sm font-black transition",
                 pageNumber === page
-                  ? "bg-teal-600 text-white shadow-lg shadow-teal-600/20 dark:bg-teal-700"
+                  ? "bg-[#fff7e6] text-[#ad6800] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-[#453821] dark:!text-amber-300 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.22)]"
                   : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-700/70 dark:hover:text-white",
               )}
               aria-current={pageNumber === page ? "page" : undefined}
@@ -140,7 +141,7 @@ function PaginationShell({
           ))}
         </div>
       ) : (
-        <span className="grid size-9 place-items-center rounded-full bg-teal-600 text-sm font-black text-white shadow-lg shadow-teal-600/20 dark:bg-teal-700">
+        <span className="grid size-9 place-items-center rounded-full bg-[#fff7e6] text-sm font-black text-[#ad6800] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-[#453821] dark:text-amber-400 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.22)]">
           {page}
         </span>
       )}

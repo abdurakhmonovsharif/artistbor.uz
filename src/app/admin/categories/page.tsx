@@ -5,7 +5,6 @@ import { Button, Input, Select } from "antd";
 import {
   ChevronDown,
   ChevronRight,
-  Eye,
   Pencil,
   Plus,
   RotateCcw,
@@ -24,7 +23,6 @@ import {
   adminFilterActionClass,
   adminFilterControlClass,
 } from "@/components/admin/admin-filter-form";
-import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField, type FormFieldOption } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -43,7 +41,6 @@ import type { Category } from "@/types/api";
 type DialogState =
   | { type: "create"; parentId?: number }
   | { type: "edit"; category: Category }
-  | { type: "view"; category: Category }
   | { type: "delete"; category: Category }
   | { type: "restore"; category: Category }
   | null;
@@ -52,20 +49,6 @@ const initialFilters: CategoryFilters = {
   name: "",
   status: "",
 };
-
-const detailFields: DetailField[] = [
-  { key: "id", label: "ID" },
-  { key: "name_uz", label: "Name UZ" },
-  { key: "name_ru", label: "Name RU" },
-  { key: "name_en", label: "Name EN" },
-  { key: "slug", label: "Slug" },
-  { key: "parent_id", label: "Parent ID" },
-  { key: "icon", label: "Icon" },
-  { key: "sort_order", label: "Sort order" },
-  { key: "status", label: "Status" },
-  { key: "created_at", label: "Created" },
-  { key: "updated_at", label: "Updated" },
-];
 
 export default function CategoriesPage() {
   const { locale, t } = useI18n();
@@ -133,12 +116,12 @@ export default function CategoriesPage() {
     [allCategories, filters, rows],
   );
 
-  const openDetail = async (type: "view" | "edit", category: Category) => {
+  const openEdit = async (category: Category) => {
     if (!category.id) return;
     setSubmitting(true);
     try {
       const detail = await categoriesApi.detail(category.id);
-      setDialog({ type, category: detail });
+      setDialog({ type: "edit", category: detail });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.detailFailed);
     } finally {
@@ -259,10 +242,9 @@ export default function CategoriesPage() {
           childrenByParent={hierarchy.childrenByParent}
           onCreateChild={(category) => setDialog({ type: "create", parentId: category.id })}
           onDelete={(category) => setDialog({ type: "delete", category })}
-          onEdit={(category) => void openDetail("edit", category)}
+          onEdit={(category) => void openEdit(category)}
           onExpand={toggleExpanded}
           onRestore={(category) => setDialog({ type: "restore", category })}
-          onView={(category) => void openDetail("view", category)}
         />
       )}
 
@@ -313,14 +295,6 @@ export default function CategoriesPage() {
         />
       ) : null}
 
-      {dialog?.type === "view" ? (
-        <AdminDrawer title={t("crud.detailsTitle", { title: labels.title })} onClose={() => setDialog(null)} size="min(100vw, 720px)">
-          <div className="p-4">
-            <DetailGrid record={dialog.category} fields={localizedDetailFields(labels)} />
-          </div>
-        </AdminDrawer>
-      ) : null}
-
       {dialog?.type === "delete" ? (
         <ConfirmDialog
           danger
@@ -355,7 +329,6 @@ function CategoryHierarchyTable({
   onEdit,
   onExpand,
   onRestore,
-  onView,
 }: {
   childrenByParent: Map<number, Category[]>;
   expandedIds: Set<number>;
@@ -366,7 +339,6 @@ function CategoryHierarchyTable({
   onEdit: (category: Category) => void;
   onExpand: (id: number) => void;
   onRestore: (category: Category) => void;
-  onView: (category: Category) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111827]">
@@ -401,7 +373,6 @@ function CategoryHierarchyTable({
                   onEdit={onEdit}
                   onExpand={onExpand}
                   onRestore={onRestore}
-                  onView={onView}
                 />
               );
             })}
@@ -422,7 +393,6 @@ function CategoryRowGroup({
   onEdit,
   onExpand,
   onRestore,
-  onView,
 }: {
   category: Category;
   childrenRows: Category[];
@@ -433,7 +403,6 @@ function CategoryRowGroup({
   onEdit: (category: Category) => void;
   onExpand: (id: number) => void;
   onRestore: (category: Category) => void;
-  onView: (category: Category) => void;
 }) {
   return (
     <>
@@ -448,7 +417,6 @@ function CategoryRowGroup({
         onEdit={onEdit}
         onExpand={onExpand}
         onRestore={onRestore}
-        onView={onView}
       />
       {expanded ? (
         <tr className="border-b border-slate-100 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.02]">
@@ -469,7 +437,6 @@ function CategoryRowGroup({
                       onEdit={onEdit}
                       onExpand={onExpand}
                       onRestore={onRestore}
-                      onView={onView}
                     />
                   ))}
                 </tbody>
@@ -494,7 +461,6 @@ function CategoryTableRow({
   onEdit,
   onExpand,
   onRestore,
-  onView,
 }: {
   category: Category;
   childCount: number;
@@ -507,7 +473,6 @@ function CategoryTableRow({
   onEdit: (category: Category) => void;
   onExpand: (id: number) => void;
   onRestore: (category: Category) => void;
-  onView: (category: Category) => void;
 }) {
   const canExpand = root && Boolean(category.id) && childCount > 0;
 
@@ -561,9 +526,6 @@ function CategoryTableRow({
               <Plus className="size-4" />
             </IconButton>
           ) : null}
-          <IconButton label={labels.view} onClick={() => onView(category)}>
-            <Eye className="size-4" />
-          </IconButton>
           <IconButton label={labels.edit} onClick={() => onEdit(category)}>
             <Pencil className="size-4" />
           </IconButton>
@@ -814,10 +776,6 @@ function parentValue(value: number | null | undefined) {
   return value === null || value === undefined ? "" : String(value);
 }
 
-function localizedDetailFields(labels: ReturnType<typeof getLabels>) {
-  return detailFields.map((field) => (field.key === "parent_id" ? { ...field, label: labels.parentId } : field));
-}
-
 function getLabels(locale: string) {
   if (locale === "ru") {
     return {
@@ -842,7 +800,6 @@ function getLabels(locale: string) {
       nameUz: "Название UZ",
       noParent: "Без родителя",
       parent: "Родительская категория",
-      parentId: "ID родителя",
       restore: "Восстановить",
       searchPlaceholder: "Поиск...",
       sortOrder: "Порядок",
@@ -850,7 +807,6 @@ function getLabels(locale: string) {
       statusAll: "Статус: Все",
       subcategory: "Подкатегория",
       title: "Категории",
-      view: "Просмотр",
     };
   }
 
@@ -876,7 +832,6 @@ function getLabels(locale: string) {
     nameUz: "Nomi UZ",
     noParent: "Asosiy category",
     parent: "Parent category",
-    parentId: "Asosiy ID",
     restore: "Tiklash",
     searchPlaceholder: "Qidirish...",
     sortOrder: "Tartib",
@@ -884,7 +839,6 @@ function getLabels(locale: string) {
     statusAll: "Holat: Barchasi",
     subcategory: "Subcategory",
     title: "Kategoriyalar",
-    view: "Ko'rish",
   };
 }
 

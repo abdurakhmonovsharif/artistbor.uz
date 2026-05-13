@@ -2,9 +2,14 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Input } from "antd";
+import { Modal } from "antd";
+import { CheckCircle2, X, XCircle } from "lucide-react";
 import { ApplicationsFilterBar, defaultApplicationFilters } from "@/components/admin/applications/applications-filter-bar";
 import type { ApplicationsFilterState } from "@/components/admin/applications/applications-filter-bar";
+import {
+  adminDangerActionButtonClass,
+  adminPrimaryActionButtonClass,
+} from "@/components/admin/admin-action-button";
 import { ApplicationContactDrawer } from "@/components/admin/applications/application-contact-drawer";
 import { ApplicationDetailDrawer } from "@/components/admin/applications/application-detail-drawer";
 import { getApplicationLabels } from "@/components/admin/applications/application-labels";
@@ -25,8 +30,7 @@ import {
   type CategoryMap,
 } from "@/components/admin/applications/application-utils";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Modal } from "@/components/ui/modal";
+import { FormField } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -356,14 +360,12 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
       />
 
       {dialog?.type === "approve" ? (
-        <ConfirmDialog
+        <ApproveApplicationModal
           loading={submitting}
-          title={labels.approveDialogTitle}
-          message={labels.approveDialogMessage(toDisplay(dialog.application.id))}
-          confirmLabel={labels.approveAction}
-          cancelLabel={labels.cancelAction}
-          onCancel={() => setDialog(null)}
-          onConfirm={approveApplication}
+          application={dialog.application}
+          locale={locale}
+          onClose={() => setDialog(null)}
+          onSubmit={approveApplication}
         />
       ) : null}
 
@@ -377,6 +379,65 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
         />
       ) : null}
     </section>
+  );
+}
+
+function ApproveApplicationModal({
+  application,
+  loading,
+  locale,
+  onClose,
+  onSubmit,
+}: {
+  application: ArtistApplication;
+  loading: boolean;
+  locale: Locale;
+  onClose: () => void;
+  onSubmit: () => Promise<void>;
+}) {
+  const labels = getApplicationLabels(locale);
+  const applicationId = toDisplay(application.id);
+  const formId = `application-approve-form-${applicationId}`;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    await onSubmit();
+  };
+
+  return (
+    <Modal
+      centered
+      open
+      className="artistbor-confirm-modal"
+      width={480}
+      title={labels.approveDialogTitle}
+      onCancel={onClose}
+      closeIcon={<ApplicationModalCloseIcon />}
+      footer={
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            type="submit"
+            form={formId}
+            disabled={loading}
+            className={adminPrimaryActionButtonClass}
+          >
+            <CheckCircle2 className="size-4" />
+            {loading ? labels.submitting : labels.approveAction}
+          </button>
+        </div>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+            {labels.approveAction}
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-800 dark:text-slate-100">
+            {labels.approveDialogMessage(applicationId)}
+          </p>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -396,6 +457,7 @@ function RejectApplicationModal({
   const labels = getApplicationLabels(locale);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const formId = `application-reject-form-${toDisplay(application.id)}`;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -407,40 +469,48 @@ function RejectApplicationModal({
   };
 
   return (
-    <Modal title={labels.rejectDialogTitle(toDisplay(application.id))} onClose={onClose} width="max-w-md">
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{labels.reason}</label>
-          <Input.TextArea
-            rows={4}
-            value={reason}
-            status={error ? "error" : undefined}
-            onChange={(event) => {
-              setReason(event.target.value);
-              setError("");
-            }}
-          />
-          {error ? <p className="mt-1 text-xs font-semibold text-rose-500">{error}</p> : null}
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 rounded-lg border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
-          >
-            {labels.cancelAction}
-          </button>
+    <Modal
+      centered
+      open
+      className="artistbor-confirm-modal"
+      width={480}
+      title={labels.rejectDialogTitle(toDisplay(application.id))}
+      onCancel={onClose}
+      closeIcon={<ApplicationModalCloseIcon />}
+      footer={
+        <div className="flex justify-end">
           <button
             type="submit"
+            form={formId}
             disabled={loading}
-            className="h-10 rounded-lg bg-rose-500 px-4 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`${adminDangerActionButtonClass} w-1/2`}
           >
+            <XCircle className="size-4" />
             {loading ? labels.submitting : labels.rejectAction}
           </button>
         </div>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5">
+        <FormField
+          label={labels.reason}
+          type="textarea"
+          rows={7}
+          required
+          value={reason}
+          error={error}
+          onChange={(nextReason) => {
+            setReason(nextReason);
+            setError("");
+          }}
+        />
       </form>
     </Modal>
   );
+}
+
+function ApplicationModalCloseIcon() {
+  return <X className="size-4" />;
 }
 
 function createCategoryMap(categories: Category[]) {

@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Eye, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import {
   AdminFilterForm,
   adminFilterActionClass,
   adminFilterControlClass,
 } from "@/components/admin/admin-filter-form";
+import { adminPrimaryActionButtonClass } from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
@@ -17,8 +18,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { trashApi, type TrashModel } from "@/lib/api/admin-content";
-import { isRecord, normalizeDate, toDisplay } from "@/lib/utils";
-import type { ListResult, TrashRecord, UnknownRecord } from "@/types/api";
+import { normalizeDate, toDisplay } from "@/lib/utils";
+import type { ListResult, TrashRecord } from "@/types/api";
 
 type TrashFilters = {
   q: string;
@@ -72,9 +73,6 @@ const trashDetailFields: DetailField[] = [
 export default function TrashPage() {
   const [filters, setFilters] = useState<TrashFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<TrashFilters>(initialFilters);
-  const [stats, setStats] = useState<UnknownRecord | null>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [statsError, setStatsError] = useState<string | null>(null);
   const [rows, setRows] = useState<TrashRecord[]>([]);
   const [meta, setMeta] = useState<ListResult<TrashRecord>["meta"]>();
   const [loading, setLoading] = useState(true);
@@ -126,19 +124,6 @@ export default function TrashPage() {
     [selectedModelLabel],
   );
 
-  const fetchStats = useCallback(async () => {
-    setStatsLoading(true);
-    setStatsError(null);
-    try {
-      const result = await trashApi.stats();
-      setStats(isRecord(result) ? result : null);
-    } catch (caught) {
-      setStatsError(caught instanceof Error ? caught.message : "O'chirilganlar statistikasi yuklanmadi");
-    } finally {
-      setStatsLoading(false);
-    }
-  }, []);
-
   const fetchRecords = useCallback(async () => {
     if (!filters.model) {
       setError("Model tanlang");
@@ -165,22 +150,24 @@ export default function TrashPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void fetchStats();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [fetchStats]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
       void fetchRecords();
     }, 0);
     return () => window.clearTimeout(timer);
   }, [fetchRecords]);
 
-  const applyFilters = (event: FormEvent) => {
-    event.preventDefault();
-    setFilters({ ...draftFilters, page: 1, limit: Number(draftFilters.limit) || limit });
-  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFilters((current) => {
+        const next = {
+          ...draftFilters,
+          page: 1,
+          limit: Number(current.limit) || limit,
+        };
+        return sameFilters(current, next) ? current : next;
+      });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [draftFilters]);
 
   const resetFilters = () => {
     setDraftFilters(initialFilters);
@@ -188,7 +175,7 @@ export default function TrashPage() {
   };
 
   const refresh = async () => {
-    await Promise.all([fetchStats(), fetchRecords()]);
+    await fetchRecords();
   };
 
   const changePage = (page: number) => {
@@ -285,19 +272,17 @@ export default function TrashPage() {
         <button
           type="button"
           onClick={() => void refresh()}
-          disabled={loading || statsLoading}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-600 transition hover:border-amber-300 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:text-slate-300"
+          disabled={loading}
+          className={adminPrimaryActionButtonClass}
         >
           <RefreshCw className="size-4" />
-          Refresh
+          Yangilash
         </button>
       </div>
 
-      <StatsSection stats={stats} loading={statsLoading} error={statsError} />
-
       <AdminFilterForm
-        onSubmit={applyFilters}
-        gridClassName="md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.75fr)_minmax(120px,0.5fr)_minmax(120px,0.5fr)_auto_auto] md:items-center"
+        onSubmit={(event) => event.preventDefault()}
+        gridClassName="md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.75fr)_auto] md:items-center"
         mobileLabel="Filter"
       >
           <FormField
@@ -322,46 +307,12 @@ export default function TrashPage() {
               setDraftFilters((current) => ({ ...current, model: model as TrashModel | "" }))
             }
           />
-          <FormField
-            label="Page"
-            type="number"
-            value={draftFilters.page}
-            className={adminFilterControlClass}
-            hideLabel
-            compact
-            onChange={(value) =>
-              setDraftFilters((current) => ({ ...current, page: Number(value) || 1 }))
-            }
-          />
-          <FormField
-            label="Limit"
-            type="number"
-            value={draftFilters.limit}
-            className={adminFilterControlClass}
-            hideLabel
-            compact
-            onChange={(value) =>
-              setDraftFilters((current) => ({ ...current, limit: Number(value) || limit }))
-            }
-          />
-          <p className={`${adminFilterActionClass} text-sm font-semibold text-slate-500 dark:text-slate-400 md:col-span-4`}>
-            {isSearchMode
-              ? "Qidiruv rejimida natijalar kalit so'z bo'yicha chiqariladi."
-              : `${selectedModelLabel} bo'yicha o'chirilgan yozuvlar ko'rsatiladi.`}
-          </p>
             <button
               type="button"
               onClick={resetFilters}
               className={`${adminFilterActionClass} h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300`}
             >
               Tozalash
-            </button>
-            <button
-              type="submit"
-              className={`${adminFilterActionClass} inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950`}
-            >
-              <Search className="size-4" />
-              Qidirish
             </button>
       </AdminFilterForm>
 
@@ -436,53 +387,6 @@ export default function TrashPage() {
   );
 }
 
-function StatsSection({
-  stats,
-  loading,
-  error,
-}: {
-  stats: UnknownRecord | null;
-  loading: boolean;
-  error: string | null;
-}) {
-  if (loading) {
-    return (
-      <div className="grid gap-4 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div
-            key={index}
-            className="h-28 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
-          />
-        ))}
-      </div>
-    );
-  }
-
-  if (error) return <ErrorState message={error} />;
-  if (!stats) return <EmptyState />;
-
-  const entries = Object.entries(stats);
-  if (!entries.length) return <EmptyState />;
-
-  return (
-    <div className="grid gap-4 md:grid-cols-4">
-      {entries.map(([key, value]) => (
-        <div
-          key={key}
-          className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-xl shadow-slate-950/[0.04] dark:border-white/10 dark:bg-slate-950"
-        >
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-            {key}
-          </p>
-          <p className="mt-3 line-clamp-2 text-2xl font-black text-slate-950 dark:text-white">
-            {toDisplay(value)}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function getModelLabel(model: TrashModel) {
   return trashModels.find((item) => item.value === model)?.label ?? model;
 }
@@ -500,6 +404,15 @@ function getNumericId(row: TrashRecord): number | undefined {
 function getActionModel(row: TrashRecord, fallback: TrashModel | ""): TrashModel | undefined {
   if (typeof row.model === "string" && isTrashModel(row.model)) return row.model;
   return fallback || undefined;
+}
+
+function sameFilters(left: TrashFilters, right: TrashFilters) {
+  return (
+    String(left.q ?? "") === String(right.q ?? "") &&
+    String(left.model ?? "") === String(right.model ?? "") &&
+    Number(left.page ?? 1) === Number(right.page ?? 1) &&
+    Number(left.limit ?? limit) === Number(right.limit ?? limit)
+  );
 }
 
 function isTrashModel(value: string): value is TrashModel {

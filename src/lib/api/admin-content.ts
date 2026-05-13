@@ -27,6 +27,8 @@ export type CategoryFilters = {
   parent_id?: string;
   status?: string;
   name?: string;
+  page?: number;
+  limit?: number;
 };
 
 export type CategoryCreatePayload = {
@@ -175,15 +177,59 @@ export type ArtistFilters = {
 };
 
 export type UpdateArtistPayload = {
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  email?: string;
+  status?: number;
+  region_id?: number;
+  district_id?: number;
   category_ids?: number[];
   bio?: string;
+  birth_date?: string;
+  gender?: "male" | "female" | "other";
+  artist_bio?: string;
   albums_count?: number;
+  fans_count?: number;
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;
   profile_photo_id?: number;
+  is_verified?: boolean;
   is_top?: boolean;
   rating?: number;
+};
+
+export type CreateArtistPayload = {
+  first_name: string;
+  last_name?: string;
+  phone: string;
+  email?: string;
+  password: string;
+  status?: number;
+  region_id?: number;
+  district_id?: number;
+  bio?: string;
+  birth_date?: string;
+  gender?: "male" | "female" | "other";
+  artist_bio?: string;
+  extra_phone?: string;
+  administrator_name?: string;
+  administrator_phone?: string;
+  albums_count?: number;
+  fans_count?: number;
+  profile_photo_id?: number;
+  is_verified?: boolean;
+  is_top?: boolean;
+  category_ids?: number[];
+};
+
+export type UploadedFileRecord = UnknownRecord & {
+  id?: number;
+  file_id?: number;
+  url?: string;
+  file_url?: string;
+  path?: string;
 };
 
 export type ApplicationFilters = {
@@ -220,8 +266,17 @@ export type OrderDetailFilters = {
 };
 
 export type UpdateOrderPayload = {
-  notes?: string;
+  date?: string;
+  time?: string;
+  time_to?: string;
+  service_id?: number;
+  sub_service_id?: number | null;
+  region_id?: number;
+  district_id?: number;
   address?: string;
+  group_size?: number;
+  comment?: string;
+  total_price?: number;
   lat?: number;
   lon?: number;
 };
@@ -625,6 +680,10 @@ export const artistsApi = {
     });
     return normalizeList<ArtistProfile>(response.data);
   },
+  async create(payload: CreateArtistPayload) {
+    const response = await apiClient.post("/v1/admin/artist", payload);
+    return unwrapData<ArtistProfile>(response.data);
+  },
   async detail(id: number) {
     // TODO: Swagger documents this endpoint but omits the concrete response schema.
     const response = await apiClient.get(`/v1/admin/artist/${id}`);
@@ -634,6 +693,18 @@ export const artistsApi = {
     // TODO: Swagger omits update artist response body shape.
     const response = await apiClient.put(`/v1/admin/artist/${id}`, payload);
     return unwrapData<ArtistProfile>(response.data);
+  },
+};
+
+export const filesApi = {
+  async upload(files: File[], category = "image") {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files[]", file));
+    formData.append("category", category);
+    const response = await apiClient.post("/v1/admin/file/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return unwrapData<UploadedFileRecord[] | UploadedFileRecord>(response.data);
   },
 };
 

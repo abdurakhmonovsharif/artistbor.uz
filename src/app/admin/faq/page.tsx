@@ -58,9 +58,11 @@ export default function FaqPage() {
       createFields={fields}
       updateFields={fields}
       initialFilters={{ search: "", status: "", page: 1, limit: 20 }}
-      filterGridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto_auto] md:items-center"
+      filterGridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
       inlineFilterActions
+      autoApplyFilters
       showFilterSettingsButton
+      showFilterSearchButton={false}
       pagination={{ limit: 20 }}
       list={faqApi.list}
       detail={faqApi.detail}
