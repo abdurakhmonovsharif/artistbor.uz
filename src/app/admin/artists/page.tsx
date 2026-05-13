@@ -1017,7 +1017,7 @@ function ArtistDrawerActions({
       <div className="grid grid-cols-2 gap-2">
         <ArtistDrawerActionButton
           icon={<X className="size-4" />}
-          label={t("actions.cancel")}
+          label={t("actions.close")}
           onClick={onClose}
         />
         <ArtistDrawerActionButton
@@ -1394,7 +1394,7 @@ function EditArtistForm({
       onSubmit={submit}
       className="space-y-6"
     >
-      <ArtistFormSection title={labels.mainInfo}>
+      <ArtistFormSection hideTitle title={labels.mainInfo}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
           <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
@@ -1403,7 +1403,7 @@ function EditArtistForm({
         </div>
       </ArtistFormSection>
 
-      <ArtistFormSection title={labels.contactInfo}>
+      <ArtistFormSection hideTitle title={labels.contactInfo}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998" })))} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
           <FormField compact label={labels.extraPhone} value={values.extra_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998" })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone }))} />
@@ -1411,7 +1411,7 @@ function EditArtistForm({
         </div>
       </ArtistFormSection>
 
-      <ArtistFormSection title={labels.locationInfo}>
+      <ArtistFormSection hideTitle title={labels.locationInfo}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField
             compact
@@ -1435,7 +1435,7 @@ function EditArtistForm({
         </div>
       </ArtistFormSection>
 
-      <ArtistFormSection title={labels.artistInfo}>
+      <ArtistFormSection hideTitle title={labels.artistInfo}>
         <div className="grid gap-4">
           <FormField compact label={labels.category} type="select" value={values.category_ids} placeholder={labels.categoryPlaceholder} options={categoryOptions(categories, labels)} onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))} />
           <FormField compact label={labels.bio} type="textarea" rows={4} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
@@ -1451,14 +1451,14 @@ function EditArtistForm({
         </div>
       </ArtistFormSection>
 
-      <ArtistFormSection title={labels.adminInfo}>
+      <ArtistFormSection hideTitle title={labels.adminInfo}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
           <FormField compact label={labels.adminPhone} value={values.administrator_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998" })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone }))} />
         </div>
       </ArtistFormSection>
 
-      <ArtistFormSection title={labels.accountStatus}>
+      <ArtistFormSection hideTitle title={labels.accountStatus}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
           <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
@@ -1466,7 +1466,7 @@ function EditArtistForm({
         </div>
       </ArtistFormSection>
 
-      <ArtistFormSection title={labels.statistics}>
+      <ArtistFormSection hideTitle title={labels.statistics}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.albumsCount} type="number" value={values.albums_count} placeholder={labels.albumsCount} onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
           <FormField compact label={labels.fansCount} type="number" value={values.fans_count} placeholder={labels.fansCount} onChange={(fans_count) => setValues((current) => ({ ...current, fans_count }))} />
@@ -1478,17 +1478,21 @@ function EditArtistForm({
 }
 
 function ArtistFormSection({
+  hideTitle,
   title,
   children,
 }: {
+  hideTitle?: boolean;
   title: string;
   children: ReactNode;
 }) {
   return (
     <section className="space-y-3 pt-1 first:pt-0">
-      <p className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-slate-500 dark:text-slate-400">
-        {title}
-      </p>
+      {hideTitle ? null : (
+        <p className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-slate-500 dark:text-slate-400">
+          {title}
+        </p>
+      )}
       {children}
     </section>
   );
@@ -3485,7 +3489,7 @@ function getArtistsLabels(locale: string) {
       calendarPreview: "Календарь",
       artistBio: "Bio артиста",
       birthDate: "Дата рождения",
-      cancel: "Отмена",
+      cancel: "Закрыть",
       category: "Категории",
       categoryPlaceholder: "Выберите категорию",
       categoryIds: "ID категорий",
@@ -3695,7 +3699,7 @@ function getArtistsLabels(locale: string) {
     calendarPreview: "Kalendar",
     artistBio: "Sanatkor bio",
     birthDate: "Tug'ilgan sana",
-    cancel: "Bekor qilish",
+    cancel: "Yopish",
     category: "Kategoriya",
     categoryPlaceholder: "Kategoriya tanlang",
     categoryIds: "Kategoriya IDlari",

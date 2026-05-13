@@ -2591,7 +2591,7 @@ function FormActions({
         className={adminActionButtonClass}
       >
         <X className="size-4" />
-        {labels.cancelAction}
+        {labels.close}
       </button>
       <button
         type="submit"

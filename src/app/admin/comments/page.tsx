@@ -487,7 +487,7 @@ function FormActions({ loading, onClose }: { loading: boolean; onClose: () => vo
         className={adminActionButtonClass}
       >
         <XCircle className="size-4" />
-        Bekor qilish
+        Yopish
       </button>
       <button
         type="submit"

@@ -583,7 +583,7 @@ function ServiceFormDrawer({
             className={adminActionButtonClass}
           >
             <X className="size-4" />
-            {t("actions.cancel")}
+            {t("actions.close")}
           </button>
           <button
             type="submit"
