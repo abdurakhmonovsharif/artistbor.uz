@@ -7,6 +7,7 @@ import { ArrowRight, Eye, EyeOff, LockKeyhole, Phone } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { getToken } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useToast } from "@/components/ui/toast";
 
 export default function LoginPage() {
@@ -28,7 +29,7 @@ export default function LoginPage() {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await login(phone, password);
+      await login(normalizePhoneForApi(phone), password);
       toast.success(t("login.success"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("login.failed"));
@@ -59,7 +60,7 @@ export default function LoginPage() {
                 <Phone className="size-[19px] shrink-0 text-[#8b98b5]" strokeWidth={1.8} />
                 <input
                   value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={(event) => setPhone(formatPhone(event.target.value))}
                   required
                   type="tel"
                   autoComplete="username"
