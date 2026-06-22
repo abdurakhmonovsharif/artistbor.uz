@@ -39,6 +39,7 @@ import {
   type ApplicationFilters,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import type { Locale } from "@/lib/i18n/translations";
 import { toDisplay } from "@/lib/utils";
 import type { ArtistApplication, Category, ListResult } from "@/types/api";
@@ -109,6 +110,7 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
   const [contactApplication, setContactApplication] = useState<ArtistApplication | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const debouncedSearch = useDebouncedValue(uiFilters.search, 450);
 
   const activeStatus = uiFilters.status;
   const page = Number(apiFilters.page ?? 1);
@@ -171,9 +173,20 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     return () => window.clearTimeout(timer);
   }, [fetchCategories, fetchStatusCounts]);
 
+  const appliedUiFilters = useMemo(
+    () => ({
+      search: debouncedSearch,
+      status: uiFilters.status,
+      categoryId: uiFilters.categoryId,
+      dateRange: uiFilters.dateRange,
+      customDateRange: uiFilters.customDateRange,
+    }),
+    [debouncedSearch, uiFilters.categoryId, uiFilters.customDateRange, uiFilters.dateRange, uiFilters.status],
+  );
+
   const displayedRows = useMemo(
-    () => filterRows(rows, uiFilters, categoryMap, locale),
-    [rows, uiFilters, categoryMap, locale],
+    () => filterRows(rows, appliedUiFilters, categoryMap, locale),
+    [rows, appliedUiFilters, categoryMap, locale],
   );
 
   const changeStatus = (status: ApplicationStatusKey) => {

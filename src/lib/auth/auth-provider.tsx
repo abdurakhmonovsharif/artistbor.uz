@@ -4,7 +4,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { usePathname, useRouter } from "next/navigation";
 import { getCurrentAdmin, login as loginRequest, logout as logoutRequest } from "@/lib/api/auth";
 import { ADMIN_AUTH_PREVIEW_ENABLED, getToken } from "@/lib/api/client";
+import { staffApi, type StaffRole, type UpdateStaffPayload } from "@/lib/api/admin-content";
 import type { User } from "@/types/api";
+
+export type AdminProfileUpdatePayload = {
+  first_name: string;
+  last_name?: string;
+  phone: string;
+  email?: string;
+};
 
 type AuthContextValue = {
   user: User | null;
@@ -12,6 +20,7 @@ type AuthContextValue = {
   login: (phone: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  updateProfile: (payload: AdminProfileUpdatePayload) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -78,14 +87,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await logoutRequest();
+    try {
+      await logoutRequest();
+    } catch {
+      // Local logout must still complete if token revocation fails or the token is already expired.
+    }
     setUser(null);
     router.replace("/login");
   }, [router]);
 
+  const updateProfile = useCallback(
+    async (payload: AdminProfileUpdatePayload) => {
+      if (!user?.id) throw new Error("Admin ID topilmadi");
+
+      const updatePayload: UpdateStaffPayload = {
+        ...payload,
+        role: resolveStaffRole(user.role),
+        status: user.status,
+      };
+      const updated = await staffApi.update(user.id, updatePayload);
+      setUser((current) => ({
+        ...(current ?? user),
+        ...(updated ?? {}),
+        first_name: updated?.first_name ?? payload.first_name,
+        last_name: updated?.last_name ?? payload.last_name,
+        phone: updated?.phone ?? payload.phone,
+        email: updated?.email ?? payload.email,
+      }));
+    },
+    [user],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, refresh }),
-    [user, loading, login, logout, refresh],
+    () => ({ user, loading, login, logout, refresh, updateProfile }),
+    [user, loading, login, logout, refresh, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -95,4 +130,14 @@ export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used inside AuthProvider");
   return context;
+}
+
+function resolveStaffRole(role: User["role"]): StaffRole {
+  if (role === 20 || role === 25 || role === 30) return role;
+  if (role === "20") return 20;
+  if (role === "25") return 25;
+  if (role === "30") return 30;
+  if (role === "operator") return 20;
+  if (role === "moderator") return 25;
+  return 30;
 }

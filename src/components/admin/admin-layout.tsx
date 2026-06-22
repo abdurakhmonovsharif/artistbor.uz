@@ -27,7 +27,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       try {
         const [statsResult, pendingOrdersResult] = await Promise.allSettled([
           dashboardApi.quickStats(),
-          ordersApi.list({ status: "pending", page: 1, limit: 1 }),
+          ordersApi.list({ status: "10", page: 1, limit: 1 }),
         ]);
         if (!active) return;
         if (statsResult.status === "rejected") {
@@ -67,6 +67,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const handleToggleNavigation = () => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setSidebarCollapsed((current) => !current);
+      return;
+    }
+
+    setSidebarOpen((current) => !current);
+  };
+
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-[#0f172a]">
@@ -88,14 +97,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         open={sidebarOpen}
         collapsed={sidebarCollapsed}
         onClose={() => setSidebarOpen(false)}
-        onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onLogout={handleLogout}
         quickStats={quickStats}
       />
       <div className="min-w-0">
         <Header
           user={user}
-          onOpenSidebar={() => setSidebarOpen(true)}
+          navigationExpanded={sidebarOpen || !sidebarCollapsed}
+          pendingOrdersCount={quickStats?.pending_orders}
+          onToggleNavigation={handleToggleNavigation}
           onLogout={handleLogout}
         />
         <main className="px-4 py-6 lg:px-8 lg:py-8">{children}</main>

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { LogOut, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { LogOut, X } from "lucide-react";
 import {
   adminMenu,
   adminMenuGroups,
@@ -21,14 +22,12 @@ export function Sidebar({
   open,
   collapsed,
   onClose,
-  onToggleCollapsed,
   onLogout,
   quickStats,
 }: {
   open: boolean;
   collapsed: boolean;
   onClose: () => void;
-  onToggleCollapsed: () => void;
   onLogout: () => void;
   quickStats: DashboardQuickStats | null;
 }) {
@@ -89,28 +88,22 @@ export function Sidebar({
             className={cn("flex min-w-0 items-center", compact ? "justify-center" : "gap-3")}
             aria-label={t("admin.brandAria")}
           >
-            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-sm font-bold text-white">
-              A
-            </span>
-            <span className={cn("min-w-0", compact && "hidden")}>
-              <span className="block truncate text-sm font-semibold text-slate-950 dark:text-white">
-                Artistbor
+            {compact ? (
+              <BrandMark className="size-10" />
+            ) : (
+              <span className="flex min-w-0 items-center gap-3">
+                <BrandMark className="size-10 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-slate-950 dark:text-white">
+                    Artistbor
+                  </span>
+                  <span className="block truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {t("menu.dashboard")}
+                  </span>
+                </span>
               </span>
-              <span className="block truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t("menu.dashboard")}
-              </span>
-            </span>
+            )}
           </Link>
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            className="absolute -right-4 top-1/2 z-10 hidden size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:bg-[#111827] dark:text-slate-400 dark:hover:border-amber-400/40 dark:hover:text-amber-300 lg:grid"
-            aria-label={compact ? t("sidebar.expand") : t("sidebar.collapse")}
-            aria-expanded={!compact}
-            title={compact ? t("sidebar.expand") : t("sidebar.collapse")}
-          >
-            {compact ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          </button>
           <button
             type="button"
             onClick={onClose}
@@ -152,6 +145,29 @@ export function Sidebar({
         </div>
       </aside>
     </>
+  );
+}
+
+function BrandMark({ className }: { className?: string }) {
+  return (
+    <span className={cn("relative block overflow-hidden rounded-lg", className)}>
+      <Image
+        src="/brand/artistbor-mark.webp"
+        alt="Artistbor"
+        className="size-full object-contain dark:hidden"
+        width={345}
+        height={345}
+        decoding="async"
+      />
+      <Image
+        src="/brand/artistbor-mark-dark.webp"
+        alt="Artistbor"
+        className="hidden size-full object-cover dark:block"
+        width={430}
+        height={430}
+        decoding="async"
+      />
+    </span>
   );
 }
 

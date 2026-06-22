@@ -58,6 +58,7 @@ import { getArtistName } from "@/lib/artist-display";
 import { formatBookingDate, formatBookingTimeRange, formatUnixDateTime } from "@/lib/order-format";
 import { getOrderUiStatus } from "@/lib/order-status";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import type { Locale } from "@/lib/i18n/translations";
 import { cn, getValue, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 import type {
@@ -148,7 +149,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(initialOrderFilters);
   const [searchDraft, setSearchDraft] = useState("");
-  const [search, setSearch] = useState("");
+  const search = useDebouncedValue(searchDraft.trim(), 300);
   const [dateRange, setDateRange] = useState<OrderDateRange>(() => inferDateRange(initialOrderFilters));
   const [artistOptions, setArtistOptions] = useState<ArtistProfile[]>([]);
   const [clients, setClients] = useState<User[]>([]);
@@ -274,14 +275,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     draftFilters.status,
   ]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setSearch(searchDraft.trim());
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }, [searchDraft]);
-
   const clientMap = useMemo(() => createEntityMap(clients, (client) => [client.id]), [clients]);
   const artistMap = useMemo(
     () => createEntityMap(artistOptions, (artist) => [artist.id, artist.user_id]),
@@ -383,7 +376,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setSearchDraft("");
-    setSearch("");
     setDateRange("all");
     setFilters(initialFilters);
   };

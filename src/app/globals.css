@@ -231,7 +231,7 @@ input[type="time"] {
   background: var(--artistbor-sidebar-item-selected-bg) !important;
   box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.16);
   color: var(--artistbor-sidebar-item-selected) !important;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .artistbor-sidebar-menu .ant-menu-item-selected::before {
@@ -365,6 +365,7 @@ input[type="time"] {
 }
 
 .artistbor-confirm-modal .ant-modal-body {
+  color: rgb(51 65 85);
   padding: 0;
 }
 
@@ -399,13 +400,17 @@ input[type="time"] {
 }
 
 .dark .artistbor-confirm-modal .ant-modal-content {
-  background: #202020;
+  background: #111827;
   border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
 
 .dark .artistbor-confirm-modal .ant-modal-title {
   color: #ffffff;
+}
+
+.dark .artistbor-confirm-modal .ant-modal-body {
+  color: rgb(203 213 225);
 }
 
 .dark .artistbor-confirm-modal .ant-modal-close {
@@ -821,6 +826,11 @@ input[type="time"] {
 .admin-table-scroll {
   scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
   scrollbar-width: thin;
+}
+
+.admin-table-scroll tbody,
+.admin-table-scroll tbody :where(a, button, div, p, span, td) {
+  font-weight: 400 !important;
 }
 
 .admin-table-scroll::-webkit-scrollbar {

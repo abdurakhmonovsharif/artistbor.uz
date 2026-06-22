@@ -2,23 +2,25 @@
 
 import { type ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, Drawer, Input, Select, Tabs } from "antd";
+import { Button, Drawer, Input, Modal, Select, Tabs } from "antd";
 import {
   CalendarDays,
   CalendarPlus,
   CheckCircle2,
   ChevronDown,
   Clock,
-  Copy,
+  ExternalLink,
   Eye,
   Folder,
   IdCard,
   ImagePlus,
+  KeyRound,
   Languages,
   ListChecks,
   Mail,
   MoreHorizontal,
   Pencil,
+  PlayCircle,
   Phone,
   Plus,
   RotateCcw,
@@ -57,12 +59,17 @@ import {
   ratingsApi,
   regionsApi,
   servicesApi,
+  staffApi,
   type CreateArtistPayload,
   type ArtistFilters,
+  type ArtistBusySlotPayload,
+  type UpdateCommentPayload,
   type UpdateArtistPayload,
   type UploadedFileRecord,
 } from "@/lib/api/admin-content";
+import { API_BASE_URL } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 import type { ArtistProfile, Category, District, ListResult, Region, UnknownRecord } from "@/types/api";
 
@@ -84,6 +91,16 @@ type DetailResourceState = {
 type ScheduleDrawerState =
   | { mode: "manage"; schedule: UnknownRecord }
   | { mode: "create"; schedule: null };
+type BusySlotDialogState =
+  | { mode: "create"; row?: AvailabilityRow; date?: string }
+  | { mode: "edit"; row: AvailabilityRow }
+  | null;
+type BusySlotFormValues = {
+  date: string;
+  start_time: string;
+  end_time: string;
+  reason: string;
+};
 
 const limit = 20;
 
@@ -212,6 +229,7 @@ export default function ArtistsPage() {
   const labels = getArtistsLabels(locale);
   const columns = getArtistColumns(labels);
   const toast = useToast();
+  const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
   const fetchArtists = useCallback(async () => {
     setLoading(true);
@@ -233,6 +251,32 @@ export default function ArtistsPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [fetchArtists]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFilters((current) => {
+        const nextLimit = Number(current.limit) || limit;
+        const next: ArtistFilters = {
+          ...current,
+          search: debouncedSearch,
+          page: 1,
+          limit: nextLimit,
+        };
+
+        if (
+          (current.search ?? "") === next.search &&
+          Number(current.page ?? 1) === next.page &&
+          Number(current.limit ?? limit) === next.limit
+        ) {
+          return current;
+        }
+
+        return next;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [debouncedSearch]);
 
   const openDialog = async (type: "view" | "edit", row: ArtistProfile) => {
     const artistId = getArtistId(row);
@@ -453,6 +497,7 @@ function ArtistDrawer({
     createDetailResources,
   );
   const [scheduleDrawer, setScheduleDrawer] = useState<ScheduleDrawerState | null>(null);
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
   const artistId = artist ? getArtistId(artist) : undefined;
   const formId = artistId ? `artist-edit-form-${artistId}` : "artist-edit-form";
 
@@ -508,6 +553,114 @@ function ArtistDrawer({
     };
   }, [artist, artistId, labels.artistIdMissing, labels.resourceLoadFailed]);
 
+  const reloadAvailability = useCallback(async () => {
+    if (!artistId) return;
+
+    setResources((current) => ({
+      ...current,
+      availability: {
+        ...current.availability,
+        loading: true,
+        error: null,
+      },
+    }));
+
+    try {
+      const result = await artistAvailabilityApi.list(artistId);
+      setResources((current) => ({
+        ...current,
+        availability: {
+          loading: false,
+          error: null,
+          rows: result.items as UnknownRecord[],
+          meta: result.meta,
+          raw: result.raw,
+        },
+      }));
+    } catch (caught) {
+      setResources((current) => ({
+        ...current,
+        availability: {
+          ...current.availability,
+          loading: false,
+          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+        },
+      }));
+    }
+  }, [artistId, labels.resourceLoadFailed]);
+
+  const reloadComments = useCallback(async () => {
+    if (!artistId) return;
+
+    setResources((current) => ({
+      ...current,
+      comments: {
+        ...current.comments,
+        loading: true,
+        error: null,
+      },
+    }));
+
+    try {
+      const result = await commentsApi.byArtist(artistId);
+      setResources((current) => ({
+        ...current,
+        comments: {
+          loading: false,
+          error: null,
+          rows: result.items as UnknownRecord[],
+          meta: result.meta,
+          raw: result.raw,
+        },
+      }));
+    } catch (caught) {
+      setResources((current) => ({
+        ...current,
+        comments: {
+          ...current.comments,
+          loading: false,
+          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+        },
+      }));
+    }
+  }, [artistId, labels.resourceLoadFailed]);
+
+  const reloadRatings = useCallback(async () => {
+    if (!artistId) return;
+
+    setResources((current) => ({
+      ...current,
+      ratings: {
+        ...current.ratings,
+        loading: true,
+        error: null,
+      },
+    }));
+
+    try {
+      const result = await ratingsApi.byArtist(artistId, 1, limit);
+      setResources((current) => ({
+        ...current,
+        ratings: {
+          loading: false,
+          error: null,
+          rows: result.items as UnknownRecord[],
+          meta: result.meta,
+          raw: result.raw,
+        },
+      }));
+    } catch (caught) {
+      setResources((current) => ({
+        ...current,
+        ratings: {
+          ...current.ratings,
+          loading: false,
+          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+        },
+      }));
+    }
+  }, [artistId, labels.resourceLoadFailed]);
+
   if (!artist) return null;
 
   return (
@@ -515,7 +668,7 @@ function ArtistDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      size="min(100vw, 480px)"
+      size={mode === "view" ? "min(100vw, 760px)" : "min(100vw, 560px)"}
       placement="right"
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
@@ -545,6 +698,7 @@ function ArtistDrawer({
           mode={mode}
           onClose={onClose}
           onEdit={() => onEdit(artist)}
+          onResetPassword={() => setPasswordResetOpen(true)}
         />
       }
       styles={{
@@ -590,8 +744,22 @@ function ArtistDrawer({
                     onCreate={() => setScheduleDrawer({ mode: "create", schedule: null })}
                     onOpen={(schedule) => setScheduleDrawer({ mode: "manage", schedule })}
                   />
+                ) : tab.key === "gallery" ? (
+                  <ArtistGalleryTab state={resources.gallery} labels={labels} />
                 ) : tab.key === "videos" ? (
                   <ArtistVideosSummary artistId={artistId} state={resources.videos} />
+                ) : tab.key === "comments" ? (
+                  <ArtistCommentsTab
+                    labels={labels}
+                    state={resources.comments}
+                    onChanged={reloadComments}
+                  />
+                ) : tab.key === "ratings" ? (
+                  <ArtistRatingsTab
+                    labels={labels}
+                    state={resources.ratings}
+                    onChanged={reloadRatings}
+                  />
                 ) : (
                   <ResourcePanel
                     title={tab.label}
@@ -611,7 +779,16 @@ function ArtistDrawer({
       open={Boolean(scheduleDrawer)}
       schedule={scheduleDrawer?.schedule ?? null}
       onClose={() => setScheduleDrawer(null)}
+      onChanged={reloadAvailability}
     />
+    {passwordResetOpen ? (
+      <ArtistPasswordResetModal
+        artist={artist}
+        labels={labels}
+        open={passwordResetOpen}
+        onClose={() => setPasswordResetOpen(false)}
+      />
+    ) : null}
     </>
   );
 }
@@ -1003,14 +1180,18 @@ function ArtistDrawerActions({
   formId,
   onClose,
   onEdit,
+  onResetPassword,
 }: {
   mode: "view" | "edit";
   loading: boolean;
   formId: string;
   onClose: () => void;
   onEdit: () => void;
+  onResetPassword: () => void;
 }) {
   const { t } = useI18n();
+  const { locale } = useI18n();
+  const labels = getArtistsLabels(locale);
 
   if (mode === "edit") {
     return (
@@ -1033,11 +1214,17 @@ function ArtistDrawerActions({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       <ArtistDrawerActionButton
         icon={<X className="size-4" />}
         label={t("actions.close")}
         onClick={onClose}
+      />
+      <ArtistDrawerActionButton
+        icon={<KeyRound className="size-4" />}
+        label={labels.resetPasswordAction}
+        tone="warning"
+        onClick={onResetPassword}
       />
       <ArtistDrawerActionButton
         icon={<Pencil className="size-4" />}
@@ -1060,12 +1247,14 @@ function ArtistDrawerActionButton({
   icon: ReactNode;
   label: string;
   loading?: boolean;
-  tone?: "default" | "primary" | "save";
+  tone?: "default" | "primary" | "save" | "warning";
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const buttonType = buttonProps.type ?? "button";
   const toneClass =
     tone === "save" || tone === "primary"
       ? "border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-transparent dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+      : tone === "warning"
+        ? "border-amber-200 bg-white text-amber-700 hover:border-amber-300 hover:bg-amber-50 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-500/10"
       : "border-rose-200 bg-white text-rose-600 hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10";
 
   return (
@@ -1092,6 +1281,102 @@ function ArtistDrawerActionButton({
   );
 }
 
+function ArtistPasswordResetModal({
+  artist,
+  labels,
+  open,
+  onClose,
+}: {
+  artist: ArtistProfile;
+  labels: ArtistsLabels;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextErrors: Record<string, string> = {};
+    const nextPassword = password.trim();
+    const artistId = getArtistId(artist);
+
+    if (!artistId) nextErrors.password = labels.artistIdMissing;
+    if (!nextPassword) nextErrors.password = labels.requiredField(labels.newPassword);
+    if (nextPassword && nextPassword.length < 6) nextErrors.password = labels.passwordMinLength;
+    if (nextPassword !== confirmPassword.trim()) nextErrors.confirmPassword = labels.passwordMismatch;
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    setSubmitting(true);
+    try {
+      await staffApi.resetPassword(Number(artistId), nextPassword);
+      toast.success(labels.passwordResetSuccess);
+      onClose();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.passwordResetFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={labels.resetPasswordTitle}
+      onCancel={onClose}
+      footer={null}
+      destroyOnHidden
+      centered
+    >
+      <form className="space-y-4 pt-2" onSubmit={submit}>
+        <p className="text-sm leading-5 text-slate-500 dark:text-slate-400">
+          {labels.resetPasswordDescription(getArtistName(artist, labels))}
+        </p>
+        <FormField
+          compact
+          required
+          label={labels.newPassword}
+          type="password"
+          value={password}
+          error={errors.password}
+          autoComplete="new-password"
+          onChange={setPassword}
+        />
+        <FormField
+          compact
+          required
+          label={labels.confirmPassword}
+          type="password"
+          value={confirmPassword}
+          error={errors.confirmPassword}
+          autoComplete="new-password"
+          onChange={setConfirmPassword}
+        />
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.04]"
+          >
+            {labels.cancel}
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="h-10 rounded-lg border border-amber-300 bg-amber-400 px-3 text-sm font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? labels.saving : labels.resetPasswordAction}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function ArtistInfoGrid({
   artist,
   labels,
@@ -1100,7 +1385,6 @@ function ArtistInfoGrid({
   labels: ArtistsLabels;
 }) {
   const cells = [
-    { icon: <IdCard className="size-4" />, label: labels.artistId, value: getArtistId(artist), always: true },
     { icon: <User className="size-4" />, label: labels.fullName, value: getArtistName(artist, labels), always: true },
     { icon: <Phone className="size-4" />, label: labels.phone, value: artist.phone ?? artist.extra_phone, always: true },
     { icon: <Mail className="size-4" />, label: labels.email, value: artist.email },
@@ -1832,45 +2116,817 @@ function ArtistVideosSummary({
   if (state.error) return <ErrorState message={state.error} />;
 
   const rows = state.rows.length ? state.rows : rowsFromRawResource(state.raw);
+  const videoItems = rows
+    .map((row, index) => videoItemFromRecord(row, index, labels))
+    .filter((item) => item.title || item.videoUrl || item.thumbnailUrlCandidates.length);
   const href = artistId ? `/admin/videos?artist_id=${artistId}` : "/admin/videos";
 
+  if (!videoItems.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
+        <PlayCircle className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
+        <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">{labels.videosEmptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+          {labels.noVideoHint}
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-4 dark:border-white/10 dark:bg-slate-950">
-      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
-            {labels.artistVideos}
-          </p>
-          <p className="mt-1 text-xl font-bold text-slate-950 dark:text-white">
-            {rows.length}
-          </p>
+          <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.artistVideos}</h4>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {labels.artistVideosCountHint}
+            {labels.videoItemCount(videoItems.length)}
           </p>
         </div>
         <Link
           href={href}
-          className="inline-flex items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
         >
+          <ExternalLink className="size-4" />
           {labels.viewInTable}
         </Link>
       </div>
-      {rows.length ? (
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {rows.slice(0, 2).map((row, index) => (
-            <div
-              key={String(resourceRowKey(row, index))}
-              className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/[0.03]"
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {videoItems.map((item) => (
+          <VideoPreviewCard key={item.key} item={item} labels={labels} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type VideoItemView = {
+  key: string;
+  title: string;
+  subtitle: string;
+  thumbnailUrlCandidates: string[];
+  videoUrl: string;
+  status?: unknown;
+  createdAt?: unknown;
+  duration?: unknown;
+  sortOrder?: unknown;
+};
+
+function VideoPreviewCard({ item, labels }: { item: VideoItemView; labels: ArtistsLabels }) {
+  const preview = <VideoPreviewImage labels={labels} title={item.title} urls={item.thumbnailUrlCandidates} />;
+  const chips = [
+    item.duration !== undefined ? `${labels.duration}: ${toDisplay(item.duration)}` : "",
+    item.sortOrder !== undefined ? `${labels.sortOrder}: ${toDisplay(item.sortOrder)}` : "",
+    item.createdAt !== undefined ? formatDisplayValue("created_at", item.createdAt, labels) : "",
+  ].filter(Boolean);
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-[#E5EAF2] bg-white p-3 dark:border-white/10 dark:bg-[#111827]">
+      {item.videoUrl ? (
+        <a href={item.videoUrl} target="_blank" rel="noreferrer" className="group block">
+          {preview}
+        </a>
+      ) : (
+        preview
+      )}
+
+      <div className="mt-3 min-w-0">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="line-clamp-2 text-sm font-black text-slate-950 dark:text-white">{item.title}</p>
+            {item.subtitle ? (
+              <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{item.subtitle}</p>
+            ) : null}
+          </div>
+          {item.status !== undefined ? (
+            <LocalizedStatusBadge fieldKey="is_active" labels={labels} value={item.status} />
+          ) : null}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {chips.map((chip) => (
+            <span key={chip} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+              {chip}
+            </span>
+          ))}
+          {item.videoUrl ? (
+            <a
+              href={item.videoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 transition hover:bg-amber-100 dark:bg-amber-400/10 dark:text-amber-300"
             >
-              <ObjectDetails record={row} />
-            </div>
+              {labels.openVideo}
+              <ExternalLink className="size-3" />
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function VideoPreviewImage({
+  labels,
+  title,
+  urls,
+}: {
+  labels: ArtistsLabels;
+  title: string;
+  urls: string[];
+}) {
+  const [urlIndex, setUrlIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const currentUrl = urls[urlIndex];
+
+  if (!currentUrl || failed) {
+    return (
+      <div className="grid aspect-video w-full place-items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center dark:border-white/10 dark:bg-white/[0.03]">
+        <div>
+          <PlayCircle className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
+          <p className="mt-2 px-3 text-xs font-bold text-slate-400 dark:text-slate-500">{labels.noVideoPreview}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/[0.04]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- External video thumbnails are backend-defined and need onError fallback probing. */}
+      <img
+        src={currentUrl}
+        alt={title}
+        className="size-full object-cover"
+        loading="lazy"
+        onError={() => {
+          setUrlIndex((current) => {
+            if (current < urls.length - 1) return current + 1;
+            setFailed(true);
+            return current;
+          });
+        }}
+      />
+      <div className="absolute inset-0 grid place-items-center bg-slate-950/10 opacity-100 transition group-hover:bg-slate-950/20">
+        <span className="grid size-11 place-items-center rounded-full bg-white/90 text-slate-950 shadow-sm dark:bg-slate-950/85 dark:text-white">
+          <PlayCircle className="size-6" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ArtistGalleryTab({ state, labels }: { state: DetailResourceState; labels: ArtistsLabels }) {
+  if (state.loading) return <LoadingState label={labels.loadingTitle(labels.gallery)} />;
+  if (state.error) return <ErrorState message={state.error} />;
+
+  const rows = state.rows.length ? state.rows : rowsFromRawResource(state.raw);
+  const galleryItems = rows
+    .map((row, index) => galleryItemFromRecord(row, index, labels))
+    .filter((item) => item.imageUrl || item.linkUrl || item.title);
+
+  if (!galleryItems.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
+        <ImagePlus className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
+        <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">{labels.galleryEmptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+          {labels.galleryEmptyDescription}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.gallery}</h4>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {labels.galleryItemCount(galleryItems.length)}
+          </p>
+        </div>
+        {state.meta ? (
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+            {labels.page} {state.meta.currentPage ?? state.meta.page ?? 1} / {state.meta.pageCount ?? "—"}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {galleryItems.map((item) => (
+          <GalleryPreviewCard key={item.key} item={item} labels={labels} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ArtistCommentsTab({
+  labels,
+  onChanged,
+  state,
+}: {
+  labels: ArtistsLabels;
+  onChanged: () => Promise<void>;
+  state: DetailResourceState;
+}) {
+  const toast = useToast();
+  const [dialog, setDialog] = useState<{ mode: "edit"; item: CommentItemView } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (state.loading) return <LoadingState label={labels.loadingTitle(labels.comments)} />;
+  if (state.error) return <ErrorState message={state.error} />;
+
+  const rows = state.rows.length ? state.rows : rowsFromRawResource(state.raw);
+  const comments = rows
+    .map((row, index) => commentItemFromRecord(row, index, labels))
+    .filter((item) => item.text || item.clientName || item.id !== undefined);
+
+  const runCommentAction = async (action: "delete" | "publish" | "unpublish", item: CommentItemView) => {
+    if (!item.id) {
+      toast.error(labels.commentIdMissing);
+      return;
+    }
+    const commentId = item.id;
+
+    const config = {
+      delete: {
+        title: labels.deleteCommentTitle,
+        content: labels.deleteCommentConfirm,
+        okText: labels.deleteComment,
+        danger: true,
+        request: () => commentsApi.delete(commentId),
+        success: labels.commentDeleted,
+        failure: labels.commentDeleteFailed,
+      },
+      publish: {
+        title: labels.publishCommentTitle,
+        content: labels.publishCommentConfirm,
+        okText: labels.publishComment,
+        danger: false,
+        request: () => commentsApi.publish(commentId),
+        success: labels.commentPublished,
+        failure: labels.commentPublishFailed,
+      },
+      unpublish: {
+        title: labels.unpublishCommentTitle,
+        content: labels.unpublishCommentConfirm,
+        okText: labels.unpublishComment,
+        danger: false,
+        request: () => commentsApi.unpublish(commentId),
+        success: labels.commentUnpublished,
+        failure: labels.commentUnpublishFailed,
+      },
+    }[action];
+
+    Modal.confirm({
+      title: config.title,
+      content: config.content,
+      okText: config.okText,
+      okButtonProps: { danger: config.danger },
+      cancelText: labels.cancel,
+      rootClassName: "artistbor-confirm-modal",
+      async onOk() {
+        try {
+          await config.request();
+          toast.success(config.success);
+          await onChanged();
+        } catch (caught) {
+          toast.error(caught instanceof Error ? caught.message : config.failure);
+          throw caught;
+        }
+      },
+    });
+  };
+
+  const handleSubmit = async (values: CommentEditValues) => {
+    if (!dialog?.item.id) {
+      toast.error(labels.commentIdMissing);
+      return;
+    }
+
+    const payload: UpdateCommentPayload = {};
+    const comment = values.comment.trim();
+    if (comment) payload.comment = comment;
+    if (values.is_published !== "") payload.is_published = Number(values.is_published);
+
+    if (!Object.keys(payload).length) {
+      setDialog(null);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await commentsApi.update(dialog.item.id, payload);
+      toast.success(labels.commentUpdated);
+      setDialog(null);
+      await onChanged();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.commentUpdateFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!comments.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
+        <Mail className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
+        <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">{labels.commentsEmptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+          {labels.commentsEmptyDescription}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.comments}</h4>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {labels.commentItemCount(comments.length)}
+          </p>
+        </div>
+        {state.meta ? (
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+            {labels.page} {state.meta.currentPage ?? state.meta.page ?? 1} / {state.meta.pageCount ?? "—"}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3">
+        {comments.map((item) => (
+          <CommentModerationCard
+            key={item.key}
+            item={item}
+            labels={labels}
+            onDelete={() => void runCommentAction("delete", item)}
+            onEdit={() => setDialog({ mode: "edit", item })}
+            onPublish={() => void runCommentAction("publish", item)}
+            onUnpublish={() => void runCommentAction("unpublish", item)}
+          />
+        ))}
+      </div>
+
+      <CommentEditModal
+        key={dialog?.item.key ?? "comment-edit-closed"}
+        labels={labels}
+        loading={submitting}
+        item={dialog?.item ?? null}
+        open={dialog?.mode === "edit"}
+        onClose={() => setDialog(null)}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  );
+}
+
+type CommentItemView = {
+  key: string;
+  id?: number;
+  clientName: string;
+  createdAt?: unknown;
+  publication: { label: string; tone: "danger" | "neutral" | "success" | "warning"; value: string };
+  rating?: unknown;
+  raw: UnknownRecord;
+  text: string;
+};
+
+type CommentEditValues = {
+  comment: string;
+  is_published: string;
+};
+
+function CommentModerationCard({
+  item,
+  labels,
+  onDelete,
+  onEdit,
+  onPublish,
+  onUnpublish,
+}: {
+  item: CommentItemView;
+  labels: ArtistsLabels;
+  onDelete: () => void;
+  onEdit: () => void;
+  onPublish: () => void;
+  onUnpublish: () => void;
+}) {
+  const canPublish = item.publication.value !== "published";
+
+  return (
+    <article className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-black text-slate-950 dark:text-white">
+              {item.clientName || labels.unknownClient}
+            </p>
+            <ArtistHeaderBadge label={item.publication.label} tone={item.publication.tone} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {item.createdAt !== undefined ? <span>{formatDisplayValue("created_at", item.createdAt, labels)}</span> : null}
+            {item.rating !== undefined ? <span>{labels.rating}: {toDisplay(item.rating)}</span> : null}
+            {item.id !== undefined ? <span>ID {toDisplay(item.id)}</span> : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-white"
+            aria-label={labels.editComment}
+          >
+            <Pencil className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={canPublish ? onPublish : onUnpublish}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-emerald-200 text-emerald-600 transition hover:bg-emerald-50 dark:border-emerald-400/20 dark:text-emerald-300 dark:hover:bg-emerald-400/10"
+            aria-label={canPublish ? labels.publishComment : labels.unpublishComment}
+          >
+            {canPublish ? <CheckCircle2 className="size-4" /> : <X className="size-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+            aria-label={labels.deleteComment}
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium leading-6 text-slate-700 dark:bg-white/[0.04] dark:text-slate-200">
+        {item.text || "—"}
+      </p>
+    </article>
+  );
+}
+
+function CommentEditModal({
+  item,
+  labels,
+  loading,
+  onClose,
+  onSubmit,
+  open,
+}: {
+  item: CommentItemView | null;
+  labels: ArtistsLabels;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: (values: CommentEditValues) => Promise<void>;
+  open: boolean;
+}) {
+  const [values, setValues] = useState<CommentEditValues>(() => initialCommentEditValues(item));
+
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    void onSubmit(values);
+  };
+
+  return (
+    <Modal
+      destroyOnHidden
+      footer={null}
+      open={open}
+      onCancel={onClose}
+      rootClassName="artistbor-confirm-modal"
+      title={labels.editComment}
+    >
+      <form className="grid gap-3" onSubmit={handleSubmit}>
+        <FormField
+          compact
+          required
+          label={labels.comment}
+          type="textarea"
+          rows={5}
+          value={values.comment}
+          onChange={(comment) => setValues((current) => ({ ...current, comment }))}
+        />
+        <FormField
+          compact
+          label={labels.publicationStatus}
+          type="select"
+          value={values.is_published}
+          options={[
+            { label: labels.pendingStatus, value: 0 },
+            { label: labels.publishedStatus, value: 1 },
+          ]}
+          onChange={(is_published) => setValues((current) => ({ ...current, is_published }))}
+        />
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
+          >
+            <X className="size-4" />
+            {labels.cancel}
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
+          >
+            <Save className="size-4" />
+            {labels.saveComment}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ArtistRatingsTab({
+  labels,
+  onChanged,
+  state,
+}: {
+  labels: ArtistsLabels;
+  onChanged: () => Promise<void>;
+  state: DetailResourceState;
+}) {
+  const toast = useToast();
+
+  if (state.loading) return <LoadingState label={labels.loadingTitle(labels.ratings)} />;
+  if (state.error) return <ErrorState message={state.error} />;
+
+  const rows = state.rows.length ? state.rows : rowsFromRawResource(state.raw);
+  const ratings = rows
+    .map((row, index) => ratingItemFromRecord(row, index, labels))
+    .filter((item) => item.rating !== undefined || item.clientName || item.id !== undefined);
+  const summary = ratingSummary(ratings);
+
+  const handleDelete = (item: RatingItemView) => {
+    if (!item.id) {
+      toast.error(labels.ratingIdMissing);
+      return;
+    }
+    const ratingId = item.id;
+
+    Modal.confirm({
+      title: labels.deleteRatingTitle,
+      content: labels.deleteRatingConfirm,
+      okText: labels.deleteRating,
+      okButtonProps: { danger: true },
+      cancelText: labels.cancel,
+      rootClassName: "artistbor-confirm-modal",
+      async onOk() {
+        try {
+          await ratingsApi.delete(ratingId);
+          toast.success(labels.ratingDeleted);
+          await onChanged();
+        } catch (caught) {
+          toast.error(caught instanceof Error ? caught.message : labels.ratingDeleteFailed);
+          throw caught;
+        }
+      },
+    });
+  };
+
+  if (!ratings.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
+        <Star className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
+        <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">{labels.ratingsEmptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+          {labels.ratingsEmptyDescription}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <RatingSummaryTile label={labels.averageRating} value={summary.averageText} accent />
+        <RatingSummaryTile label={labels.totalRatings} value={toDisplay(ratings.length)} />
+        <RatingSummaryTile label={labels.publishedRatings} value={toDisplay(summary.publishedCount)} />
+      </div>
+
+      <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.ratings}</h4>
+            <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+              {labels.ratingItemCount(ratings.length)}
+            </p>
+          </div>
+          {state.meta ? (
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+              {labels.page} {state.meta.currentPage ?? state.meta.page ?? 1} / {state.meta.pageCount ?? "—"}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {ratings.map((item) => (
+            <RatingModerationCard
+              key={item.key}
+              item={item}
+              labels={labels}
+              onDelete={() => handleDelete(item)}
+            />
           ))}
         </div>
-      ) : (
-        <div className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-sm font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
-          {labels.noVideoHint}
+      </section>
+    </div>
+  );
+}
+
+type RatingItemView = {
+  key: string;
+  id?: number;
+  clientName: string;
+  createdAt?: unknown;
+  publication: { label: string; tone: "danger" | "neutral" | "success" | "warning"; value: string };
+  rating?: number;
+  text: string;
+};
+
+function RatingSummaryTile({
+  accent,
+  label,
+  value,
+}: {
+  accent?: boolean;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className={cn(
+      "rounded-2xl border p-4",
+      accent
+        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200"
+        : "border-[#E5EAF2] bg-white text-slate-950 dark:border-white/10 dark:bg-[#111827] dark:text-white",
+    )}>
+      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-black">{value}</p>
+    </div>
+  );
+}
+
+function RatingModerationCard({
+  item,
+  labels,
+  onDelete,
+}: {
+  item: RatingItemView;
+  labels: ArtistsLabels;
+  onDelete: () => void;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <RatingStars value={item.rating} />
+            <ArtistHeaderBadge label={item.publication.label} tone={item.publication.tone} />
+          </div>
+          <p className="mt-2 truncate text-sm font-black text-slate-950 dark:text-white">
+            {item.clientName || labels.unknownClient}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {item.createdAt !== undefined ? <span>{formatDisplayValue("created_at", item.createdAt, labels)}</span> : null}
+            {item.id !== undefined ? <span>ID {toDisplay(item.id)}</span> : null}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+          aria-label={labels.deleteRating}
+        >
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+
+      {item.text ? (
+        <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-white px-3 py-2 text-sm font-medium leading-6 text-slate-700 dark:bg-slate-950/40 dark:text-slate-200">
+          {item.text}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+function RatingStars({ value }: { value?: number }) {
+  const rounded = Math.max(0, Math.min(5, Math.round(value ?? 0)));
+
+  return (
+    <div className="inline-flex items-center gap-1">
+      {Array.from({ length: 5 }, (_, index) => (
+        <Star
+          key={index}
+          className={cn(
+            "size-4",
+            index < rounded ? "fill-amber-400 text-amber-400" : "text-slate-300 dark:text-slate-600",
+          )}
+        />
+      ))}
+      <span className="ml-1 text-xs font-black text-slate-700 dark:text-slate-200">
+        {value !== undefined ? value.toFixed(value % 1 === 0 ? 0 : 1) : "—"}
+      </span>
+    </div>
+  );
+}
+
+type GalleryItemView = {
+  key: string;
+  id?: unknown;
+  imageUrl: string;
+  imageUrlCandidates: string[];
+  linkUrl: string;
+  title: string;
+  subtitle: string;
+  status?: unknown;
+  createdAt?: unknown;
+};
+
+function GalleryPreviewCard({ item, labels }: { item: GalleryItemView; labels: ArtistsLabels }) {
+  const preview = item.imageUrlCandidates.length ? (
+    <GalleryPreviewImage urls={item.imageUrlCandidates} title={item.title} />
+  ) : (
+    <div className="grid aspect-[4/3] w-full place-items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm font-bold text-slate-400 dark:border-white/10 dark:bg-white/[0.03]">
+      {labels.noImage}
+    </div>
+  );
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-[#E5EAF2] bg-white p-3 dark:border-white/10 dark:bg-[#111827]">
+      {item.linkUrl ? (
+        <a href={item.linkUrl} target="_blank" rel="noreferrer" className="block">
+          {preview}
+        </a>
+      ) : (
+        preview
       )}
+
+      <div className="mt-3 min-w-0">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-slate-950 dark:text-white">{item.title}</p>
+            {item.subtitle ? (
+              <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{item.subtitle}</p>
+            ) : null}
+          </div>
+          {item.status !== undefined ? (
+            <LocalizedStatusBadge fieldKey="status" labels={labels} value={item.status} />
+          ) : null}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {item.id !== undefined ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+              ID {toDisplay(item.id)}
+            </span>
+          ) : null}
+          {item.createdAt !== undefined ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+              {formatDisplayValue("created_at", item.createdAt, labels)}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function GalleryPreviewImage({ title, urls }: { title: string; urls: string[] }) {
+  const [urlIndex, setUrlIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const currentUrl = urls[urlIndex];
+
+  if (!currentUrl || failed) {
+    return (
+      <div className="grid aspect-[4/3] w-full place-items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm font-bold text-slate-400 dark:border-white/10 dark:bg-white/[0.03]">
+        {title}
+      </div>
+    );
+  }
+
+  return (
+    <div className="aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/[0.04]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- External gallery URLs are backend-defined and need onError fallback probing. */}
+      <img
+        src={currentUrl}
+        alt={title}
+        className="size-full object-cover"
+        loading="lazy"
+        onError={() => {
+          setUrlIndex((current) => {
+            if (current < urls.length - 1) return current + 1;
+            setFailed(true);
+            return current;
+          });
+        }}
+      />
     </div>
   );
 }
@@ -2030,7 +3086,7 @@ function ScheduleCompactCard({
           </p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
             {availabilityRows.length
-              ? labels.availableDaysCount(countAvailableDays(availabilityRows))
+              ? labels.busyDaysCount(countBusyDays(availabilityRows))
               : scheduleAvailabilitySummary(schedule, labels)}
           </p>
         </div>
@@ -2064,6 +3120,7 @@ function ScheduleManagementDrawer({
   open,
   schedule,
   onClose,
+  onChanged,
 }: {
   artist: ArtistProfile;
   labels: ArtistsLabels;
@@ -2071,95 +3128,302 @@ function ScheduleManagementDrawer({
   open: boolean;
   schedule: UnknownRecord | null;
   onClose: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const { locale, t } = useI18n();
-  const selectedSchedule = schedule ?? { artist_id: getArtistId(artist) };
+  const toast = useToast();
+  const [busySlotDialog, setBusySlotDialog] = useState<BusySlotDialogState>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const selectedSchedule = schedule ?? getDefaultScheduleRecord(artist);
   const availabilityRows = availabilityRowsFromSchedule(selectedSchedule, labels);
   const status = getScheduleStatus(selectedSchedule, labels, mode);
   const rawAvailability = getRawAvailabilityPreview(selectedSchedule, labels);
   const dirty = false;
+  const artistId = getArtistId(artist);
+
+  const handleDeleteBusySlot = async (row: AvailabilityRow) => {
+    const slotId = getAvailabilityRowId(row);
+    if (!slotId) {
+      toast.error(labels.busySlotIdMissing);
+      return;
+    }
+
+    Modal.confirm({
+      title: labels.deleteBusySlotTitle,
+      content: labels.deleteBusySlotConfirm,
+      okText: labels.deleteSchedule,
+      okButtonProps: { danger: true },
+      cancelText: labels.cancel,
+      rootClassName: "artistbor-confirm-modal",
+      async onOk() {
+        try {
+          await artistAvailabilityApi.deleteBusySlot(slotId);
+          toast.success(labels.busySlotDeleted);
+          await onChanged();
+        } catch (caught) {
+          toast.error(caught instanceof Error ? caught.message : labels.busySlotDeleteFailed);
+          throw caught;
+        }
+      },
+    });
+  };
+
+  const handleSubmitBusySlot = async (values: BusySlotFormValues) => {
+    if (!artistId) {
+      toast.error(labels.artistIdMissing);
+      return;
+    }
+
+    const currentDialog = busySlotDialog;
+    if (!currentDialog) return;
+
+    const validationError = validateBusySlotForm(values, labels);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const payload = buildBusySlotPayload(values);
+    setSubmitting(true);
+    try {
+      if (currentDialog.mode === "edit") {
+        const slotId = getAvailabilityRowId(currentDialog.row);
+        if (!slotId) {
+          toast.error(labels.busySlotIdMissing);
+          return;
+        }
+        await artistAvailabilityApi.deleteBusySlot(slotId);
+        await artistAvailabilityApi.createBusySlot(artistId, payload);
+        toast.success(labels.busySlotUpdated);
+      } else {
+        await artistAvailabilityApi.createBusySlot(artistId, payload);
+        toast.success(labels.busySlotCreated);
+      }
+
+      setBusySlotDialog(null);
+      await onChanged();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.busySlotSaveFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <Drawer
-      destroyOnClose
-      maskClosable={!dirty}
-      open={open}
-      onClose={onClose}
-      placement="right"
-      size="min(100vw, 1180px)"
-      closeIcon={<X className="size-5" />}
-      rootClassName="artistbor-application-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
-      title={
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
-              {labels.scheduleManagementTitle}
-            </span>
-            <ArtistHeaderBadge label={status.label} tone={status.tone} />
+    <>
+      <Drawer
+        destroyOnClose
+        maskClosable={!dirty}
+        open={open}
+        onClose={onClose}
+        placement="right"
+        size="min(100vw, 1180px)"
+        closeIcon={<X className="size-5" />}
+        rootClassName="artistbor-application-drawer"
+        classNames={{
+          body: "artistbor-application-drawer-body",
+          footer: "artistbor-application-drawer-footer",
+          header: "artistbor-application-drawer-header",
+          title: "artistbor-application-drawer-title",
+        }}
+        title={
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
+                {labels.scheduleManagementTitle}
+              </span>
+              <ArtistHeaderBadge label={status.label} tone={status.tone} />
+            </div>
+            <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+              {getArtistName(artist, labels)} · {artist.phone ?? artist.extra_phone ?? "—"}
+            </p>
           </div>
-          <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-            {getArtistName(artist, labels)} · {artist.phone ?? artist.extra_phone ?? "—"}
-          </p>
+        }
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+            >
+              <X className="size-4" />
+              {t("actions.close")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBusySlotDialog({ mode: "create" })}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
+            >
+              <Save className="size-4" />
+              {labels.addAvailability}
+            </button>
+          </div>
+        }
+        styles={{
+          body: { padding: 0, overflow: "auto", overflowX: "hidden" },
+          footer: { padding: "12px 16px" },
+          header: { minHeight: 72, padding: "12px 16px" },
+          mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
+        }}
+      >
+        <div className="bg-slate-50/60 p-4 dark:bg-[#0f172a] md:p-6">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0 space-y-4">
+              <ScheduleDetailsCard labels={labels} locale={locale} schedule={selectedSchedule} />
+              <AvailabilityRows
+                labels={labels}
+                rows={availabilityRows}
+                onAdd={() => setBusySlotDialog({ mode: "create" })}
+                onDelete={handleDeleteBusySlot}
+                onEdit={(row) => setBusySlotDialog({ mode: "edit", row })}
+              />
+              {rawAvailability ? (
+                <details className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
+                  <summary className="cursor-pointer text-sm font-bold text-slate-950 dark:text-white">
+                    {labels.rawAvailability}
+                  </summary>
+                  <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                    {rawAvailability}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
+
+            <aside className="min-w-0 space-y-4">
+              <ScheduleCalendarPreview
+                labels={labels}
+                locale={locale}
+                rows={availabilityRows}
+                schedule={selectedSchedule}
+                onAddDate={(date) => setBusySlotDialog({ mode: "create", date })}
+                onEditRow={(row) => setBusySlotDialog({ mode: "edit", row })}
+              />
+              <ScheduleQuickInfoCard labels={labels} rows={availabilityRows} schedule={selectedSchedule} />
+            </aside>
+          </div>
         </div>
-      }
-      footer={
-        <div className="grid grid-cols-2 gap-2">
+      </Drawer>
+      <BusySlotModal
+        key={busySlotDialogKey(busySlotDialog)}
+        labels={labels}
+        loading={submitting}
+        open={Boolean(busySlotDialog)}
+        state={busySlotDialog}
+        onClose={() => setBusySlotDialog(null)}
+        onDelete={busySlotDialog?.mode === "edit" ? () => {
+          const row = busySlotDialog.row;
+          setBusySlotDialog(null);
+          void handleDeleteBusySlot(row);
+        } : undefined}
+        onSubmit={handleSubmitBusySlot}
+      />
+    </>
+  );
+}
+
+function BusySlotModal({
+  labels,
+  loading,
+  onClose,
+  onDelete,
+  onSubmit,
+  open,
+  state,
+}: {
+  labels: ArtistsLabels;
+  loading: boolean;
+  onClose: () => void;
+  onDelete?: () => void;
+  onSubmit: (values: BusySlotFormValues) => Promise<void>;
+  open: boolean;
+  state: BusySlotDialogState;
+}) {
+  const [values, setValues] = useState<BusySlotFormValues>(() => initialBusySlotValues(state));
+
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    void onSubmit(values);
+  };
+
+  return (
+    <Modal
+      destroyOnHidden
+      open={open}
+      onCancel={onClose}
+      title={state?.mode === "edit" ? labels.editBusySlot : labels.addAvailability}
+      okText={state?.mode === "edit" ? labels.saveBusySlot : labels.addAvailability}
+      cancelText={labels.cancel}
+      confirmLoading={loading}
+      rootClassName="artistbor-confirm-modal"
+      footer={null}
+    >
+      <form className="grid gap-3" onSubmit={handleSubmit}>
+        <FormField
+          compact
+          required
+          label={labels.date}
+          type="date"
+          value={values.date}
+          onChange={(date) => setValues((current) => ({ ...current, date }))}
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField
+            compact
+            required
+            label={labels.startTime}
+            type="time"
+            value={values.start_time}
+            onChange={(start_time) => setValues((current) => ({ ...current, start_time }))}
+          />
+          <FormField
+            compact
+            required
+            label={labels.endTime}
+            type="time"
+            value={values.end_time}
+            onChange={(end_time) => setValues((current) => ({ ...current, end_time }))}
+          />
+        </div>
+        <FormField
+          compact
+          label={labels.reason}
+          type="textarea"
+          rows={3}
+          value={values.reason}
+          onChange={(reason) => setValues((current) => ({ ...current, reason }))}
+        />
+        <div className={cn("mt-2 grid gap-2", state?.mode === "edit" ? "sm:grid-cols-[1fr_1fr_1fr]" : "sm:grid-cols-2")}>
+          {state?.mode === "edit" ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={loading}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10"
+            >
+              <Trash2 className="size-4" />
+              {labels.deleteSchedule}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+            disabled={loading}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
           >
             <X className="size-4" />
-            {t("actions.close")}
+            {labels.cancel}
           </button>
           <button
-            type="button"
-            disabled
-            className="inline-flex h-10 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-500"
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
           >
             <Save className="size-4" />
-            {t("actions.save")}
+            {state?.mode === "edit" ? labels.saveBusySlot : labels.addAvailability}
           </button>
         </div>
-      }
-      styles={{
-        body: { padding: 0, overflow: "auto", overflowX: "hidden" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 72, padding: "12px 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-      }}
-    >
-      <div className="bg-slate-50/60 p-4 dark:bg-[#0f172a] md:p-6">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-4">
-            <ScheduleDetailsCard labels={labels} locale={locale} schedule={selectedSchedule} status={status} />
-            <AvailabilityRows labels={labels} rows={availabilityRows} />
-            {rawAvailability ? (
-              <details className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-                <summary className="cursor-pointer text-sm font-bold text-slate-950 dark:text-white">
-                  {labels.rawAvailability}
-                </summary>
-                <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-100">
-                  {rawAvailability}
-                </pre>
-              </details>
-            ) : null}
-          </div>
-
-          <aside className="min-w-0 space-y-4">
-            <ScheduleCalendarPreview labels={labels} locale={locale} rows={availabilityRows} schedule={selectedSchedule} />
-            <ScheduleQuickInfoCard labels={labels} rows={availabilityRows} schedule={selectedSchedule} />
-            <ScheduleSideActions labels={labels} />
-          </aside>
-        </div>
-      </div>
-    </Drawer>
+      </form>
+    </Modal>
   );
 }
 
@@ -2167,23 +3431,16 @@ function ScheduleDetailsCard({
   labels,
   locale,
   schedule,
-  status,
 }: {
   labels: ArtistsLabels;
   locale: Locale;
   schedule: UnknownRecord;
-  status: ReturnType<typeof getScheduleStatus>;
 }) {
-  const rows: [string, unknown][] = [];
-
-  if (hasMeaningfulValue(schedule.id)) rows.push(["ID", toDisplay(schedule.id)]);
-  rows.push(
-    [labels.artistId, toDisplay(schedule.artist_id)],
+  const rows: [string, unknown][] = [
     [labels.dateFrom, toDisplay(schedule.date_from)],
     [labels.dateTo, toDisplay(schedule.date_to)],
-    [labels.availabilityType, getAvailabilityTypeLabel(schedule, labels)],
-    [labels.availabilitySummary, scheduleAvailabilitySummary(schedule, labels)],
-  );
+    [labels.busyDays, scheduleAvailabilitySummary(schedule, labels)],
+  ];
 
   return (
     <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
@@ -2194,9 +3451,8 @@ function ScheduleDetailsCard({
             {formatScheduleRange(schedule, locale)}
           </p>
         </div>
-        <ArtistHeaderBadge label={status.label} tone={status.tone} />
       </div>
-      <div className="mt-4 grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-2">
+      <div className="mt-4 grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-3">
         {rows.map(([label, value]) => (
           <div key={label} className="bg-slate-50 p-3 dark:bg-[#121a2a]">
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
@@ -2205,12 +3461,6 @@ function ScheduleDetailsCard({
             </p>
           </div>
         ))}
-        <div className="bg-slate-50 p-3 dark:bg-[#121a2a]">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{labels.status}</p>
-          <div className="mt-1">
-            <ArtistHeaderBadge label={status.label} tone={status.tone} />
-          </div>
-        </div>
       </div>
     </section>
   );
@@ -2218,9 +3468,15 @@ function ScheduleDetailsCard({
 
 function AvailabilityRows({
   labels,
+  onAdd,
+  onDelete,
+  onEdit,
   rows,
 }: {
   labels: ArtistsLabels;
+  onAdd: () => void;
+  onDelete: (row: AvailabilityRow) => void;
+  onEdit: (row: AvailabilityRow) => void;
   rows: AvailabilityRow[];
 }) {
   return (
@@ -2229,6 +3485,7 @@ function AvailabilityRows({
         <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.availabilityList}</h3>
         <button
           type="button"
+          onClick={onAdd}
           className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
         >
           <Plus className="size-4" />
@@ -2262,10 +3519,20 @@ function AvailabilityRows({
                   <ArtistHeaderBadge label={row.statusLabel} tone={row.tone} />
                 </div>
                 <div className="flex gap-1.5 sm:justify-end">
-                  <button type="button" className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-500 dark:border-white/10 dark:text-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(row)}
+                    className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-white"
+                    aria-label={labels.editBusySlot}
+                  >
                     <Pencil className="size-4" />
                   </button>
-                  <button type="button" className="grid size-8 place-items-center rounded-lg border border-rose-200 text-rose-600 dark:border-rose-500/30 dark:text-rose-300">
+                  <button
+                    type="button"
+                    onClick={() => onDelete(row)}
+                    className="grid size-8 cursor-pointer place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                    aria-label={labels.deleteBusySlotTitle}
+                  >
                     <Trash2 className="size-4" />
                   </button>
                 </div>
@@ -2274,7 +3541,7 @@ function AvailabilityRows({
           </div>
         </div>
       ) : (
-        <ScheduleEmptyState labels={labels} onAdd={() => undefined} />
+        <ScheduleEmptyState labels={labels} onAdd={onAdd} />
       )}
     </section>
   );
@@ -2283,17 +3550,26 @@ function AvailabilityRows({
 function ScheduleCalendarPreview({
   labels,
   locale,
+  onAddDate,
+  onEditRow,
   rows,
   schedule,
 }: {
   labels: ArtistsLabels;
   locale: Locale;
+  onAddDate: (date: string) => void;
+  onEditRow: (row: AvailabilityRow) => void;
   rows: AvailabilityRow[];
   schedule: UnknownRecord;
 }) {
   const start = parseDateOnly(schedule.date_from);
   const end = parseDateOnly(schedule.date_to);
-  const availableDates = new Set(rows.filter((row) => row.tone === "success").map((row) => row.date));
+  const busyRowsByDate = new Map<string, AvailabilityRow>();
+  rows
+    .filter((row) => row.tone !== "success")
+    .forEach((row) => {
+      if (!busyRowsByDate.has(row.date)) busyRowsByDate.set(row.date, row);
+    });
 
   if (!start) {
     return (
@@ -2320,19 +3596,35 @@ function ScheduleCalendarPreview({
         {days.map((day) => {
           const key = dateKey(day);
           const inRange = day >= start && day <= rangeEnd;
-          const available = availableDates.has(key);
+          const busyRow = busyRowsByDate.get(key);
+          const busy = Boolean(busyRow);
           return (
-            <span
+            <button
               key={key}
+              type="button"
+              aria-disabled={busy || !inRange}
+              title={busy ? labels.editBusySlot : labels.addAvailability}
+              onClick={() => {
+                if (!inRange) return;
+                if (busyRow) {
+                  onEditRow(busyRow);
+                  return;
+                }
+                onAddDate(key);
+              }}
               className={cn(
-                "grid aspect-square place-items-center rounded-lg text-xs font-semibold",
+                "group relative grid aspect-square place-items-center rounded-lg text-xs font-semibold transition",
                 day.getMonth() !== start.getMonth() ? "text-slate-300 dark:text-slate-600" : "text-slate-700 dark:text-slate-200",
-                inRange && "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300",
-                available && "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300",
+                inRange && !busy && "cursor-pointer bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-300 dark:hover:bg-emerald-400/15",
+                !inRange && "cursor-not-allowed opacity-50",
+                busy && "cursor-not-allowed border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300 dark:hover:bg-rose-400/15",
               )}
             >
-              {day.getDate()}
-            </span>
+              <span className={cn(busy && "transition group-hover:opacity-0")}>{day.getDate()}</span>
+              {busy ? (
+                <Pencil className="absolute size-3.5 opacity-0 transition group-hover:opacity-100" />
+              ) : null}
+            </button>
           );
         })}
       </div>
@@ -2349,13 +3641,18 @@ function ScheduleQuickInfoCard({
   rows: AvailabilityRow[];
   schedule: UnknownRecord;
 }) {
-  const items = [
+  const items: [string, unknown][] = [
     [labels.totalDays, countTotalDays(schedule) || "—"],
-    [labels.availableDays, countAvailableDays(rows)],
     [labels.busyDays, countBusyDays(rows)],
-    [labels.createdAt, formatDisplayValue("created_at", schedule.created_at, labels)],
-    [labels.updatedAt, formatDisplayValue("updated_at", schedule.updated_at, labels)],
-  ] as const;
+  ];
+
+  if (hasMeaningfulValue(schedule.created_at)) {
+    items.push([labels.createdAt, formatDisplayValue("created_at", schedule.created_at, labels)]);
+  }
+
+  if (hasMeaningfulValue(schedule.updated_at)) {
+    items.push([labels.updatedAt, formatDisplayValue("updated_at", schedule.updated_at, labels)]);
+  }
 
   return (
     <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
@@ -2366,32 +3663,6 @@ function ScheduleQuickInfoCard({
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</span>
             <span className="text-sm font-bold text-slate-950 dark:text-white">{toDisplay(value)}</span>
           </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ScheduleSideActions({ labels }: { labels: ArtistsLabels }) {
-  const actions = [
-    { icon: <Plus className="size-4" />, label: labels.addAvailability, className: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300" },
-    { icon: <Copy className="size-4" />, label: labels.duplicateSchedule, className: "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]" },
-    { icon: <Trash2 className="size-4" />, label: labels.deleteSchedule, className: "border-rose-200 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10" },
-  ];
-
-  return (
-    <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-      <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.actions}</h3>
-      <div className="mt-4 grid gap-2">
-        {actions.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            className={cn("inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm font-bold transition", action.className)}
-          >
-            {action.icon}
-            {action.label}
-          </button>
         ))}
       </div>
     </section>
@@ -2621,8 +3892,344 @@ function firstRecordValue(record: UnknownRecord, keys: string[]) {
   return undefined;
 }
 
+function galleryItemFromRecord(record: UnknownRecord, index: number, labels: ArtistsLabels): GalleryItemView {
+  const fileRecord = firstRecordValue(record, ["file", "image", "photo", "media", "attachment"]);
+  const source = fileRecord ? { ...fileRecord, ...record } : record;
+  const imageSource = firstStringValue(source, [
+    "url",
+    "file_url",
+    "full_url",
+    "path",
+    "image_url",
+    "photo_url",
+    "thumbnail_url",
+    "preview_url",
+    "src",
+  ]);
+  const imageUrlCandidates = mediaUrlCandidates(imageSource);
+  const imageUrl = imageUrlCandidates[0] ?? "";
+  const linkSource = firstStringValue(source, ["original_url", "download_url", "url", "file_url", "full_url"]) || imageSource;
+  const linkUrl = mediaUrlCandidates(linkSource)[0] ?? imageUrl;
+  const title =
+    firstStringValue(source, ["title", "title_uz", "name", "caption", "alt", "file_name", "filename"]) ||
+    `${labels.galleryItem} #${toDisplay(record.id ?? index + 1)}`;
+  const subtitle = [
+    firstStringValue(source, ["type", "mime_type", "category"]),
+    firstStringValue(source, ["description", "comment"]),
+  ].filter(Boolean).join(" · ");
+
+  return {
+    key: String(resourceRowKey(record, index)),
+    id: record.id,
+    imageUrl,
+    imageUrlCandidates,
+    linkUrl,
+    title,
+    subtitle,
+    status: firstMeaningfulValue(record, ["status", "is_active", "active"]),
+    createdAt: firstMeaningfulValue(record, ["created_at", "uploaded_at", "createdAt"]),
+  };
+}
+
+function videoItemFromRecord(record: UnknownRecord, index: number, labels: ArtistsLabels): VideoItemView {
+  const videoRecord = firstRecordValue(record, ["video", "media", "file", "attachment"]);
+  const source = videoRecord ? { ...videoRecord, ...record } : record;
+  const videoSource = firstStringValue(source, [
+    "youtube_url",
+    "video_url",
+    "embed_url",
+    "url",
+    "file_url",
+    "full_url",
+    "path",
+  ]);
+  const thumbnailSource =
+    firstStringValue(source, ["thumbnail_url", "thumbnail", "preview_url", "image_url", "poster_url", "cover_url"]) ||
+    youtubeThumbnailUrl(videoSource);
+  const title =
+    firstStringValue(source, ["title", "title_uz", "title_ru", "name", "caption"]) ||
+    `${labels.videoItem} #${toDisplay(record.id ?? record.video_id ?? index + 1)}`;
+  const subtitle = [
+    videoSource ? videoSourceLabel(videoSource) : "",
+    firstStringValue(source, ["type", "source", "platform"]),
+  ].filter(Boolean).join(" · ");
+
+  return {
+    key: String(resourceRowKey(record, index)),
+    title,
+    subtitle,
+    thumbnailUrlCandidates: mediaUrlCandidates(thumbnailSource),
+    videoUrl: videoUrlCandidates(videoSource)[0] ?? "",
+    status: firstMeaningfulValue(source, ["status", "is_active", "active"]),
+    createdAt: firstMeaningfulValue(source, ["created_at", "published_at", "createdAt"]),
+    duration: firstMeaningfulValue(source, ["duration", "duration_seconds", "duration_minutes"]),
+    sortOrder: firstMeaningfulValue(source, ["sort_order", "position", "order"]),
+  };
+}
+
+function commentItemFromRecord(record: UnknownRecord, index: number, labels: ArtistsLabels): CommentItemView {
+  const client = firstRecordValue(record, ["client", "user", "author", "customer"]);
+  const source = client ? { ...client, ...record } : record;
+  const text = firstStringValue(source, ["comment", "message", "text", "body", "content", "description"]);
+  const clientName =
+    firstStringValue(source, ["client_name", "author_name", "user_name", "full_name", "name", "phone"]) ||
+    (hasMeaningfulValue(record.client_id) ? `${labels.client} #${toDisplay(record.client_id)}` : "");
+
+  return {
+    key: String(resourceRowKey(record, index)),
+    id: numericId(firstMeaningfulValue(record, ["id", "comment_id"])),
+    clientName,
+    createdAt: firstMeaningfulValue(record, ["created_at", "createdAt", "date"]),
+    publication: commentPublicationStatus(record, labels),
+    rating: firstMeaningfulValue(record, ["rating", "score", "stars"]),
+    raw: record,
+    text,
+  };
+}
+
+function commentPublicationStatus(record: UnknownRecord, labels: ArtistsLabels): CommentItemView["publication"] {
+  const explicit = firstMeaningfulValue(record, ["is_published", "published", "is_visible", "visible"]);
+  const status = firstMeaningfulValue(record, ["status", "status_label"]);
+  const value = explicit ?? status;
+  const normalized = normalizeEnumToken(String(value ?? ""));
+
+  if (normalized === "true" || normalized === "1" || normalized === "published" || normalized === "active") {
+    return { label: labels.publishedStatus, tone: "success", value: "published" };
+  }
+
+  if (normalized === "false" || normalized === "0" || normalized === "pending") {
+    return { label: labels.pendingStatus, tone: "warning", value: "pending" };
+  }
+
+  if (normalized.includes("delete")) {
+    return { label: labels.deletedStatus, tone: "danger", value: "deleted" };
+  }
+
+  if (normalized.includes("unpublish") || normalized.includes("hidden") || normalized.includes("inactive")) {
+    return { label: labels.unpublishedStatus, tone: "neutral", value: "unpublished" };
+  }
+
+  return { label: labels.unknownType, tone: "neutral", value: "unknown" };
+}
+
+function ratingItemFromRecord(record: UnknownRecord, index: number, labels: ArtistsLabels): RatingItemView {
+  const client = firstRecordValue(record, ["client", "user", "author", "customer"]);
+  const source = client ? { ...client, ...record } : record;
+  const ratingValue = numericValue(firstMeaningfulValue(source, ["rating", "score", "stars", "value"]));
+  const clientName =
+    firstStringValue(source, ["client_name", "author_name", "user_name", "full_name", "name", "phone"]) ||
+    (hasMeaningfulValue(record.client_id) ? `${labels.client} #${toDisplay(record.client_id)}` : "");
+
+  return {
+    key: String(resourceRowKey(record, index)),
+    id: numericId(firstMeaningfulValue(record, ["id", "rating_id"])),
+    clientName,
+    createdAt: firstMeaningfulValue(record, ["created_at", "createdAt", "date"]),
+    publication: commentPublicationStatus(record, labels),
+    rating: ratingValue,
+    text: firstStringValue(source, ["comment", "message", "text", "review", "description"]),
+  };
+}
+
+function ratingSummary(items: RatingItemView[]) {
+  const values = items
+    .map((item) => item.rating)
+    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating));
+  const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+
+  return {
+    averageText: values.length ? average.toFixed(average % 1 === 0 ? 0 : 1) : "—",
+    publishedCount: items.filter((item) => item.publication.value === "published").length,
+  };
+}
+
+function initialCommentEditValues(item: CommentItemView | null): CommentEditValues {
+  return {
+    comment: item?.text ?? "",
+    is_published: item?.publication.value === "published" ? "1" : item ? "0" : "",
+  };
+}
+
+function firstStringValue(record: UnknownRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function mediaUrlCandidates(value: string) {
+  if (!value) return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  if (/^https?:\/\//i.test(trimmed)) return [trimmed];
+  if (trimmed.startsWith("//")) return [`https:${trimmed}`];
+
+  const normalized = trimmed.replace(/^\/+/, "");
+  const origin = apiOrigin();
+  const candidates = new Set<string>();
+
+  candidates.add(`${origin}/${normalized}`);
+
+  if (!normalized.includes("/")) {
+    candidates.add(`${origin}/uploads/admin/image/${normalized}`);
+    candidates.add(`${origin}/uploads/client/image/${normalized}`);
+    candidates.add(`${origin}/uploads/image/${normalized}`);
+  }
+
+  return [...candidates];
+}
+
+function videoUrlCandidates(value: string) {
+  if (!value) return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  if (/^https?:\/\//i.test(trimmed)) return [trimmed];
+  if (trimmed.startsWith("//")) return [`https:${trimmed}`];
+
+  const normalized = trimmed.replace(/^\/+/, "");
+  const origin = apiOrigin();
+  const candidates = new Set<string>();
+
+  candidates.add(`${origin}/${normalized}`);
+
+  if (!normalized.includes("/")) {
+    candidates.add(`${origin}/uploads/admin/video/${normalized}`);
+    candidates.add(`${origin}/uploads/client/video/${normalized}`);
+    candidates.add(`${origin}/uploads/video/${normalized}`);
+  }
+
+  return [...candidates];
+}
+
+function youtubeThumbnailUrl(value: string) {
+  const id = youtubeVideoId(value);
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : "";
+}
+
+function youtubeVideoId(value: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.hostname.includes("youtu.be")) return url.pathname.replace(/^\/+/, "").split("/")[0] ?? "";
+    if (url.hostname.includes("youtube.com")) {
+      const fromQuery = url.searchParams.get("v");
+      if (fromQuery) return fromQuery;
+      const embedMatch = url.pathname.match(/\/(?:embed|shorts)\/([^/?]+)/);
+      if (embedMatch?.[1]) return embedMatch[1];
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function videoSourceLabel(value: string) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.hostname.includes("youtube")) return "YouTube";
+    if (url.hostname.includes("youtu.be")) return "YouTube";
+    return url.hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function apiOrigin() {
+  try {
+    return new URL(API_BASE_URL).origin;
+  } catch {
+    return API_BASE_URL.replace(/\/+$/, "");
+  }
+}
+
+function initialBusySlotValues(state: BusySlotDialogState): BusySlotFormValues {
+  if (state?.mode === "edit") {
+    return {
+      date: normalizeDateInput(state.row.date),
+      start_time: state.row.startTime,
+      end_time: state.row.endTime,
+      reason: state.row.reason,
+    };
+  }
+
+  return {
+    date: normalizeDateInput(state?.date) || formatDateInputValue(new Date()),
+    start_time: "09:00",
+    end_time: "12:00",
+    reason: "",
+  };
+}
+
+function busySlotDialogKey(state: BusySlotDialogState) {
+  if (!state) return "closed";
+  if (state.mode === "edit") return `edit-${getAvailabilityRowId(state.row) ?? state.row.date}-${state.row.startTime}-${state.row.endTime}`;
+  return `create-${state.date ?? "default"}`;
+}
+
+function validateBusySlotForm(values: BusySlotFormValues, labels: ArtistsLabels) {
+  if (!values.date) return labels.requiredField(labels.date);
+  if (!values.start_time) return labels.requiredField(labels.startTime);
+  if (!values.end_time) return labels.requiredField(labels.endTime);
+  if (values.end_time <= values.start_time) return labels.timeRangeInvalid;
+  return "";
+}
+
+function buildBusySlotPayload(values: BusySlotFormValues): ArtistBusySlotPayload {
+  const payload: ArtistBusySlotPayload = {
+    date: values.date,
+    time_from: values.start_time,
+    time_to: values.end_time,
+  };
+  const reason = values.reason.trim();
+  if (reason) payload.reason = reason;
+  return payload;
+}
+
+function getAvailabilityRowId(row: AvailabilityRow) {
+  return row.id ?? numericId(firstMeaningfulValue(row.raw, ["id", "busy_slot_id", "slot_id"]));
+}
+
+function numericId(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const id = Number(value);
+    if (Number.isFinite(id)) return id;
+  }
+  return undefined;
+}
+
+function numericValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return undefined;
+}
+
+function getDefaultScheduleRecord(artist: ArtistProfile): UnknownRecord {
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+
+  const to = new Date(from);
+  to.setDate(to.getDate() + 30);
+
+  return {
+    artist_id: getArtistId(artist),
+    date_from: formatDateInputValue(from),
+    date_to: formatDateInputValue(to),
+    availability: [],
+  };
+}
+
 type AvailabilityRow = {
   date: string;
+  endTime: string;
+  id?: number;
+  reason: string;
+  startTime: string;
   time: string;
   statusLabel: string;
   tone: "danger" | "neutral" | "success" | "warning";
@@ -2676,14 +4283,22 @@ function availabilityRowsFromSchedule(schedule: UnknownRecord, labels: ArtistsLa
 }
 
 function availabilityRowFromRecord(record: UnknownRecord, labels: ArtistsLabels): AvailabilityRow {
+  const id = numericId(firstMeaningfulValue(record, ["id", "busy_slot_id", "slot_id"]));
   const date = firstMeaningfulValue(record, ["date", "day", "date_from", "start_date", "available_date"]);
   const group = firstMeaningfulValue(record, ["group"]);
   const start = firstMeaningfulValue(record, ["start_time", "time_from", "from"]);
   const end = firstMeaningfulValue(record, ["end_time", "time_to", "to"]);
+  const reason = firstMeaningfulValue(record, ["reason", "comment", "notes", "description"]);
   const status = availabilityStatus(record, labels);
+  const startTime = start ? String(start) : "";
+  const endTime = end ? String(end) : "";
 
   return {
+    id,
     date: String(date ?? group ?? "—"),
+    endTime,
+    reason: reason ? String(reason) : "",
+    startTime,
     time: start || end ? `${toDisplay(start)} — ${toDisplay(end)}` : "—",
     statusLabel: status.label,
     tone: status.tone,
@@ -2698,7 +4313,12 @@ function looksLikeAvailabilityRow(record: UnknownRecord) {
 function availabilityStatus(record: UnknownRecord, labels: ArtistsLabels) {
   const value = firstMeaningfulValue(record, ["status", "is_available", "available", "busy"]);
   const normalized = String(value ?? "").toLowerCase();
-  const unavailable = normalized.includes("busy") || normalized.includes("false") || normalized === "0";
+  const hasBusySlotShape = ["start_time", "end_time", "time_from", "time_to", "from", "to"].some((key) =>
+    hasMeaningfulValue(record[key]),
+  );
+  const unavailable = hasMeaningfulValue(value)
+    ? normalized.includes("busy") || normalized.includes("false") || normalized === "0"
+    : hasBusySlotShape;
 
   return unavailable
     ? { label: labels.busyStatus, tone: "warning" as const }
@@ -2714,17 +4334,9 @@ function getScheduleStatus(schedule: UnknownRecord, labels: ArtistsLabels, mode:
 
 function scheduleAvailabilitySummary(schedule: UnknownRecord, labels: ArtistsLabels) {
   const rows = availabilityRowsFromSchedule(schedule, labels);
-  if (rows.length) return labels.availableDaysCount(countAvailableDays(rows));
+  if (rows.length) return labels.busyDaysCount(countBusyDays(rows));
   if ("availability" in schedule) return labels.noAvailabilityData;
   return "—";
-}
-
-function getAvailabilityTypeLabel(schedule: UnknownRecord, labels: ArtistsLabels) {
-  const availability = schedule.availability;
-  if (Array.isArray(availability)) return labels.arrayType;
-  if (isRecord(availability)) return labels.objectType;
-  if (!hasMeaningfulValue(availability)) return labels.emptyType;
-  return labels.unknownType;
 }
 
 function getRawAvailabilityPreview(schedule: UnknownRecord, labels: ArtistsLabels) {
@@ -2761,6 +4373,16 @@ function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function formatDateInputValue(date: Date) {
+  return dateKey(date);
+}
+
+function normalizeDateInput(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const date = parseDateOnly(value);
+  return date ? dateKey(date) : "";
+}
+
 function calendarDaysForMonth(date: Date) {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
   const offset = (first.getDay() + 6) % 7;
@@ -2783,10 +4405,6 @@ function countTotalDays(schedule: UnknownRecord) {
   const end = parseDateOnly(schedule.date_to);
   if (!start || !end) return 0;
   return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
-}
-
-function countAvailableDays(rows: AvailabilityRow[]) {
-  return new Set(rows.filter((row) => row.tone === "success").map((row) => row.date)).size;
 }
 
 function countBusyDays(rows: AvailabilityRow[]) {
@@ -3119,6 +4737,10 @@ function formatEnumValue(fieldKey: string, value: unknown, labels: ArtistsLabels
     normalized === "false";
 
   if (booleanLike) {
+    if (fieldKey === "is_active" || fieldKey === "active") {
+      if (normalized === "true" || normalized === "1") return labels.statusValueLabels.active;
+      if (normalized === "false" || normalized === "0") return labels.statusValueLabels.inactive;
+    }
     if (normalized === "true" || normalized === "1") return labels.yes;
     if (normalized === "false" || normalized === "0") return labels.no;
   }
@@ -3468,17 +5090,20 @@ function getArtistsLabels(locale: string) {
       artistId: "ID артиста",
       artistStats: "Статистика артиста",
       artistIdMissing: "ID артиста не найден",
+      averageRating: "Средняя оценка",
       artistVideos: "Видео артиста",
       artistVideosCountHint: "Количество видео, привязанных к этому артисту",
+      videoItem: "Видео",
+      videoItemCount: (count: number) => `${count} ${count === 1 ? "видео" : "видео"}`,
       about: "О себе",
       actions: "Действия",
       add: "Добавить",
-      addAvailability: "Добавить доступность",
+      addAvailability: "Добавить занятое время",
       all: "Все",
       administrator: "Администратор",
       arrayType: "Массив",
       availability: "Расписание",
-      availabilityList: "Доступность",
+      availabilityList: "Занятое время",
       availabilitySummary: "Сводка доступности",
       availabilityType: "Тип доступности",
       availableStatus: "Доступно",
@@ -3486,6 +5111,13 @@ function getArtistsLabels(locale: string) {
       availableDaysCount: (count: number) => `${count} доступных дней`,
       busyStatus: "Занято",
       busyDays: "Занятые дни",
+      busyDaysCount: (count: number) => `${count} занятых дней`,
+      busySlotCreated: "Занятое время добавлено",
+      busySlotDeleted: "Занятое время удалено",
+      busySlotDeleteFailed: "Не удалось удалить занятое время",
+      busySlotIdMissing: "ID занятого времени не найден",
+      busySlotSaveFailed: "Не удалось сохранить занятое время",
+      busySlotUpdated: "Занятое время обновлено",
       calendarPreview: "Календарь",
       artistBio: "Bio артиста",
       birthDate: "Дата рождения",
@@ -3493,7 +5125,21 @@ function getArtistsLabels(locale: string) {
       category: "Категории",
       categoryPlaceholder: "Выберите категорию",
       categoryIds: "ID категорий",
+      client: "Клиент",
+      comment: "Комментарий",
+      commentDeleted: "Комментарий удален",
+      commentDeleteFailed: "Не удалось удалить комментарий",
+      commentIdMissing: "ID комментария не найден",
+      commentItemCount: (count: number) => `${count} ${count === 1 ? "комментарий" : "комментариев"}`,
+      commentPublished: "Комментарий опубликован",
+      commentPublishFailed: "Не удалось опубликовать комментарий",
+      commentUnpublished: "Комментарий скрыт",
+      commentUnpublishFailed: "Не удалось скрыть комментарий",
+      commentUpdated: "Комментарий обновлен",
+      commentUpdateFailed: "Не удалось обновить комментарий",
       comments: "Комментарии",
+      commentsEmptyDescription: "Для этого артиста пока нет комментариев.",
+      commentsEmptyTitle: "Комментариев нет",
       contactInfo: "Контактная информация",
       create: "Создать",
       createArtist: "Создать артиста",
@@ -3513,6 +5159,16 @@ function getArtistsLabels(locale: string) {
       duration: "Длительность",
       duplicateSchedule: "Дублировать расписание",
       deleteSchedule: "Удалить расписание",
+      deleteBusySlotConfirm: "Это занятое время будет удалено из расписания артиста.",
+      deleteBusySlotTitle: "Удалить занятое время?",
+      deleteComment: "Удалить",
+      deleteCommentConfirm: "Комментарий будет удален из профиля артиста.",
+      deleteCommentTitle: "Удалить комментарий?",
+      deleteRating: "Удалить",
+      deleteRatingConfirm: "Рейтинг будет удален из профиля артиста.",
+      deleteRatingTitle: "Удалить рейтинг?",
+      editBusySlot: "Изменить занятое время",
+      editComment: "Редактировать комментарий",
       editTitle: "Редактировать артиста",
       emptyType: "Пусто",
       emptyArtistDetails: "Детали артиста пустые",
@@ -3555,6 +5211,10 @@ function getArtistsLabels(locale: string) {
       } as Record<string, string>,
       fans: "Поклонники",
       gallery: "Галерея",
+      galleryEmptyDescription: "Для этого артиста пока нет загруженных изображений.",
+      galleryEmptyTitle: "Галерея пуста",
+      galleryItem: "Изображение",
+      galleryItemCount: (count: number) => `${count} ${count === 1 ? "изображение" : "изображений"}`,
       gender: "Пол",
       genderFemale: "Женский",
       genderMale: "Мужской",
@@ -3572,15 +5232,34 @@ function getArtistsLabels(locale: string) {
       name: "Имя",
       no: "Нет",
       noAvailabilityData: "Нет данных по доступности",
+      noImage: "Нет изображения",
+      noVideoPreview: "Превью нет",
       noVideoHint: "Видео не найдено. Можно повторно проверить на странице видео с фильтром по артисту.",
       notFoundTitle: (title: string) => `${title} не найдено`,
       objectType: "Объект",
       oneObject: "1 объект",
+      openVideo: "Открыть",
       page: "Страница",
       password: "Пароль",
+      newPassword: "Новый пароль",
+      confirmPassword: "Подтвердите пароль",
+      passwordMismatch: "Пароли не совпадают",
+      passwordMinLength: "Пароль должен быть не меньше 6 символов",
+      resetPasswordAction: "Сбросить пароль",
+      resetPasswordTitle: "Сброс пароля артиста",
+      resetPasswordDescription: (name: string) => `Новый пароль будет установлен для ${name}.`,
+      passwordResetSuccess: "Пароль артиста обновлен",
+      passwordResetFailed: "Не удалось обновить пароль артиста",
       phone: "Телефон",
+      pendingStatus: "Ожидает",
       price: "Цена",
       profile: "Профиль",
+      publicationStatus: "Статус публикации",
+      publishedRatings: "Опубликовано",
+      publishComment: "Опубликовать",
+      publishCommentConfirm: "Комментарий станет видимым в профиле артиста.",
+      publishCommentTitle: "Опубликовать комментарий?",
+      publishedStatus: "Опубликовано",
       districtId: "ID района",
       lastName: "Фамилия",
       noProfilePhoto: "Фото не выбрано",
@@ -3588,7 +5267,13 @@ function getArtistsLabels(locale: string) {
       profilePhoto: "Фото профиля",
       profilePhotoHint: "JPG или PNG, до 5 MB.",
       rating: "Рейтинг",
+      ratingDeleted: "Рейтинг удален",
+      ratingDeleteFailed: "Не удалось удалить рейтинг",
+      ratingIdMissing: "ID рейтинга не найден",
+      ratingItemCount: (count: number) => `${count} ${count === 1 ? "рейтинг" : "рейтингов"}`,
       ratings: "Рейтинги",
+      ratingsEmptyDescription: "Для этого артиста пока нет оценок.",
+      ratingsEmptyTitle: "Рейтингов нет",
       recordCount: (count: number) => `${count} записей`,
       recordNumber: (index: number) => `Запись #${index}`,
       region: "Регион",
@@ -3607,6 +5292,7 @@ function getArtistsLabels(locale: string) {
       search: "Поиск",
       searchPlaceholder: "Имя, фамилия или телефон",
       services: "Услуги",
+      sortOrder: "Порядок",
       status: "Статус",
       statusValueLabels: {
         active: "Активно",
@@ -3638,6 +5324,7 @@ function getArtistsLabels(locale: string) {
         false: "Нет",
       } as Record<string, string>,
       time: "Время",
+      timeRangeInvalid: "Время окончания должно быть позже времени начала",
       timezone: "Часовой пояс",
       title: "Артисты",
       top: "Топ",
@@ -3646,13 +5333,26 @@ function getArtistsLabels(locale: string) {
       uploadProfilePhoto: "Загрузить фото",
       uploading: "Загружается...",
       totalDays: "Всего дней",
+      totalRatings: "Всего оценок",
       unknownType: "Неизвестно",
+      unknownClient: "Клиент",
+      unpublishComment: "Скрыть",
+      unpublishCommentConfirm: "Комментарий будет скрыт из профиля артиста.",
+      unpublishCommentTitle: "Скрыть комментарий?",
+      unpublishedStatus: "Скрыто",
       updateFailed: "Не удалось обновить",
       updated: "Артист обновлен",
       updatedAt: "Обновлено",
+      endTime: "Время окончания",
+      reason: "Причина",
+      saveBusySlot: "Сохранить",
+      saveComment: "Сохранить",
+      saving: "Сохраняется...",
+      startTime: "Время начала",
       verified: "Подтвержден",
       verifiedBadge: "Verified",
       videos: "Видео",
+      videosEmptyTitle: "Видео не найдены",
       videosLoading: "Видео загружаются...",
       viewInTable: "Посмотреть в таблице",
       weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
@@ -3678,17 +5378,20 @@ function getArtistsLabels(locale: string) {
     artistId: "Sanatkor ID",
     artistStats: "Sanatkor statistikasi",
     artistIdMissing: "Sanatkor ID topilmadi",
+    averageRating: "O'rtacha reyting",
     artistVideos: "Sanatkor videolari",
     artistVideosCountHint: "Bu sanatkorga biriktirilgan video soni",
+    videoItem: "Video",
+    videoItemCount: (count: number) => `${count} ta video`,
     about: "O'zi haqida",
     actions: "Amallar",
     add: "Qo'shish",
-    addAvailability: "Bo'sh vaqt qo'shish",
+    addAvailability: "Band vaqt qo'shish",
     all: "Barchasi",
     administrator: "Administrator",
     arrayType: "Massiv",
     availability: "Vaqtlar",
-      availabilityList: "Bo'sh vaqtlar",
+    availabilityList: "Band vaqtlar",
       availabilitySummary: "Bo'sh vaqt xulosasi",
       availabilityType: "Bo'sh vaqt turi",
       availableStatus: "Bo'sh",
@@ -3696,6 +5399,13 @@ function getArtistsLabels(locale: string) {
       availableDaysCount: (count: number) => `${count} ta bo'sh kun`,
       busyStatus: "Band",
       busyDays: "Band kunlar",
+      busyDaysCount: (count: number) => `${count} ta band kun`,
+      busySlotCreated: "Band vaqt qo'shildi",
+      busySlotDeleted: "Band vaqt o'chirildi",
+      busySlotDeleteFailed: "Band vaqtni o'chirish bajarilmadi",
+      busySlotIdMissing: "Band vaqt ID topilmadi",
+      busySlotSaveFailed: "Band vaqtni saqlash bajarilmadi",
+      busySlotUpdated: "Band vaqt yangilandi",
     calendarPreview: "Kalendar",
     artistBio: "Sanatkor bio",
     birthDate: "Tug'ilgan sana",
@@ -3703,7 +5413,21 @@ function getArtistsLabels(locale: string) {
     category: "Kategoriya",
     categoryPlaceholder: "Kategoriya tanlang",
     categoryIds: "Kategoriya IDlari",
+    client: "Mijoz",
+    comment: "Izoh",
+    commentDeleted: "Izoh o'chirildi",
+    commentDeleteFailed: "Izohni o'chirish bajarilmadi",
+    commentIdMissing: "Izoh ID topilmadi",
+    commentItemCount: (count: number) => `${count} ta izoh`,
+    commentPublished: "Izoh ko'rsatildi",
+    commentPublishFailed: "Izohni ko'rsatish bajarilmadi",
+    commentUnpublished: "Izoh yashirildi",
+    commentUnpublishFailed: "Izohni yashirish bajarilmadi",
+    commentUpdated: "Izoh yangilandi",
+    commentUpdateFailed: "Izohni yangilash bajarilmadi",
     comments: "Izohlar",
+    commentsEmptyDescription: "Bu sanatkor uchun hali izoh yozilmagan.",
+    commentsEmptyTitle: "Izohlar yo'q",
     contactInfo: "Kontakt ma'lumotlari",
     create: "Yaratish",
     createArtist: "Sanatkor yaratish",
@@ -3723,6 +5447,16 @@ function getArtistsLabels(locale: string) {
     duration: "Davomiylik",
     duplicateSchedule: "Vaqtni nusxalash",
     deleteSchedule: "Vaqtni o'chirish",
+    deleteBusySlotConfirm: "Bu band vaqt sanatkor jadvalidan o'chiriladi.",
+    deleteBusySlotTitle: "Band vaqt o'chirilsinmi?",
+    deleteComment: "O'chirish",
+    deleteCommentConfirm: "Izoh sanatkor profilidan o'chiriladi.",
+    deleteCommentTitle: "Izoh o'chirilsinmi?",
+    deleteRating: "O'chirish",
+    deleteRatingConfirm: "Reyting sanatkor profilidan o'chiriladi.",
+    deleteRatingTitle: "Reyting o'chirilsinmi?",
+    editBusySlot: "Band vaqtni tahrirlash",
+    editComment: "Izohni tahrirlash",
     editTitle: "Sanatkorni tahrirlash",
     emptyType: "Bo'sh",
     emptyArtistDetails: "Sanatkor tafsilotlari bo'sh qaytdi",
@@ -3765,6 +5499,10 @@ function getArtistsLabels(locale: string) {
     } as Record<string, string>,
     fans: "Muxlislar",
     gallery: "Galereya",
+    galleryEmptyDescription: "Bu sanatkor uchun hali rasm yuklanmagan.",
+    galleryEmptyTitle: "Galereya bo'sh",
+    galleryItem: "Rasm",
+    galleryItemCount: (count: number) => `${count} ta rasm`,
     gender: "Jinsi",
     genderFemale: "Ayol",
     genderMale: "Erkak",
@@ -3782,15 +5520,34 @@ function getArtistsLabels(locale: string) {
     name: "Ism",
     no: "Yo'q",
     noAvailabilityData: "Bo'sh vaqt ma'lumotlari yo'q",
+    noImage: "Rasm yo'q",
+    noVideoPreview: "Preview yo'q",
     noVideoHint: "Video topilmadi. Videolar sahifasida sanatkor filter orqali qayta tekshirishingiz mumkin.",
     notFoundTitle: (title: string) => `${title} topilmadi`,
     objectType: "Obyekt",
     oneObject: "1 ta obyekt",
+    openVideo: "Ochish",
     page: "Sahifa",
     password: "Parol",
+    newPassword: "Yangi parol",
+    confirmPassword: "Parolni tasdiqlash",
+    passwordMismatch: "Parollar mos emas",
+    passwordMinLength: "Parol kamida 6 belgidan iborat bo'lishi kerak",
+    resetPasswordAction: "Parol reset",
+    resetPasswordTitle: "Sanatkor parolini reset qilish",
+    resetPasswordDescription: (name: string) => `${name} uchun yangi parol o'rnatiladi.`,
+    passwordResetSuccess: "Sanatkor paroli yangilandi",
+    passwordResetFailed: "Sanatkor parolini yangilash bajarilmadi",
     phone: "Telefon",
+    pendingStatus: "Kutilmoqda",
     price: "Narx",
     profile: "Profil",
+    publicationStatus: "Ko'rsatish holati",
+    publishedRatings: "Ko'rsatilgan",
+    publishComment: "Ko'rsatish",
+    publishCommentConfirm: "Izoh sanatkor profilida ko'rinadi.",
+    publishCommentTitle: "Izoh ko'rsatilsinmi?",
+    publishedStatus: "Ko'rsatilgan",
     districtId: "Tuman ID",
     lastName: "Familiya",
     noProfilePhoto: "Rasm tanlanmagan",
@@ -3798,7 +5555,13 @@ function getArtistsLabels(locale: string) {
     profilePhoto: "Profil rasmi",
     profilePhotoHint: "JPG yoki PNG format, 5 MB gacha.",
     rating: "Reyting",
+    ratingDeleted: "Reyting o'chirildi",
+    ratingDeleteFailed: "Reytingni o'chirish bajarilmadi",
+    ratingIdMissing: "Reyting ID topilmadi",
+    ratingItemCount: (count: number) => `${count} ta reyting`,
     ratings: "Reytinglar",
+    ratingsEmptyDescription: "Bu sanatkor uchun hali reyting berilmagan.",
+    ratingsEmptyTitle: "Reytinglar yo'q",
     recordCount: (count: number) => `${count} ta yozuv`,
     recordNumber: (index: number) => `Yozuv #${index}`,
     region: "Viloyat",
@@ -3817,6 +5580,7 @@ function getArtistsLabels(locale: string) {
     search: "Qidiruv",
     searchPlaceholder: "Ism, familiya yoki telefon",
     services: "Xizmatlar",
+    sortOrder: "Tartib",
     status: "Holat",
     statusValueLabels: {
       active: "Faol",
@@ -3848,6 +5612,7 @@ function getArtistsLabels(locale: string) {
       false: "Yo'q",
     } as Record<string, string>,
     time: "Vaqt",
+    timeRangeInvalid: "Tugash vaqti boshlanish vaqtidan keyin bo'lishi kerak",
     timezone: "Vaqt zonasi",
     title: "Sanatkorlar",
     top: "Top",
@@ -3856,13 +5621,26 @@ function getArtistsLabels(locale: string) {
     uploadProfilePhoto: "Rasm yuklash",
     uploading: "Yuklanmoqda...",
     totalDays: "Jami kunlar",
+    totalRatings: "Jami reyting",
     unknownType: "Noma'lum",
+    unknownClient: "Mijoz",
+    unpublishComment: "Yashirish",
+    unpublishCommentConfirm: "Izoh sanatkor profilidan yashiriladi.",
+    unpublishCommentTitle: "Izoh yashirilsinmi?",
+    unpublishedStatus: "Yashirilgan",
     updateFailed: "Yangilash bajarilmadi",
     updated: "Sanatkor yangilandi",
     updatedAt: "Yangilangan",
+    endTime: "Tugash vaqti",
+    reason: "Sabab",
+    saveBusySlot: "Saqlash",
+    saveComment: "Saqlash",
+    saving: "Saqlanmoqda...",
+    startTime: "Boshlanish vaqti",
     verified: "Tasdiqlangan",
     verifiedBadge: "Verified",
     videos: "Videolar",
+    videosEmptyTitle: "Videolar topilmadi",
     videosLoading: "Videolar yuklanmoqda...",
     viewInTable: "Jadvalda ko'rish",
     weekdays: ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"],

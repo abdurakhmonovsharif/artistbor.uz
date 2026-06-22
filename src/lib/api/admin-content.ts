@@ -336,6 +336,13 @@ export type ArtistAvailabilityFilters = {
   date_to?: string;
 };
 
+export type ArtistBusySlotPayload = {
+  date: string;
+  time_from: string;
+  time_to: string;
+  reason?: string;
+};
+
 export type ArtistGalleryFilters = {
   artist_id?: number;
 };
@@ -725,6 +732,14 @@ export const artistAvailabilityApi = {
       params: compactParams(withDefaultAvailabilityRange(filters)),
     });
     return normalizeList<ArtistAvailabilityRecord>(response.data);
+  },
+  async createBusySlot(artistId: number, payload: ArtistBusySlotPayload) {
+    const response = await apiClient.post(`/v1/admin/artist/${artistId}/busy-slot`, payload);
+    return unwrapData<ArtistAvailabilityRecord>(response.data);
+  },
+  async deleteBusySlot(id: number) {
+    const response = await apiClient.delete(`/v1/admin/busy-slot/${id}`);
+    return unwrapData<unknown>(response.data);
   },
 };
 

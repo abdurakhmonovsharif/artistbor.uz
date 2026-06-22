@@ -26,6 +26,7 @@ import {
   type UpdateStaffPayload,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import type { ListResult, User } from "@/types/api";
 
 type DialogState =
@@ -60,6 +61,7 @@ export default function OperatorsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
   const fetchStaff = useCallback(async () => {
     setLoading(true);
@@ -81,6 +83,32 @@ export default function OperatorsPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [fetchStaff]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFilters((current) => {
+        const nextLimit = Number(current.limit) || limit;
+        const next: StaffFilters = {
+          ...current,
+          search: debouncedSearch,
+          page: 1,
+          limit: nextLimit,
+        };
+
+        if (
+          (current.search ?? "") === next.search &&
+          Number(current.page ?? 1) === next.page &&
+          Number(current.limit ?? limit) === next.limit
+        ) {
+          return current;
+        }
+
+        return next;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [debouncedSearch]);
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
