@@ -17,16 +17,16 @@ export function Modal({
   const { t } = useI18n();
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
       <div
-        className={`max-h-[90vh] w-full ${width} overflow-hidden rounded-[28px] border border-black/10 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-slate-950`}
+        className={`relative isolate max-h-[90vh] w-full ${width} overflow-hidden rounded-xl border border-white/10 bg-[#111827] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_28px_80px_rgba(2,6,23,0.56)] before:pointer-events-none before:absolute before:inset-px before:z-0 before:rounded-[10px] before:border before:border-white/[0.04] before:content-['']`}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-white/10">
-          <h2 className="text-lg font-black text-slate-950 dark:text-white">{title}</h2>
+        <div className="flex items-center justify-between border-b border-white/10 bg-[#0f172a] px-6 py-4">
+          <h2 className="text-lg font-black text-slate-50">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-rose-200 p-2 text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+            className="rounded-[10px] border border-rose-400/70 bg-transparent p-2 text-rose-400 transition-[background-color,border-color,color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-rose-300 hover:bg-rose-500/10 hover:text-rose-300"
             aria-label={t("actions.close")}
           >
             <X className="size-4" />

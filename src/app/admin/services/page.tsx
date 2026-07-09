@@ -189,7 +189,7 @@ export default function ServicesPage() {
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
-        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(140px,0.65fr)_auto] md:items-center"
+        gridClassName="md:grid-cols-[auto_minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(140px,0.65fr)_auto] md:items-center"
         mobileLabel={t("actions.search")}
       >
         <Input
@@ -198,7 +198,11 @@ export default function ServicesPage() {
           value={draftFilters.name ?? ""}
           placeholder={labels.searchPlaceholder}
           onChange={(event) => setDraftFilters((current) => ({ ...current, name: event.target.value }))}
-          className={`${adminFilterControlClass} h-10`}
+          className={cn(
+            adminFilterControlClass,
+            "artistbor-filter-search h-10",
+            draftFilters.name && "artistbor-filter-search-active",
+          )}
         />
         <Select
           allowClear

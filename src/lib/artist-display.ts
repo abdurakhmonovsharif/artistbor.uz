@@ -1,4 +1,5 @@
 import type { ArtistProfile } from "@/types/api";
+import { formatPhone } from "@/lib/phone-format";
 
 export function getArtistId(artist: ArtistProfile) {
   return artist.user_id ?? artist.id;
@@ -11,7 +12,7 @@ export function getArtistName(artist: ArtistProfile) {
 
 export function getArtistOptionLabel(artist: ArtistProfile) {
   const phone = artist.phone || artist.extra_phone;
-  return phone ? `${getArtistName(artist)} · ${phone}` : getArtistName(artist);
+  return phone ? `${getArtistName(artist)} · ${formatPhone(phone) || phone}` : getArtistName(artist);
 }
 
 export function getArtistSelectOptions(artists: ArtistProfile[], selectedId?: string | number) {

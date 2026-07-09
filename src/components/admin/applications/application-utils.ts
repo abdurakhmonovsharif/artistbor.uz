@@ -1,5 +1,6 @@
 import type { ArtistApplication, Category, Service, UnknownRecord } from "@/types/api";
 import type { Locale } from "@/lib/i18n/translations";
+import { formatPhone } from "@/lib/phone-format";
 import { isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 
 export type ApplicationStatusKey = "all" | "pending" | "approved" | "rejected" | "unknown";
@@ -86,7 +87,8 @@ export function getApplicationUserName(application: ArtistApplication) {
     .join(" ")
     .trim();
 
-  return name || getStringValue(user, "phone") || getStringValue(user, "email") || "—";
+  const phone = getStringValue(user, "phone");
+  return name || (phone ? formatPhone(phone) || phone : "") || getStringValue(user, "email") || "—";
 }
 
 export function getApplicationUser(application: ArtistApplication) {

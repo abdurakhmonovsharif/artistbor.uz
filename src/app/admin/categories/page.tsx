@@ -18,15 +18,9 @@ import {
   adminActionButtonLargeClass,
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
-import {
-  AdminFilterForm,
-  adminFilterActionClass,
-  adminFilterControlClass,
-} from "@/components/admin/admin-filter-form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField, type FormFieldOption } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { useToast } from "@/components/ui/toast";
 import {
   categoriesApi,
@@ -174,59 +168,63 @@ export default function CategoriesPage() {
   };
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">{labels.title}</h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">{labels.title}</h1>
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
         </div>
         <button
           type="button"
           onClick={() => setDialog({ type: "create" })}
-          className={adminActionButtonLargeClass}
+          className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
         >
           <Plus className="size-4" />
           {t("actions.create")}
         </button>
       </div>
 
-      <AdminFilterForm
+      <form
         onSubmit={(event) => event.preventDefault()}
-        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
-        mobileLabel={t("actions.search")}
+        className="artistbor-table-filter-shell overflow-x-auto"
       >
-        <Input
-          allowClear
-          prefix={<Search className="size-4 text-slate-400" />}
-          value={draftFilters.name ?? ""}
-          placeholder={labels.searchPlaceholder}
-          onChange={(event) => setDraftFilters((current) => ({ ...current, name: event.target.value }))}
-          className={`${adminFilterControlClass} h-10`}
-        />
-        <Select
-          className={`${adminFilterControlClass} h-10`}
-          value={draftFilters.status ?? ""}
-          onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
-          options={[
-            { label: labels.statusAll, value: "" },
-            { label: labels.active, value: "1" },
-            { label: labels.inactive, value: "0" },
-          ]}
-        />
-        <Button
-          htmlType="button"
-          className={`${adminFilterActionClass} h-10`}
-          icon={<RotateCcw className="size-4" />}
-          onClick={resetFilters}
-        >
-          {t("actions.clear")}
-        </Button>
-      </AdminFilterForm>
+        <div className="artistbor-table-filter-panel flex min-h-[52px] min-w-[620px] items-center gap-2.5 py-2">
+          <Input
+            allowClear
+            prefix={<Search className="size-4 text-[#94a3b8]" />}
+            value={draftFilters.name ?? ""}
+            placeholder={labels.searchPlaceholder}
+            onChange={(event) => setDraftFilters((current) => ({ ...current, name: event.target.value }))}
+            className={cn(
+              "artistbor-filter-search !h-[38px] !rounded-[11px] !border-[#e6ebf2] !bg-white !text-[13px] !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+              draftFilters.name && "artistbor-filter-search-active",
+            )}
+          />
+          <Select
+            className="artistbor-compact-select !h-[38px] !w-[220px] shrink-0"
+            value={draftFilters.status ?? ""}
+            onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
+            options={[
+              { label: labels.statusAll, value: "" },
+              { label: labels.active, value: "1" },
+              { label: labels.inactive, value: "0" },
+            ]}
+          />
+          <Button
+            htmlType="button"
+            className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-[11px] !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
+            icon={<RotateCcw className="size-4" />}
+            onClick={resetFilters}
+          >
+            {t("actions.clear")}
+          </Button>
+        </div>
+      </form>
 
       {loading ? (
         <LoadingState />
@@ -341,11 +339,20 @@ function CategoryHierarchyTable({
   onRestore: (category: Category) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111827]">
-      <div className="admin-table-scroll overflow-x-auto">
-        <table className="w-full min-w-[920px] border-collapse">
+    <div className="overflow-hidden rounded-2xl border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1040px] border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-16" />
+            <col className="w-[340px]" />
+            <col className="w-[240px]" />
+            <col className="w-[140px]" />
+            <col className="w-[120px]" />
+            <col className="w-[170px]" />
+          </colgroup>
           <thead>
-            <tr className="h-11 border-b border-slate-200 bg-slate-50 text-left dark:border-white/10 dark:bg-white/[0.03]">
+            <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
               <TableHead className="w-12" />
               <TableHead>ID</TableHead>
               <TableHead>{labels.name}</TableHead>
@@ -419,10 +426,19 @@ function CategoryRowGroup({
         onRestore={onRestore}
       />
       {expanded ? (
-        <tr className="border-b border-slate-100 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.02]">
-          <td colSpan={7} className="px-3 py-2">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#111827]">
-              <table className="w-full border-collapse">
+        <tr className="bg-[#f8fafc]/70 dark:bg-white/[0.02]">
+          <td colSpan={7} className="border-b border-[#edf2f7] px-3.5 py-2.5 dark:border-white/10">
+            <div className="overflow-hidden rounded-xl border border-[#e6ebf2] bg-white dark:border-white/10 dark:bg-slate-950">
+              <table className="w-full min-w-[1040px] border-separate border-spacing-0">
+                <colgroup>
+                  <col className="w-12" />
+                  <col className="w-16" />
+                  <col className="w-[340px]" />
+                  <col className="w-[240px]" />
+                  <col className="w-[140px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[170px]" />
+                </colgroup>
                 <tbody>
                   {childrenRows.map((child) => (
                     <CategoryTableRow
@@ -479,8 +495,8 @@ function CategoryTableRow({
   return (
     <tr
       className={cn(
-        "h-16 border-b border-slate-100 transition last:border-0 hover:bg-slate-50/80 dark:border-white/10 dark:hover:bg-white/[0.035]",
-        nested && "h-14 bg-slate-50/70 dark:bg-white/[0.02]",
+        "h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]",
+        nested && "h-[60px] bg-[#f8fafc]/60 dark:bg-white/[0.02]",
       )}
     >
       <TableCell className="w-12">
@@ -488,37 +504,41 @@ function CategoryTableRow({
           <button
             type="button"
             onClick={() => category.id && onExpand(category.id)}
-            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+            className="grid size-8 cursor-pointer place-items-center rounded-[10px] border border-[#e6ebf2] bg-white text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
             aria-label={expanded ? labels.collapseSubcategories : labels.expandSubcategories}
           >
             {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
         ) : nested ? (
-          <span className="ml-3 block h-px w-5 bg-slate-300 dark:bg-white/20" />
+          <span className="ml-3 block h-px w-5 bg-[#cbd5e1] dark:bg-white/20" />
         ) : null}
       </TableCell>
-      <TableCell>{toDisplay(category.id)}</TableCell>
+      <TableCell className="font-semibold text-[#64748b] dark:text-slate-400">{toDisplay(category.id)}</TableCell>
       <TableCell>
-        <div className={cn("min-w-0", nested && "pl-5")}>
-          <p className="line-clamp-2 text-sm font-semibold text-slate-950 dark:text-white">
-            {localizedName(category, labels.locale)}
-          </p>
+        <div className="min-w-0">
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
+              {localizedName(category, labels.locale)}
+            </p>
           {nested ? (
-            <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
               {labels.subcategory}
             </p>
           ) : childCount ? (
-            <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
               {labels.childrenCount(childCount)}
             </p>
           ) : null}
+          </div>
         </div>
       </TableCell>
-      <TableCell>{category.slug ?? "—"}</TableCell>
       <TableCell>
-        <StatusBadge value={category.status} />
+        <span className="truncate font-medium text-[#334155] dark:text-slate-200">{category.slug ?? "—"}</span>
       </TableCell>
-      <TableCell>{toDisplay(category.sort_order)}</TableCell>
+      <TableCell>
+        <CategoryStatusPill category={category} labels={labels} />
+      </TableCell>
+      <TableCell className="font-medium text-[#475569] dark:text-slate-300">{toDisplay(category.sort_order)}</TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-2">
           {root ? (
@@ -538,6 +558,30 @@ function CategoryTableRow({
         </div>
       </TableCell>
     </tr>
+  );
+}
+
+function CategoryStatusPill({
+  category,
+  labels,
+}: {
+  category: Category;
+  labels: ReturnType<typeof getLabels>;
+}) {
+  const active = String(category.status ?? "1") !== "0";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-bold",
+        active
+          ? "bg-[#dcfce7] text-[#059669] dark:bg-emerald-500/10 dark:text-emerald-300"
+          : "bg-[#ffe4e6] text-[#e11d48] dark:bg-rose-500/10 dark:text-rose-300",
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current" />
+      {active ? labels.active : labels.inactive}
+    </span>
   );
 }
 
@@ -637,14 +681,14 @@ function CategoryFormDrawer({
 
 function TableHead({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={cn("px-3 text-left text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400", className)}>
+    <th className={cn("border-b border-[#e6ebf2] px-3.5 py-0 text-left text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400", className)}>
       {children}
     </th>
   );
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("max-w-[300px] px-3 py-2 align-middle text-sm text-slate-700 dark:text-slate-100", className)}>{children}</td>;
+  return <td className={cn("max-w-[340px] border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
 }
 
 function IconButton({
@@ -665,10 +709,10 @@ function IconButton({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "grid size-8 cursor-pointer place-items-center rounded-lg border transition",
+        "grid size-8 cursor-pointer place-items-center rounded-[10px] border bg-white transition dark:bg-white/[0.03]",
         danger
-          ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
-          : "border-slate-200 text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300",
+          ? "border-[#fecaca] text-[#f43f5e] hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
+          : "border-[#e6ebf2] text-[#475569] hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.06]",
       )}
     >
       {children}
@@ -789,7 +833,7 @@ function getLabels(locale: string) {
       detailFailed: "Не удалось загрузить детали",
       edit: "Редактировать",
       expandSubcategories: "Развернуть подкатегории",
-      eyebrow: "Данные",
+      eyebrow: "Категории",
       inactive: "Неактивная",
       loadFailed: "Не удалось загрузить категории",
       locale: "ru",
@@ -821,7 +865,7 @@ function getLabels(locale: string) {
     detailFailed: "Detail yuklanmadi",
     edit: "Tahrirlash",
     expandSubcategories: "Subcategorylarni ochish",
-    eyebrow: "Ma'lumotlar",
+    eyebrow: "Kategoriyalar",
     inactive: "Faol emas",
     loadFailed: "Kategoriyalar yuklanmadi",
     locale: "uz",

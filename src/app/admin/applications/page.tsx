@@ -6,10 +6,6 @@ import { Modal } from "antd";
 import { CheckCircle2, X, XCircle } from "lucide-react";
 import { ApplicationsFilterBar, defaultApplicationFilters } from "@/components/admin/applications/applications-filter-bar";
 import type { ApplicationsFilterState } from "@/components/admin/applications/applications-filter-bar";
-import {
-  adminDangerActionButtonClass,
-  adminPrimaryActionButtonClass,
-} from "@/components/admin/admin-action-button";
 import { ApplicationContactDrawer } from "@/components/admin/applications/application-contact-drawer";
 import { ApplicationDetailDrawer } from "@/components/admin/applications/application-detail-drawer";
 import { getApplicationLabels } from "@/components/admin/applications/application-labels";
@@ -302,11 +298,11 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     meta?.pageCount ?? (meta?.total && meta?.limit ? Math.ceil(meta.total / meta.limit) : undefined);
 
   return (
-    <section className="space-y-5">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-500">{labels.pageEyebrow}</p>
-        <h1 className="mt-2 text-3xl font-bold text-slate-950 dark:text-white">{labels.pageTitle}</h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">{labels.pageEyebrow}</p>
+        <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">{labels.pageTitle}</h1>
+        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
           {labels.pageDescription}
         </p>
       </div>
@@ -421,7 +417,7 @@ function ApproveApplicationModal({
     <Modal
       centered
       open
-      className="artistbor-confirm-modal"
+      rootClassName="artistbor-confirm-modal"
       width={480}
       title={labels.approveDialogTitle}
       onCancel={onClose}
@@ -432,7 +428,7 @@ function ApproveApplicationModal({
             type="submit"
             form={formId}
             disabled={loading}
-            className={adminPrimaryActionButtonClass}
+            className="artistbor-modal-action artistbor-modal-action--success w-full text-sm font-black"
           >
             <CheckCircle2 className="size-4" />
             {loading ? labels.submitting : labels.approveAction}
@@ -485,7 +481,7 @@ function RejectApplicationModal({
     <Modal
       centered
       open
-      className="artistbor-confirm-modal"
+      rootClassName="artistbor-confirm-modal"
       width={480}
       title={labels.rejectDialogTitle(toDisplay(application.id))}
       onCancel={onClose}
@@ -496,7 +492,7 @@ function RejectApplicationModal({
             type="submit"
             form={formId}
             disabled={loading}
-            className={`${adminDangerActionButtonClass} w-1/2`}
+            className="artistbor-modal-action artistbor-modal-action--danger w-1/2 text-sm font-black"
           >
             <XCircle className="size-4" />
             {loading ? labels.submitting : labels.rejectAction}

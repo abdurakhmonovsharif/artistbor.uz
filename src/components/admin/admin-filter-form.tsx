@@ -5,8 +5,10 @@ import { Button } from "antd";
 import { ListFilter } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const adminFilterControlClass = "admin-filter-control";
-export const adminFilterActionClass = "admin-filter-action";
+export const adminFilterShellClass = "artistbor-table-filter-shell";
+export const adminFilterPanelClass = "artistbor-table-filter-panel";
+export const adminFilterControlClass = "artistbor-table-filter-control admin-filter-control";
+export const adminFilterActionClass = "admin-filter-action artistbor-filter-reset artistbor-table-filter-control";
 
 export function AdminFilterForm({
   children,
@@ -24,11 +26,12 @@ export function AdminFilterForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111827]"
+      className={cn(adminFilterShellClass, "flex flex-col")}
     >
       <div
         className={cn(
-          "grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111827]",
+          adminFilterPanelClass,
+          "grid gap-3",
           !mobileOpen && "admin-filter-collapsed",
           gridClassName,
         )}
@@ -61,10 +64,11 @@ export function AdminFilterCard({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111827]">
+    <div className={cn(adminFilterShellClass, "flex flex-col")}>
       <div
         className={cn(
-          "grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111827]",
+          adminFilterPanelClass,
+          "grid gap-3",
           !mobileOpen && "admin-filter-collapsed",
           gridClassName,
         )}

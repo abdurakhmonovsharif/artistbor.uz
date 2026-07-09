@@ -39,46 +39,48 @@ export function Header({
 
   return (
     <>
-      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#111827] lg:px-8">
-        <div className="flex min-h-14 items-center gap-4">
-          <button
-            type="button"
-            onClick={onToggleNavigation}
-            className="grid size-10 shrink-0 place-items-center rounded-[8px] border border-slate-200 bg-slate-50 text-slate-700 shadow-sm transition hover:border-amber-300 hover:bg-white hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-300/40 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]"
-            aria-label={t("sidebar.openMenu")}
-            title={t("sidebar.openMenu")}
-          >
-            {navigationExpanded ? <PanelLeftClose className="size-5" /> : <PanelLeftOpen className="size-5" />}
-          </button>
+      <header className="artistbor-admin-header px-[var(--artistbor-main-padding)] pb-2 pt-4">
+        <div className="w-full rounded-[28px] bg-white/55 p-1.5 shadow-[0_20px_54px_rgba(15,23,42,0.075)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
+          <div className="flex min-h-14 items-center gap-3 rounded-[calc(28px-0.375rem)] bg-white/95 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:px-4">
+            <button
+              type="button"
+              onClick={onToggleNavigation}
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-[#f8fafc] text-slate-700 ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[1px] hover:bg-white hover:text-slate-950 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:bg-white/[0.045] dark:text-slate-200 dark:ring-white/10 dark:hover:bg-white/[0.08]"
+              aria-label={t("sidebar.openMenu")}
+              title={t("sidebar.openMenu")}
+            >
+              {navigationExpanded ? <PanelLeftClose className="size-5" /> : <PanelLeftOpen className="size-5" />}
+            </button>
 
-          <h1 className="min-w-0 truncate text-sm font-black text-slate-950 dark:text-white sm:text-[15px]">
-            {t("menu.dashboard")}
-          </h1>
+            <h1 className="min-w-0 truncate text-sm font-black text-slate-950 dark:text-white sm:text-[15px]">
+              {t("menu.dashboard")}
+            </h1>
 
-          <div className="flex-1" />
+            <div className="flex-1" />
 
-          <HeaderLanguageControl />
-          <HeaderThemeButton />
-          <Link
-            href="/admin/orders?status=10"
-            className="relative hidden size-10 shrink-0 place-items-center rounded-[8px] border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-amber-300 hover:text-slate-950 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08] sm:grid"
-            aria-label={t("menu.orders")}
-            title={t("menu.orders")}
-          >
-            <Bell className="size-4" />
-            {pendingOrderBadge ? (
-              <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-orange-500 px-1 text-[10px] font-black leading-4 text-white">
-                {pendingOrderBadge}
-              </span>
-            ) : null}
-          </Link>
-          <UserMenu
-            name={name}
-            phoneLabel={formattedPhone}
-            roleLabel={formatRole(user?.role, t)}
-            onLogout={onLogout}
-            onProfile={() => setProfileOpen(true)}
-          />
+            <HeaderLanguageControl />
+            <HeaderThemeButton />
+            <Link
+              href="/admin/orders?status=10"
+              className="relative hidden size-10 shrink-0 place-items-center rounded-full bg-[#f8fafc] text-slate-700 ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[1px] hover:bg-white hover:text-slate-950 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] active:scale-[0.98] dark:bg-white/[0.045] dark:text-slate-200 dark:ring-white/10 dark:hover:bg-white/[0.08] sm:grid"
+              aria-label={t("menu.orders")}
+              title={t("menu.orders")}
+            >
+              <Bell className="size-4" />
+              {pendingOrderBadge ? (
+                <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-orange-500 px-1 text-[10px] font-black leading-4 text-white">
+                  {pendingOrderBadge}
+                </span>
+              ) : null}
+            </Link>
+            <UserMenu
+              name={name}
+              phoneLabel={formattedPhone}
+              roleLabel={formatRole(user?.role, t)}
+              onLogout={onLogout}
+              onProfile={() => setProfileOpen(true)}
+            />
+          </div>
         </div>
       </header>
       {profileOpen ? (
@@ -127,7 +129,7 @@ function HeaderLanguageControl() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm transition hover:border-amber-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-300/40 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]"
+        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-[#f8fafc] px-3 text-xs font-black text-slate-700 ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[1px] hover:bg-white hover:text-slate-950 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:bg-white/[0.045] dark:text-slate-200 dark:ring-white/10 dark:hover:bg-white/[0.08]"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t("language.label")}
@@ -174,7 +176,7 @@ function HeaderThemeButton() {
       onClick={toggleTheme}
       title={label}
       aria-label={label}
-      className="hidden size-10 shrink-0 place-items-center rounded-[8px] border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-amber-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-300/40 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08] sm:grid"
+      className="hidden size-10 shrink-0 place-items-center rounded-full bg-[#f8fafc] text-slate-700 ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[1px] hover:bg-white hover:text-slate-950 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:bg-white/[0.045] dark:text-slate-200 dark:ring-white/10 dark:hover:bg-white/[0.08] sm:grid"
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </button>
@@ -235,7 +237,7 @@ function UserMenu({
         type="button"
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "inline-flex h-11 cursor-pointer items-center gap-3 rounded-[8px] border border-slate-200 bg-white px-3 text-left shadow-sm transition hover:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-300/40 dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]",
+          "inline-flex h-11 cursor-pointer items-center gap-3 rounded-full bg-[#f8fafc] px-3 text-left ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[1px] hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:bg-white/[0.045] dark:ring-white/10 dark:hover:bg-white/[0.08]",
           "max-w-[300px]",
         )}
         aria-expanded={open}
@@ -384,9 +386,10 @@ function ProfileDrawer({
           compact
           required
           label={labels.phone}
+          type="tel"
           value={values.phone}
           error={errors.phone}
-          placeholder="+998..."
+          placeholder="+998 XX XXX XX XX"
           onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhone(phone) }))}
         />
         <FormField

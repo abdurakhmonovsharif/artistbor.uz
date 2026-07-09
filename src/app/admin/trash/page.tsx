@@ -18,6 +18,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { trashApi, type TrashModel } from "@/lib/api/admin-content";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import { formatPhone } from "@/lib/phone-format";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 import type { ListResult, TrashRecord } from "@/types/api";
 
@@ -71,6 +73,8 @@ const trashDetailFields: DetailField[] = [
 ];
 
 export default function TrashPage() {
+  const { locale } = useI18n();
+  const toastLabels = getTrashToastLabels(locale);
   const [filters, setFilters] = useState<TrashFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<TrashFilters>(initialFilters);
   const [rows, setRows] = useState<TrashRecord[]>([]);
@@ -102,7 +106,7 @@ export default function TrashPage() {
         label: "Nomi",
         render: (row) => (
           <span className="line-clamp-2 max-w-xs text-sm font-black text-slate-900 dark:text-white">
-            {toDisplay(row.name ?? row.title ?? row.full_name ?? row.phone ?? row.slug)}
+            {formatTrashRowName(row)}
           </span>
         ),
       },
@@ -191,7 +195,7 @@ export default function TrashPage() {
     const id = getNumericId(row);
     const model = getActionModel(row, filters.model);
     if (!model || !id) {
-      toast.error("Model yoki ID topilmadi");
+      toast.error(toastLabels.modelOrIdNotFound);
       return;
     }
 
@@ -200,7 +204,7 @@ export default function TrashPage() {
       const record = await trashApi.detail(model, id);
       setDialog({ type: "view", record });
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "O'chirilgan yozuv tafsilotlari yuklanmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.detailLoadFailed);
     } finally {
       setSubmitting(false);
     }
@@ -211,18 +215,18 @@ export default function TrashPage() {
     const id = getNumericId(dialog.record);
     const model = getActionModel(dialog.record, filters.model);
     if (!model || !id) {
-      toast.error("Model yoki ID topilmadi");
+      toast.error(toastLabels.modelOrIdNotFound);
       return;
     }
 
     setSubmitting(true);
     try {
       await trashApi.restore(model, id);
-      toast.success("Yozuv qayta tiklandi");
+      toast.success(toastLabels.restored);
       setDialog(null);
       await refresh();
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Qayta tiklash bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.restoreFailed);
     } finally {
       setSubmitting(false);
     }
@@ -233,18 +237,18 @@ export default function TrashPage() {
     const id = getNumericId(dialog.record);
     const model = getActionModel(dialog.record, filters.model);
     if (!model || !id) {
-      toast.error("Model yoki ID topilmadi");
+      toast.error(toastLabels.modelOrIdNotFound);
       return;
     }
 
     setSubmitting(true);
     try {
       await trashApi.permanentlyDelete(model, id);
-      toast.success("Yozuv butunlay ochirildi");
+      toast.success(toastLabels.deleted);
       setDialog(null);
       await refresh();
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Butunlay ochirish bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.deleteFailed);
     } finally {
       setSubmitting(false);
     }
@@ -282,14 +286,14 @@ export default function TrashPage() {
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
-        gridClassName="md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.75fr)_auto] md:items-center"
+        gridClassName="md:grid-cols-[auto_minmax(150px,0.75fr)_auto] md:items-center"
         mobileLabel="Filter"
       >
           <FormField
             label="Qidiruv"
             value={draftFilters.q}
             placeholder="q"
-            className={adminFilterControlClass}
+            className={`${adminFilterControlClass} artistbor-filter-search ${draftFilters.q ? "artistbor-filter-search-active" : ""}`}
             hideLabel
             compact
             onChange={(q) => setDraftFilters((current) => ({ ...current, q }))}
@@ -397,6 +401,16 @@ function getTrashRowModelLabel(row: TrashRecord, fallback: string) {
   return fallback;
 }
 
+function formatTrashRowName(row: TrashRecord) {
+  const direct = row.name ?? row.title ?? row.full_name;
+  if (direct !== undefined && direct !== null && direct !== "") return toDisplay(direct);
+
+  const phone = formatPhone(row.phone) || toDisplay(row.phone);
+  if (phone !== "—") return phone;
+
+  return toDisplay(row.slug);
+}
+
 function getNumericId(row: TrashRecord): number | undefined {
   return typeof row.id === "number" ? row.id : undefined;
 }
@@ -417,6 +431,28 @@ function sameFilters(left: TrashFilters, right: TrashFilters) {
 
 function isTrashModel(value: string): value is TrashModel {
   return trashModels.some((item) => item.value === value);
+}
+
+function getTrashToastLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      deleted: "Запись удалена навсегда",
+      deleteFailed: "Не удалось удалить навсегда",
+      detailLoadFailed: "Не удалось загрузить детали удаленной записи",
+      modelOrIdNotFound: "Модель или ID не найдены",
+      restored: "Запись восстановлена",
+      restoreFailed: "Не удалось восстановить запись",
+    };
+  }
+
+  return {
+    deleted: "Yozuv butunlay o'chirildi",
+    deleteFailed: "Butunlay o'chirish bajarilmadi",
+    detailLoadFailed: "O'chirilgan yozuv tafsilotlari yuklanmadi",
+    modelOrIdNotFound: "Model yoki ID topilmadi",
+    restored: "Yozuv qayta tiklandi",
+    restoreFailed: "Qayta tiklash bajarilmadi",
+  };
 }
 
 function IconButton({

@@ -27,6 +27,12 @@ import {
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
 import {
+  DateFilterSelect,
+  getDateFilterPatch,
+  inferDateFilterMode,
+  type DateFilterValue,
+} from "@/components/admin/date-filter-select";
+import {
   adminActionButtonClass,
   adminDangerActionButtonClass,
   adminPrimaryActionButtonClass,
@@ -58,6 +64,7 @@ import { getArtistName } from "@/lib/artist-display";
 import { formatBookingDate, formatBookingTimeRange, formatUnixDateTime } from "@/lib/order-format";
 import { getOrderUiStatus } from "@/lib/order-status";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { formatPhone } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import type { Locale } from "@/lib/i18n/translations";
 import { cn, getValue, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
@@ -85,7 +92,6 @@ const limit = 20;
 const clientRole = 10;
 
 type OrderStatusTabKey = "all" | "pending" | "payment_pending" | "confirmed" | "completed" | "cancelled";
-type OrderDateRange = "all" | "today" | "week" | "month";
 
 type OrderStatusTab = {
   key: OrderStatusTabKey;
@@ -116,6 +122,7 @@ const initialFilters: OrderFilters = {
   artist_id: "",
   date_from: "",
   date_to: "",
+  sort: "-created_at",
   page: 1,
   limit,
 };
@@ -145,12 +152,11 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const labels = useMemo(() => getOrderLabels(locale), [locale]);
   const orderStatusTabs = useMemo(() => getOrderStatusTabs(labels), [labels]);
   const paymentStatusOptions = useMemo(() => getPaymentStatusOptions(labels), [labels]);
-  const dateRangeOptions = useMemo(() => getDateRangeOptions(labels), [labels]);
   const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(initialOrderFilters);
   const [searchDraft, setSearchDraft] = useState("");
   const search = useDebouncedValue(searchDraft.trim(), 300);
-  const [dateRange, setDateRange] = useState<OrderDateRange>(() => inferDateRange(initialOrderFilters));
+  const [dateRange, setDateRange] = useState(() => inferDateFilterMode(initialOrderFilters));
   const [artistOptions, setArtistOptions] = useState<ArtistProfile[]>([]);
   const [clients, setClients] = useState<User[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -259,6 +265,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           artist_id: draftFilters.artist_id ?? "",
           date_from: draftFilters.date_from ?? "",
           date_to: draftFilters.date_to ?? "",
+          sort: draftFilters.sort ?? "-created_at",
           page: 1,
           limit: Number(current.limit) || limit,
         };
@@ -272,6 +279,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     draftFilters.date_from,
     draftFilters.date_to,
     draftFilters.payment_status,
+    draftFilters.sort,
     draftFilters.status,
   ]);
 
@@ -365,18 +373,18 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     setDraftFilters((current) => ({ ...current, status: selected.value }));
   };
 
-  const changeDateRange = (nextRange: OrderDateRange) => {
-    setDateRange(nextRange);
+  const changeDateRange = (value: DateFilterValue) => {
+    setDateRange(value.mode);
     setDraftFilters((current) => ({
       ...current,
-      ...getDateRangeFilters(nextRange),
+      ...getDateFilterPatch(value),
     }));
   };
 
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setSearchDraft("");
-    setDateRange("all");
+    setDateRange(inferDateFilterMode(initialFilters));
     setFilters(initialFilters);
   };
 
@@ -436,35 +444,51 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         </p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111827]">
-        <OrderStatusTabs tabs={orderStatusTabs} active={activeStatus} counts={statusCounts} onChange={changeStatus} />
-        <div className="grid gap-3 pt-4 md:grid-cols-[minmax(180px,1.25fr)_minmax(170px,0.75fr)_minmax(150px,0.65fr)_auto] md:items-center">
+      <OrderStatusTabs tabs={orderStatusTabs} active={activeStatus} counts={statusCounts} onChange={changeStatus} />
+
+      <div className="artistbor-table-filter-shell overflow-x-auto">
+        <div className="artistbor-table-filter-panel min-h-[64px] grid gap-3 md:grid-cols-[auto_minmax(170px,0.75fr)_minmax(260px,1.2fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-slate-400" />}
             placeholder={labels.searchPlaceholder}
             value={searchDraft}
             onChange={(event) => setSearchDraft(event.target.value)}
-            className="h-10"
+            className={cn(
+              "artistbor-filter-search h-10",
+              searchDraft && "artistbor-filter-search-active",
+            )}
           />
           <Select
-            className="h-10"
+            className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[180px] shrink-0 md:justify-self-start"
             value={draftFilters.payment_status ?? ""}
             onChange={(payment_status) =>
               setDraftFilters((current) => ({ ...current, payment_status }))
             }
             options={paymentStatusOptions}
           />
-          <Select
-            className="h-10"
-            value={dateRange}
+          <DateFilterSelect
+            value={{
+              mode: dateRange,
+              date_from: draftFilters.date_from ?? "",
+              date_to: draftFilters.date_to ?? "",
+            }}
+            labels={{
+              label: labels.dateLabel,
+              newest: labels.newest,
+              oldest: labels.oldest,
+              custom: labels.custom,
+              from: labels.dateFrom,
+              to: labels.dateTo,
+            }}
+            selectClassName="!w-[180px]"
+            inputClassName="!rounded-lg"
             onChange={changeDateRange}
-            options={dateRangeOptions}
           />
           <button
             type="button"
             onClick={resetFilters}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
+            className="artistbor-filter-reset inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
           >
             <RotateCcw className="size-4" />
             {labels.reset}
@@ -675,15 +699,6 @@ function getPaymentStatusOptions(labels: OrderLabels) {
   ];
 }
 
-function getDateRangeOptions(labels: OrderLabels): Array<{ label: string; value: OrderDateRange }> {
-  return [
-    { label: labels.dateAll, value: "all" },
-    { label: labels.today, value: "today" },
-    { label: labels.week, value: "week" },
-    { label: labels.month, value: "month" },
-  ];
-}
-
 function localizeOrderStatus(status: ReturnType<typeof getOrderUiStatus>, labels: OrderLabels) {
   return {
     ...status,
@@ -728,8 +743,8 @@ function OrderStatusTabs({
   onChange: (status: OrderStatusTabKey) => void;
 }) {
   return (
-    <div className="border-b border-slate-200 dark:border-white/10">
-      <div className="flex gap-7 overflow-x-auto overflow-y-hidden">
+    <div className="w-full self-stretch border-b border-slate-200 dark:border-white/10">
+      <div className="flex gap-7 overflow-x-auto overflow-y-hidden pl-2">
         {tabs.map((tab) => {
           const selected = tab.key === active;
 
@@ -1200,7 +1215,7 @@ function OrderContactDrawer({
   const rows = [
     {
       label: labels.clientPhone,
-      value: clientPhone,
+      value: formatPhone(clientPhone) || clientPhone,
       icon: <Phone className="size-4" />,
       copyable: true,
     },
@@ -1212,7 +1227,7 @@ function OrderContactDrawer({
     },
     {
       label: labels.artistPhone,
-      value: artistPhone,
+      value: formatPhone(artistPhone) || artistPhone,
       icon: <Phone className="size-4" />,
       copyable: true,
     },
@@ -1223,7 +1238,7 @@ function OrderContactDrawer({
     },
     {
       label: labels.artistAdministratorPhone,
-      value: artistAdministratorPhone,
+      value: formatPhone(artistAdministratorPhone) || artistAdministratorPhone,
       icon: <Phone className="size-4" />,
       copyable: true,
     },
@@ -1753,7 +1768,7 @@ function CancelOrderModal({
     <Modal
       centered
       open
-      className="artistbor-confirm-modal"
+      rootClassName="artistbor-confirm-modal"
       width={480}
       title={labels.cancelModalTitle}
       onCancel={onClose}
@@ -1764,7 +1779,7 @@ function CancelOrderModal({
             type="submit"
             form={formId}
             disabled={loading}
-            className={`${adminDangerActionButtonClass} w-1/2`}
+            className="artistbor-modal-action artistbor-modal-action--danger w-1/2 text-sm font-black"
           >
             <XCircle className="size-4" />
             {loading ? labels.processing : labels.cancelOrderAction}
@@ -1909,6 +1924,7 @@ function sameOrderFilters(left: OrderFilters, right: OrderFilters) {
     String(left.artist_id ?? "") === String(right.artist_id ?? "") &&
     String(left.date_from ?? "") === String(right.date_from ?? "") &&
     String(left.date_to ?? "") === String(right.date_to ?? "") &&
+    String(left.sort ?? "") === String(right.sort ?? "") &&
     Number(left.page ?? 1) === Number(right.page ?? 1) &&
     Number(left.limit ?? limit) === Number(right.limit ?? limit)
   );
@@ -1963,22 +1979,6 @@ function filterOrderRows(
 
     return haystack.includes(query);
   });
-}
-
-function getDateRangeFilters(range: OrderDateRange): Pick<OrderFilters, "date_from" | "date_to"> {
-  if (range === "all") return { date_from: "", date_to: "" };
-
-  const to = new Date();
-  to.setHours(0, 0, 0, 0);
-
-  const from = new Date(to);
-  if (range === "week") from.setDate(from.getDate() - 6);
-  if (range === "month") from.setDate(from.getDate() - 29);
-
-  return {
-    date_from: formatApiDate(from),
-    date_to: formatApiDate(to),
-  };
 }
 
 function buildConfirmOrderPayload(order: OrderRecord): ConfirmOrderPayload {
@@ -2046,25 +2046,6 @@ function parseNullableNumberInput(value: string, previousValue: unknown) {
   const parsed = parseNumberInput(value);
   if (parsed !== undefined) return parsed;
   return numberKey(previousValue) !== undefined ? null : undefined;
-}
-
-function inferDateRange(filters: OrderFilters): OrderDateRange {
-  const from = String(filters.date_from ?? "");
-  const to = String(filters.date_to ?? "");
-  if (!from && !to) return "all";
-
-  const ranges: OrderDateRange[] = ["today", "week", "month"];
-  return ranges.find((rangeKey) => {
-    const range = getDateRangeFilters(rangeKey);
-    return range.date_from === from && range.date_to === to;
-  }) ?? "all";
-}
-
-function formatApiDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function getServiceMeta(subService: EntityDisplay, artist: EntityDisplay, subServiceId: unknown, labels: OrderLabels) {
@@ -2208,7 +2189,14 @@ function getArtistDisplay(row: OrderRecord, artistMap: Map<number, ArtistProfile
 
   return {
     primary,
-    secondary: getSecondaryText(primary, nameSource.phone, artist.phone, nameSource.email, artist.email, artist.extra_phone),
+    secondary: getSecondaryText(
+      primary,
+      formatPhone(nameSource.phone),
+      formatPhone(artist.phone),
+      nameSource.email,
+      artist.email,
+      formatPhone(artist.extra_phone),
+    ),
     fallback: fallbackWithId(labels.artistLabel, row.artist_id),
   };
 }
@@ -2247,11 +2235,11 @@ function getPersonDisplay(entity: DisplayEntity | undefined, id: unknown, prefix
   const firstName = stringValue(entity.first_name);
   const lastName = stringValue(entity.last_name);
   const fromParts = [firstName, lastName].filter(Boolean).join(" ").trim();
-  const primary = stringValue(entity.full_name) ?? (fromParts || stringValue(entity.phone));
+  const primary = stringValue(entity.full_name) ?? (fromParts || formatPhone(entity.phone) || stringValue(entity.phone));
 
   return {
     primary,
-    secondary: getSecondaryText(primary, entity.phone, entity.email),
+    secondary: getSecondaryText(primary, formatPhone(entity.phone), entity.email),
     fallback: fallbackWithId(prefix, id),
   };
 }
@@ -2325,6 +2313,7 @@ function createFiltersFromSearchParams(searchParams: Pick<URLSearchParams, "get"
     artist_id: searchParams?.get("artist_id") ?? "",
     date_from: searchParams?.get("date_from") ?? "",
     date_to: searchParams?.get("date_to") ?? "",
+    sort: searchParams?.get("sort") ?? "-created_at",
     page: Number(searchParams?.get("page") ?? 1),
     limit: Number(searchParams?.get("limit") ?? limit),
   };
@@ -2370,8 +2359,11 @@ function getOrderLabels(locale: Locale) {
       copyValue: (label: string) => `Скопировать значение: ${label}`,
       createdAtLabel: "Создан",
       currency: "сум",
+      custom: "Настроить",
       dateAll: "Дата: Все",
+      dateFrom: "Дата с",
       dateLabel: "Дата",
+      dateTo: "Дата до",
       dateTimeColumn: "Дата / время",
       description: "Отслеживание, подтверждение, завершение и перенос заказов.",
       detailLoadFailed: "Не удалось загрузить детали заказа",
@@ -2395,7 +2387,9 @@ function getOrderLabels(locale: Locale) {
       mapLabel: "Карта",
       groupSizeLabel: "Количество гостей",
       month: "30 дней",
+      newest: "Новые",
       noteLabel: "Комментарий",
+      oldest: "Старые",
       openYandexMap: "Открыть в Яндекс Картах",
       orderColumn: "Заказ",
       orderStatusLabel: "Статус заказа",
@@ -2484,8 +2478,11 @@ function getOrderLabels(locale: Locale) {
     copyValue: (label: string) => `${label} qiymatini nusxalash`,
     createdAtLabel: "Yaratilgan",
     currency: "so'm",
+    custom: "Sozlash",
     dateAll: "Sana: Barchasi",
+    dateFrom: "Sanadan",
     dateLabel: "Sana",
+    dateTo: "Sanagacha",
     dateTimeColumn: "Sana / vaqt",
     description: "Buyurtmalar holatini kuzatish, tasdiqlash, yakunlash va qayta rejalash.",
     detailLoadFailed: "Buyurtma tafsilotlari yuklanmadi",
@@ -2509,7 +2506,9 @@ function getOrderLabels(locale: Locale) {
     mapLabel: "Xarita",
     groupSizeLabel: "Mehmonlar soni",
     month: "30 kun",
+    newest: "Yangilari",
     noteLabel: "Izoh",
+    oldest: "Eng eskilari",
     openYandexMap: "Yandex xaritada ochish",
     orderColumn: "Buyurtma",
     orderStatusLabel: "Buyurtma holati",

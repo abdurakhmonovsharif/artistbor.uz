@@ -1,19 +1,19 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button, Input, Select } from "antd";
-import { Ban, Pencil, RotateCcw, Search, Unlock, X } from "lucide-react";
-import {
-  AdminFilterForm,
-  adminFilterActionClass,
-  adminFilterControlClass,
-} from "@/components/admin/admin-filter-form";
+import { ArrowDownUp, Ban, Pencil, RotateCcw, Search, Unlock, X } from "lucide-react";
 import {
   adminActionButtonClass,
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
+import {
+  DateFilterSelect,
+  getDateFilterPatch,
+  inferDateFilterMode,
+  type DateFilterValue,
+} from "@/components/admin/date-filter-select";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
-import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
@@ -25,7 +25,9 @@ import {
   type UserFilters,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { cn } from "@/lib/utils";
 import type { ListResult, User } from "@/types/api";
 
 type DialogState =
@@ -41,15 +43,48 @@ const initialFilters: UserFilters = {
   role: clientRole,
   status: "",
   search: "",
+  date_from: "",
+  date_to: "",
+  sort: "-created_at",
   page: 1,
   limit,
 };
+
+function getUserDrawerInputClassName(error?: string) {
+  return cn(
+    "!h-[38px] !rounded-[11px] !bg-[#fbfcff] !px-3.5 !py-2 !text-[13px] !font-medium !text-[#0f172a]",
+    "!shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.035)]",
+    "transition-[border-color,box-shadow,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+    "placeholder:!text-[#94a3b8] hover:!border-[#d6dfeb] hover:!bg-white",
+    "dark:!bg-white/[0.035] dark:!text-white dark:!shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:placeholder:!text-slate-500 dark:hover:!bg-white/[0.045]",
+    error
+      ? "!border-rose-300 focus:!border-rose-400 focus:!ring-[3px] focus:!ring-rose-500/10 focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_8px_18px_rgba(244,63,94,0.08)] dark:!border-rose-500/40 dark:focus:!border-rose-400/60 dark:focus:!ring-rose-400/10 dark:focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_8px_18px_rgba(244,63,94,0.12)]"
+      : "!border-[#e3e9f2] focus:!border-orange-500/45 focus:!ring-[3px] focus:!ring-orange-500/10 focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_8px_18px_rgba(249,115,22,0.07)] dark:!border-white/10 dark:focus:!border-orange-400/40 dark:focus:!ring-orange-400/10 dark:focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_8px_18px_rgba(251,146,60,0.11)]",
+  );
+}
+
+function getUserDrawerSelectClassName(error?: string) {
+  return cn(
+    getUserDrawerInputClassName(error),
+    "!appearance-none !pr-9",
+  );
+}
+
+function getUserDrawerSelectIconClassName(error?: string) {
+  return cn(
+    "text-[#94a3b8] transition-colors duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] dark:text-slate-500",
+    error && "text-rose-400 dark:text-rose-300",
+  );
+}
+
+function formatPhoneInput(value: unknown) {
+  return formatPhone(value);
+}
 
 export default function UsersPage() {
   const { locale, t } = useI18n();
   const labels = getUserLabels(locale);
   const userStatusOptions = getUserStatusOptions(labels);
-  const columns = getUserColumns(labels);
   const [filters, setFilters] = useState<UserFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<UserFilters>(initialFilters);
   const [rows, setRows] = useState<User[]>([]);
@@ -58,6 +93,7 @@ export default function UsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
   const toast = useToast();
   const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
@@ -116,6 +152,7 @@ export default function UsersPage() {
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
+    setDateFilterMode(inferDateFilterMode(initialFilters));
   };
 
   const changePage = (page: number) => {
@@ -125,6 +162,21 @@ export default function UsersPage() {
   const changePageSize = (nextLimit: number) => {
     setDraftFilters((current) => ({ ...current, limit: nextLimit }));
     setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
+  };
+
+  const changeDraftFilter = (next: Partial<UserFilters>) => {
+    setDraftFilters((current) => ({ ...current, ...next }));
+    setFilters((current) => ({
+      ...current,
+      ...next,
+      page: 1,
+      limit: Number(current.limit) || limit,
+    }));
+  };
+
+  const changeDateFilter = (value: DateFilterValue) => {
+    setDateFilterMode(value.mode);
+    changeDraftFilter(getDateFilterPatch(value));
   };
 
   const runConfirmedAction = async () => {
@@ -155,49 +207,69 @@ export default function UsersPage() {
       : undefined);
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+          <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">
             {labels.title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
         </div>
       </div>
 
-      <AdminFilterForm
+      <form
         onSubmit={applyFilters}
-        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
-        mobileLabel={t("actions.search")}
+        className="artistbor-table-filter-shell overflow-x-auto"
       >
+        <div className="artistbor-table-filter-panel flex min-h-[38px] min-w-[820px] items-center gap-2.5">
           <Input
             allowClear
-            prefix={<Search className="size-4 text-slate-400" />}
+            prefix={<Search className="size-4 text-[#94a3b8]" />}
             value={draftFilters.search ?? ""}
             placeholder={labels.searchPlaceholder}
             onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
-            className={`${adminFilterControlClass} h-10`}
+            className={cn(
+              "artistbor-filter-search !h-[38px] !rounded-[11px] !border-[#e6ebf2] !bg-white !text-[13px] !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+              draftFilters.search && "artistbor-filter-search-active",
+            )}
           />
           <Select
-            className={`${adminFilterControlClass} h-10`}
+            className="artistbor-compact-select !h-[38px] !w-[180px] shrink-0"
             value={draftFilters.status ?? ""}
-            onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
+            onChange={(status) => changeDraftFilter({ status })}
             options={[{ label: `${labels.status}: ${labels.all}`, value: "" }, ...userStatusOptions]}
+          />
+          <DateFilterSelect
+            value={{
+              mode: dateFilterMode,
+              date_from: draftFilters.date_from ?? "",
+              date_to: draftFilters.date_to ?? "",
+            }}
+            labels={{
+              label: labels.dateFilter,
+              newest: labels.newest,
+              oldest: labels.oldest,
+              custom: labels.custom,
+              from: labels.dateFrom,
+              to: labels.dateTo,
+            }}
+            onChange={changeDateFilter}
           />
           <Button
             htmlType="button"
-            className={`${adminFilterActionClass} h-10`}
+            className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-[11px] !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
             icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
           >
-            {t("actions.clear")}
+            {labels.clear}
           </Button>
-      </AdminFilterForm>
+        </div>
+      </form>
 
       {loading ? (
         <LoadingState />
@@ -206,26 +278,12 @@ export default function UsersPage() {
       ) : rows.length === 0 ? (
         <EmptyState />
       ) : (
-        <DataTable
-          columns={columns}
+        <UsersTable
           rows={rows}
-          getRowKey={(row, index) => row.id ?? index}
-          actions={(row) => (
-            <div className="flex justify-end gap-2">
-              <IconButton label={t("actions.edit")} onClick={() => setDialog({ type: "edit", user: row })}>
-                <Pencil className="size-4" />
-              </IconButton>
-              {isBlockedUser(row) ? (
-                <IconButton label={labels.unblockAction} onClick={() => setDialog({ type: "unblock", user: row })}>
-                  <Unlock className="size-4" />
-                </IconButton>
-              ) : (
-                <IconButton danger label={labels.blockAction} onClick={() => setDialog({ type: "block", user: row })}>
-                  <Ban className="size-4" />
-                </IconButton>
-              )}
-            </div>
-          )}
+          labels={labels}
+          onEdit={(row) => setDialog({ type: "edit", user: row })}
+          onBlock={(row) => setDialog({ type: "block", user: row })}
+          onUnblock={(row) => setDialog({ type: "unblock", user: row })}
         />
       )}
 
@@ -297,6 +355,179 @@ export default function UsersPage() {
   );
 }
 
+function UsersTable({
+  rows,
+  labels,
+  onEdit,
+  onBlock,
+  onUnblock,
+}: {
+  rows: User[];
+  labels: UserLabels;
+  onEdit: (row: User) => void;
+  onBlock: (row: User) => void;
+  onUnblock: (row: User) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1156px] border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-[340px]" />
+            <col className="w-[280px]" />
+            <col className="w-[140px]" />
+            <col className="w-[190px]" />
+            <col className="w-[150px]" />
+          </colgroup>
+          <thead>
+            <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
+              <UsersTableHead label="ID" sortable />
+              <UsersTableHead label={labels.user} sortable />
+              <UsersTableHead label={labels.contact} />
+              <UsersTableHead label={labels.status} />
+              <UsersTableHead label={labels.createdAt} sortable />
+              <UsersTableHead label={labels.actions} align="right" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${row.id ?? "user"}-${index}`} className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle text-[13px] font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
+                  {row.id ?? "—"}
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <UserIdentityCell user={row} labels={labels} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <UserContactCell user={row} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <UserStatusPill user={row} labels={labels} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
+                  {formatUserDate(row.created_at)}
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <UserTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
+                      <Pencil className="size-4" />
+                    </UserTableActionButton>
+                    {isBlockedUser(row) ? (
+                      <UserTableActionButton tone="success" label={labels.unblockAction} onClick={() => onUnblock(row)}>
+                        <Unlock className="size-4" />
+                      </UserTableActionButton>
+                    ) : (
+                      <UserTableActionButton tone="danger" label={labels.blockAction} onClick={() => onBlock(row)}>
+                        <Ban className="size-4" />
+                      </UserTableActionButton>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function UsersTableHead({
+  label,
+  sortable,
+  align = "left",
+}: {
+  label: string;
+  sortable?: boolean;
+  align?: "left" | "right";
+}) {
+  return (
+    <th
+      className={cn(
+        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        align === "right" ? "text-right" : "text-left",
+      )}
+    >
+      <span className={cn("inline-flex items-center gap-1.5", align === "right" && "justify-end")}>
+        {label}
+        {sortable ? <ArrowDownUp className="size-3 text-[#94a3b8]" /> : null}
+      </span>
+    </th>
+  );
+}
+
+function UserIdentityCell({ user, labels }: { user: User; labels: UserLabels }) {
+  const name = getUserName(user, labels);
+
+  return (
+    <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
+      {name}
+    </p>
+  );
+}
+
+function UserContactCell({ user }: { user: User }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[13px] font-medium leading-[18px] text-[#334155] dark:text-slate-200">
+        {formatPhone(user.phone) || "—"}
+      </p>
+      <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
+        {user.email || "—"}
+      </p>
+    </div>
+  );
+}
+
+function UserStatusPill({ user, labels }: { user: User; labels: UserLabels }) {
+  const blocked = isBlockedUser(user);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center rounded-full px-2.5 text-[11px] font-bold",
+        blocked
+          ? "bg-[#ffe4e6] text-[#e11d48] dark:bg-rose-500/10 dark:text-rose-300"
+          : "bg-[#dcfce7] text-[#059669] dark:bg-emerald-500/10 dark:text-emerald-300",
+      )}
+    >
+      {blocked ? labels.blockedStatus : labels.activeStatus}
+    </span>
+  );
+}
+
+function UserTableActionButton({
+  label,
+  children,
+  tone = "default",
+  onClick,
+}: {
+  label: string;
+  children: ReactNode;
+  tone?: "default" | "danger" | "success";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "grid size-8 place-items-center rounded-[10px] border bg-white transition hover:bg-[#f8fafc] dark:bg-white/[0.03] dark:hover:bg-white/[0.06]",
+        tone === "danger"
+          ? "border-[#fecaca] text-[#f43f5e] hover:border-rose-300 dark:border-rose-500/30 dark:text-rose-300"
+          : tone === "success"
+            ? "border-[#bbf7d0] text-[#10b981] hover:border-emerald-300 dark:border-emerald-500/30 dark:text-emerald-300"
+            : "border-[#e6ebf2] text-[#475569] hover:border-[#cbd5e1] dark:border-white/10 dark:text-slate-300",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function EditUserDrawer({
   labels,
   statusOptions,
@@ -315,7 +546,7 @@ function EditUserDrawer({
   const [values, setValues] = useState({
     first_name: user.first_name ?? "",
     last_name: user.last_name ?? "",
-    phone: user.phone ?? "",
+    phone: formatPhoneInput(user.phone),
     email: user.email ?? "",
     status: user.status === undefined ? "" : String(user.status),
   });
@@ -330,7 +561,7 @@ function EditUserDrawer({
     await onSubmit({
       first_name: values.first_name,
       last_name: values.last_name || undefined,
-      phone: values.phone,
+      phone: normalizePhoneForApi(values.phone),
       email: values.email || undefined,
       status: Number(values.status),
     });
@@ -344,10 +575,10 @@ function EditUserDrawer({
     >
       <form id={formId} onSubmit={submit} className="space-y-5 p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
-          <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
-          <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
-          <FormField compact label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
+          <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} inputClassName={getUserDrawerInputClassName(errors.first_name)} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+          <FormField compact label={labels.lastName} value={values.last_name} inputClassName={getUserDrawerInputClassName()} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+          <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" inputClassName={getUserDrawerInputClassName(errors.phone)} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
+          <FormField compact label="Email" value={values.email} inputClassName={getUserDrawerInputClassName()} onChange={(email) => setValues((current) => ({ ...current, email }))} />
           <FormField
             compact
             label={labels.status}
@@ -356,6 +587,8 @@ function EditUserDrawer({
             value={values.status}
             error={errors.status}
             options={statusOptions}
+            inputClassName={getUserDrawerSelectClassName(errors.status)}
+            selectIconClassName={getUserDrawerSelectIconClassName(errors.status)}
             onChange={(status) => setValues((current) => ({ ...current, status }))}
           />
         </div>
@@ -398,34 +631,6 @@ function FormActions({
   );
 }
 
-function IconButton({
-  label,
-  children,
-  danger,
-  onClick,
-}: {
-  label: string;
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className={`cursor-pointer rounded-xl border p-2 transition ${
-        danger
-          ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
-          : "border-slate-200 text-slate-500 hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function validateRequired(values: Record<string, string>, keys: string[], message: string) {
   const errors: Record<string, string> = {};
   for (const key of keys) {
@@ -439,30 +644,40 @@ function isBlockedUser(user: User) {
   return status.includes("block") || status === "20";
 }
 
-function formatUserStatus(value: User["status"], labels: UserLabels) {
-  const status = String(value ?? "");
-  const statusLabels: Record<string, string> = {
-    "0": labels.deletedStatus,
-    "9": labels.inactiveStatus,
-    "10": labels.activeStatus,
-    "20": labels.blockedStatus,
-  };
-  return statusLabels[status] ?? (status || "—");
+function getUserName(user: User, labels: UserLabels) {
+  const fromParts = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  return fromParts || user.email || formatPhone(user.phone) || `${labels.user} #${user.id ?? "—"}`;
+}
+
+function formatUserDate(value: unknown) {
+  const date = toDate(value);
+  if (!date) return "—";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function toDate(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value > 10_000_000_000 ? value : value * 1000;
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value.trim());
+    if (Number.isFinite(parsed)) return new Date(parsed);
+  }
+
+  return null;
 }
 
 type UserLabels = ReturnType<typeof getUserLabels>;
-
-function getUserColumns(labels: UserLabels): DataTableColumn<User>[] {
-  return [
-    { key: "id", label: "ID", kind: "number" },
-    { key: "first_name", label: labels.firstName },
-    { key: "last_name", label: labels.lastName },
-    { key: "phone", label: labels.phone },
-    { key: "email", label: "Email" },
-    { key: "status", label: labels.status, render: (row) => formatUserStatus(row.status, labels) },
-    { key: "created_at", label: labels.createdAt, kind: "date" },
-  ];
-}
 
 function getUserStatusOptions(labels: UserLabels) {
   return [
@@ -477,6 +692,7 @@ function getUserLabels(locale: string) {
   if (locale === "ru") {
     return {
       actionFailed: "Не удалось выполнить действие",
+      actions: "Действия",
       activeStatus: "Активный",
       all: "Все",
       blockAction: "Заблокировать",
@@ -485,7 +701,13 @@ function getUserLabels(locale: string) {
       blockedStatus: "Заблокирован",
       blockTitle: "Блокировка пользователя",
       cancel: "Закрыть",
+      clear: "Сбросить",
+      contact: "Контакт",
       createdAt: "Создан",
+      custom: "Настроить",
+      dateFrom: "Дата с",
+      dateFilter: "Дата",
+      dateTo: "Дата до",
       deletedStatus: "Удален",
       description: "Просмотр, редактирование и блокировка обычных клиентских пользователей.",
       editTitle: "Редактирование пользователя",
@@ -494,6 +716,8 @@ function getUserLabels(locale: string) {
       inactiveStatus: "Неактивный",
       lastName: "Фамилия",
       loadFailed: "Не удалось загрузить пользователей",
+      newest: "Новые",
+      oldest: "Старые",
       phone: "Телефон",
       requiredField: "Обязательное поле",
       save: "Сохранить",
@@ -507,11 +731,13 @@ function getUserLabels(locale: string) {
       unblocked: "Пользователь разблокирован",
       unblockTitle: "Разблокировка",
       updated: "Пользователь обновлен",
+      user: "Пользователь",
     };
   }
 
   return {
     actionFailed: "Amal bajarilmadi",
+    actions: "Amallar",
     activeStatus: "Faol",
     all: "Barchasi",
     blockAction: "Bloklash",
@@ -520,7 +746,13 @@ function getUserLabels(locale: string) {
     blockedStatus: "Bloklangan",
     blockTitle: "Foydalanuvchini bloklash",
     cancel: "Yopish",
+    clear: "Tozalash",
+    contact: "Aloqa",
     createdAt: "Yaratilgan",
+    custom: "Sozlash",
+    dateFrom: "Sanadan",
+    dateFilter: "Sana",
+    dateTo: "Sanagacha",
     deletedStatus: "O'chirilgan",
     description: "Oddiy mijoz foydalanuvchilarni ko'rish, tahrirlash va bloklash.",
     editTitle: "Foydalanuvchini tahrirlash",
@@ -529,6 +761,8 @@ function getUserLabels(locale: string) {
     inactiveStatus: "Nofaol",
     lastName: "Familiya",
     loadFailed: "Foydalanuvchilar yuklanmadi",
+    newest: "Yangilari",
+    oldest: "Eng eskilari",
     phone: "Telefon",
     requiredField: "Majburiy maydon",
     save: "Saqlash",
@@ -542,5 +776,6 @@ function getUserLabels(locale: string) {
     unblocked: "Foydalanuvchi blokdan chiqarildi",
     unblockTitle: "Blokdan chiqarish",
     updated: "Foydalanuvchi yangilandi",
+    user: "Foydalanuvchi",
   };
 }

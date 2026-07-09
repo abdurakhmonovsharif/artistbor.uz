@@ -58,7 +58,7 @@ export default function FaqPage() {
       createFields={fields}
       updateFields={fields}
       initialFilters={{ search: "", status: "", page: 1, limit: 20 }}
-      filterGridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
+      filterGridClassName="md:grid-cols-[auto_minmax(150px,0.75fr)_auto] md:items-center"
       inlineFilterActions
       autoApplyFilters
       showFilterSettingsButton

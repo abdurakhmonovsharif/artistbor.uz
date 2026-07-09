@@ -1,19 +1,19 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button, Drawer, Input, Select } from "antd";
-import { Ban, Pencil, Plus, RotateCcw, Search, Unlock, X } from "lucide-react";
-import {
-  AdminFilterForm,
-  adminFilterActionClass,
-  adminFilterControlClass,
-} from "@/components/admin/admin-filter-form";
+import { ArrowDownUp, Ban, Pencil, Plus, RotateCcw, Search, Unlock, X } from "lucide-react";
 import {
   adminActionButtonLargeClass,
   adminDangerActionButtonClass,
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
-import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
+import {
+  DateFilterSelect,
+  getDateFilterPatch,
+  inferDateFilterMode,
+  type DateFilterValue,
+} from "@/components/admin/date-filter-select";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
@@ -26,7 +26,9 @@ import {
   type UpdateStaffPayload,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { cn } from "@/lib/utils";
 import type { ListResult, User } from "@/types/api";
 
 type DialogState =
@@ -43,15 +45,21 @@ const initialFilters: StaffFilters = {
   role: operatorRole,
   status: "",
   search: "",
+  date_from: "",
+  date_to: "",
+  sort: "-created_at",
   page: 1,
   limit,
 };
 
+function formatPhoneInput(value: unknown) {
+  return formatPhone(value);
+}
+
 export default function OperatorsPage() {
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
   const labels = getOperatorLabels(locale);
   const staffStatusOptions = getStaffStatusOptions(labels);
-  const columns = getStaffColumns(labels);
   const [filters, setFilters] = useState<StaffFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<StaffFilters>(initialFilters);
   const [rows, setRows] = useState<User[]>([]);
@@ -60,6 +68,7 @@ export default function OperatorsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
   const toast = useToast();
   const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
@@ -118,6 +127,7 @@ export default function OperatorsPage() {
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
+    setDateFilterMode(inferDateFilterMode(initialFilters));
   };
 
   const changePage = (page: number) => {
@@ -127,6 +137,21 @@ export default function OperatorsPage() {
   const changePageSize = (nextLimit: number) => {
     setDraftFilters((current) => ({ ...current, limit: nextLimit }));
     setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
+  };
+
+  const changeDraftFilter = (next: Partial<StaffFilters>) => {
+    setDraftFilters((current) => ({ ...current, ...next }));
+    setFilters((current) => ({
+      ...current,
+      ...next,
+      page: 1,
+      limit: Number(current.limit) || limit,
+    }));
+  };
+
+  const changeDateFilter = (value: DateFilterValue) => {
+    setDateFilterMode(value.mode);
+    changeDraftFilter(getDateFilterPatch(value));
   };
 
   const runConfirmedAction = async () => {
@@ -186,57 +211,77 @@ export default function OperatorsPage() {
       : undefined);
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+          <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">
             {labels.title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
         </div>
         <button
           type="button"
           onClick={() => setDialog({ type: "create" })}
-          className={adminActionButtonLargeClass}
+          className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
         >
           <Plus className="size-4" />
           {labels.createAction}
         </button>
       </div>
 
-      <AdminFilterForm
+      <form
         onSubmit={applyFilters}
-        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_auto] md:items-center"
-        mobileLabel={t("actions.search")}
+        className="artistbor-table-filter-shell overflow-x-auto"
       >
+        <div className="artistbor-table-filter-panel flex min-h-[38px] min-w-[860px] items-center gap-2.5">
           <Input
             allowClear
-            prefix={<Search className="size-4 text-slate-400" />}
+            prefix={<Search className="size-4 text-[#94a3b8]" />}
             value={draftFilters.search ?? ""}
             placeholder={labels.searchPlaceholder}
             onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
-            className={`${adminFilterControlClass} h-10`}
+            className={cn(
+              "artistbor-filter-search !h-[38px] !rounded-[11px] !border-[#e6ebf2] !bg-white !text-[13px] !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+              draftFilters.search && "artistbor-filter-search-active",
+            )}
           />
           <Select
-            className={`${adminFilterControlClass} h-10`}
+            className="artistbor-compact-select !h-[38px] !w-[220px] shrink-0"
             value={draftFilters.status ?? ""}
-            onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
+            onChange={(status) => changeDraftFilter({ status })}
             options={[{ label: `${labels.status}: ${labels.all}`, value: "" }, ...staffStatusOptions]}
+          />
+          <DateFilterSelect
+            value={{
+              mode: dateFilterMode,
+              date_from: draftFilters.date_from ?? "",
+              date_to: draftFilters.date_to ?? "",
+            }}
+            labels={{
+              label: labels.dateFilter,
+              newest: labels.newest,
+              oldest: labels.oldest,
+              custom: labels.custom,
+              from: labels.dateFrom,
+              to: labels.dateTo,
+            }}
+            onChange={changeDateFilter}
           />
           <Button
             htmlType="button"
-            className={`${adminFilterActionClass} h-10`}
+            className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-[11px] !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
             icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
           >
-            {t("actions.clear")}
+            {labels.clear}
           </Button>
-      </AdminFilterForm>
+        </div>
+      </form>
 
       {loading ? (
         <LoadingState />
@@ -245,26 +290,12 @@ export default function OperatorsPage() {
       ) : rows.length === 0 ? (
         <EmptyState />
       ) : (
-        <DataTable
-          columns={columns}
+        <OperatorsTable
           rows={rows}
-          getRowKey={(row, index) => row.id ?? index}
-          actions={(row) => (
-            <div className="flex justify-end gap-2">
-              <IconButton label={t("actions.edit")} onClick={() => setDialog({ type: "edit", user: row })}>
-                <Pencil className="size-4" />
-              </IconButton>
-              {isBlockedUser(row) ? (
-                <IconButton label={labels.unblockAction} onClick={() => setDialog({ type: "unblock", user: row })}>
-                  <Unlock className="size-4" />
-                </IconButton>
-              ) : (
-                <IconButton danger label={labels.blockAction} onClick={() => setDialog({ type: "block", user: row })}>
-                  <Ban className="size-4" />
-                </IconButton>
-              )}
-            </div>
-          )}
+          labels={labels}
+          onEdit={(row) => setDialog({ type: "edit", user: row })}
+          onBlock={(row) => setDialog({ type: "block", user: row })}
+          onUnblock={(row) => setDialog({ type: "unblock", user: row })}
         />
       )}
 
@@ -329,6 +360,190 @@ export default function OperatorsPage() {
   );
 }
 
+function OperatorsTable({
+  rows,
+  labels,
+  onEdit,
+  onBlock,
+  onUnblock,
+}: {
+  rows: User[];
+  labels: OperatorLabels;
+  onEdit: (row: User) => void;
+  onBlock: (row: User) => void;
+  onUnblock: (row: User) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1156px] border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-[340px]" />
+            <col className="w-[280px]" />
+            <col className="w-[140px]" />
+            <col className="w-[190px]" />
+            <col className="w-[150px]" />
+          </colgroup>
+          <thead>
+            <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
+              <OperatorsTableHead label="ID" sortable />
+              <OperatorsTableHead label={labels.operator} sortable />
+              <OperatorsTableHead label={labels.contact} />
+              <OperatorsTableHead label={labels.status} />
+              <OperatorsTableHead label={labels.createdAt} sortable />
+              <OperatorsTableHead label={labels.actions} align="right" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${row.id ?? "operator"}-${index}`} className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle text-[13px] font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
+                  {row.id ?? "—"}
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <OperatorIdentityCell user={row} labels={labels} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <OperatorContactCell user={row} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <OperatorStatusPill user={row} labels={labels} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
+                  {formatOperatorDate(row.created_at)}
+                </td>
+                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <OperatorTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
+                      <Pencil className="size-4" />
+                    </OperatorTableActionButton>
+                    {isBlockedUser(row) ? (
+                      <OperatorTableActionButton tone="success" label={labels.unblockAction} onClick={() => onUnblock(row)}>
+                        <Unlock className="size-4" />
+                      </OperatorTableActionButton>
+                    ) : (
+                      <OperatorTableActionButton tone="danger" label={labels.blockAction} onClick={() => onBlock(row)}>
+                        <Ban className="size-4" />
+                      </OperatorTableActionButton>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function OperatorsTableHead({
+  label,
+  sortable,
+  align = "left",
+}: {
+  label: string;
+  sortable?: boolean;
+  align?: "left" | "right";
+}) {
+  return (
+    <th
+      className={cn(
+        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        align === "right" ? "text-right" : "text-left",
+      )}
+    >
+      <span className={cn("inline-flex items-center gap-1.5", align === "right" && "justify-end")}>
+        {label}
+        {sortable ? <ArrowDownUp className="size-3 text-[#94a3b8]" /> : null}
+      </span>
+    </th>
+  );
+}
+
+function OperatorIdentityCell({ user, labels }: { user: User; labels: OperatorLabels }) {
+  const name = getOperatorName(user, labels);
+  const initials = getOperatorInitials(name);
+  const avatarTone = getOperatorAvatarTone(user.id ?? name);
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <div className={cn("grid size-9 shrink-0 place-items-center rounded-full text-[11px] font-bold ring-1", avatarTone)}>
+        {initials}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
+          {name}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function OperatorContactCell({ user }: { user: User }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[13px] font-medium leading-[18px] text-[#334155] dark:text-slate-200">
+        {formatPhone(user.phone) || "—"}
+      </p>
+      {user.email ? (
+        <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
+          {user.email}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function OperatorStatusPill({ user, labels }: { user: User; labels: OperatorLabels }) {
+  const blocked = isBlockedUser(user);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center rounded-full px-2.5 text-[11px] font-bold",
+        blocked
+          ? "bg-[#ffe4e6] text-[#e11d48] dark:bg-rose-500/10 dark:text-rose-300"
+          : "bg-[#dcfce7] text-[#059669] dark:bg-emerald-500/10 dark:text-emerald-300",
+      )}
+    >
+      {blocked ? labels.blockedStatus : labels.activeStatus}
+    </span>
+  );
+}
+
+function OperatorTableActionButton({
+  label,
+  children,
+  tone = "default",
+  onClick,
+}: {
+  label: string;
+  children: ReactNode;
+  tone?: "default" | "danger" | "success";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "grid size-8 place-items-center rounded-[10px] border bg-white transition hover:bg-[#f8fafc] dark:bg-white/[0.03] dark:hover:bg-white/[0.06]",
+        tone === "danger"
+          ? "border-[#fecaca] text-[#f43f5e] hover:border-rose-300 dark:border-rose-500/30 dark:text-rose-300"
+          : tone === "success"
+            ? "border-[#bbf7d0] text-[#10b981] hover:border-emerald-300 dark:border-emerald-500/30 dark:text-emerald-300"
+            : "border-[#e6ebf2] text-[#475569] hover:border-[#cbd5e1] dark:border-white/10 dark:text-slate-300",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function StaffDrawer({
   mode,
   labels,
@@ -349,7 +564,7 @@ function StaffDrawer({
   onSubmitUpdate?: (payload: UpdateStaffPayload) => Promise<void>;
 }) {
   const [values, setValues] = useState({
-    phone: user?.phone ?? "",
+    phone: formatPhoneInput(user?.phone),
     password: "",
     first_name: user?.first_name ?? "",
     last_name: user?.last_name ?? "",
@@ -371,7 +586,7 @@ function StaffDrawer({
 
     if (mode === "create") {
       await onSubmitCreate?.({
-        phone: values.phone,
+        phone: normalizePhoneForApi(values.phone),
         password: values.password,
         first_name: values.first_name,
         last_name: values.last_name || undefined,
@@ -384,7 +599,7 @@ function StaffDrawer({
     await onSubmitUpdate?.({
       first_name: values.first_name,
       last_name: values.last_name || undefined,
-      phone: values.phone,
+      phone: normalizePhoneForApi(values.phone),
       email: values.email || undefined,
       role: 20,
       status: Number(values.status),
@@ -434,7 +649,7 @@ function StaffDrawer({
     >
       <form id={formId} onSubmit={submit} className="space-y-5 p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact autoComplete="off" label={labels.phone} required value={values.phone} error={errors.phone} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
+          <FormField compact autoComplete="off" label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
           {mode === "create" ? (
             <FormField compact autoComplete="new-password" label={labels.password} type="password" required value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
           ) : null}
@@ -484,34 +699,6 @@ function DrawerActionButton({
   );
 }
 
-function IconButton({
-  label,
-  children,
-  danger,
-  onClick,
-}: {
-  label: string;
-  children: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className={`cursor-pointer rounded-xl border p-2 transition ${
-        danger
-          ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
-          : "border-slate-200 text-slate-500 hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function validateRequired(values: Record<string, string>, keys: string[], message: string) {
   const errors: Record<string, string> = {};
   for (const key of keys) {
@@ -525,30 +712,68 @@ function isBlockedUser(user: User) {
   return status.includes("block") || status === "20";
 }
 
-function formatStaffStatus(value: User["status"], labels: OperatorLabels) {
-  const status = String(value ?? "");
-  const statusLabels: Record<string, string> = {
-    "0": labels.deletedStatus,
-    "9": labels.inactiveStatus,
-    "10": labels.activeStatus,
-    "20": labels.blockedStatus,
-  };
-  return statusLabels[status] ?? (status || "—");
+function getOperatorName(user: User, labels: OperatorLabels) {
+  const fromParts = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  return fromParts || user.email || formatPhone(user.phone) || `${labels.operator} #${user.id ?? "—"}`;
+}
+
+function getOperatorInitials(name: string) {
+  const initials = name
+    .split(" ")
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return initials || "O";
+}
+
+function getOperatorAvatarTone(seed: unknown) {
+  const tones = [
+    "bg-purple-50 text-purple-600 ring-purple-100 dark:bg-purple-500/10 dark:text-purple-300 dark:ring-purple-500/20",
+    "bg-sky-50 text-sky-600 ring-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20",
+    "bg-cyan-50 text-cyan-600 ring-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-300 dark:ring-cyan-500/20",
+    "bg-pink-50 text-pink-600 ring-pink-100 dark:bg-pink-500/10 dark:text-pink-300 dark:ring-pink-500/20",
+    "bg-amber-50 text-amber-600 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
+    "bg-violet-50 text-violet-600 ring-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20",
+    "bg-teal-50 text-teal-600 ring-teal-100 dark:bg-teal-500/10 dark:text-teal-300 dark:ring-teal-500/20",
+    "bg-orange-50 text-orange-600 ring-orange-100 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/20",
+  ];
+  const text = String(seed ?? "");
+  const hash = Array.from(text).reduce((total, char) => total + char.charCodeAt(0), 0);
+  return tones[hash % tones.length];
+}
+
+function formatOperatorDate(value: unknown) {
+  const date = toOperatorDate(value);
+  if (!date) return "—";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function toOperatorDate(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value > 10_000_000_000 ? value : value * 1000;
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value.trim());
+    if (Number.isFinite(parsed)) return new Date(parsed);
+  }
+
+  return null;
 }
 
 type OperatorLabels = ReturnType<typeof getOperatorLabels>;
-
-function getStaffColumns(labels: OperatorLabels): DataTableColumn<User>[] {
-  return [
-    { key: "id", label: "ID", kind: "number" },
-    { key: "first_name", label: labels.firstName },
-    { key: "last_name", label: labels.lastName },
-    { key: "phone", label: labels.phone },
-    { key: "email", label: "Email" },
-    { key: "status", label: labels.status, render: (row) => formatStaffStatus(row.status, labels) },
-    { key: "created_at", label: labels.createdAt, kind: "date" },
-  ];
-}
 
 function getStaffStatusOptions(labels: OperatorLabels) {
   return [
@@ -563,6 +788,7 @@ function getOperatorLabels(locale: string) {
   if (locale === "ru") {
     return {
       actionFailed: "Не удалось выполнить действие",
+      actions: "Действия",
       activeStatus: "Активный",
       all: "Все",
       blockAction: "Заблокировать",
@@ -571,11 +797,17 @@ function getOperatorLabels(locale: string) {
       blockedStatus: "Заблокирован",
       blockTitle: "Блокировка оператора",
       cancel: "Закрыть",
+      clear: "Сбросить",
+      contact: "Контакт",
       createAction: "Создать оператора",
       createFailed: "Не удалось создать оператора",
       created: "Оператор создан",
       createdAt: "Создан",
       createTitle: "Создание оператора",
+      custom: "Настроить",
+      dateFilter: "Дата",
+      dateFrom: "Дата с",
+      dateTo: "Дата до",
       deletedStatus: "Удален",
       description: "Просмотр, создание, редактирование и блокировка операторов.",
       editTitle: "Редактирование оператора",
@@ -584,6 +816,9 @@ function getOperatorLabels(locale: string) {
       inactiveStatus: "Неактивный",
       lastName: "Фамилия",
       loadFailed: "Не удалось загрузить операторов",
+      newest: "Новые",
+      oldest: "Старые",
+      operator: "Оператор",
       password: "Пароль",
       phone: "Телефон",
       requiredField: "Обязательное поле",
@@ -604,6 +839,7 @@ function getOperatorLabels(locale: string) {
 
   return {
     actionFailed: "Amal bajarilmadi",
+    actions: "Amallar",
     activeStatus: "Faol",
     all: "Barchasi",
     blockAction: "Bloklash",
@@ -612,11 +848,17 @@ function getOperatorLabels(locale: string) {
     blockedStatus: "Bloklangan",
     blockTitle: "Operatorni bloklash",
     cancel: "Yopish",
+    clear: "Tozalash",
+    contact: "Aloqa",
     createAction: "Operator yaratish",
     createFailed: "Operator yaratilmadi",
     created: "Operator yaratildi",
     createdAt: "Yaratilgan",
     createTitle: "Operator yaratish",
+    custom: "Sozlash",
+    dateFilter: "Sana",
+    dateFrom: "Sanadan",
+    dateTo: "Sanagacha",
     deletedStatus: "O'chirilgan",
     description: "Operatorlarni ko'rish, yaratish, tahrirlash va bloklash.",
     editTitle: "Operatorni tahrirlash",
@@ -625,6 +867,9 @@ function getOperatorLabels(locale: string) {
     inactiveStatus: "Nofaol",
     lastName: "Familiya",
     loadFailed: "Operatorlar yuklanmadi",
+    newest: "Yangilari",
+    oldest: "Eng eskilari",
+    operator: "Operator",
     password: "Parol",
     phone: "Telefon",
     requiredField: "Majburiy maydon",

@@ -202,18 +202,6 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
         filterActionsClassName,
       )}
     >
-      <button
-        type="button"
-        onClick={resetFilters}
-        className={cn(
-          "inline-flex items-center justify-center gap-2 border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm shadow-slate-950/[0.02] transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-300 dark:hover:bg-white/[0.05]",
-          inlineFilterActions ? "h-10 rounded-lg px-4" : "rounded-2xl px-5 py-3",
-          showFilterSettingsButton && !mobileFiltersOpen && "hidden md:inline-flex",
-        )}
-      >
-        <RotateCcw className="size-4" />
-        {t("actions.clear")}
-      </button>
       {showFilterSearchButton ? (
         <button
           type="submit"
@@ -241,6 +229,19 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
           <SlidersHorizontal className="size-4" />
         </button>
       ) : null}
+      <button
+        type="button"
+        onClick={resetFilters}
+        className={cn(
+          "inline-flex items-center justify-center gap-2 border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm shadow-slate-950/[0.02] transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-300 dark:hover:bg-white/[0.05]",
+          "artistbor-filter-reset",
+          inlineFilterActions ? "h-10 rounded-lg px-4" : "rounded-2xl px-5 py-3",
+          showFilterSettingsButton && !mobileFiltersOpen && "hidden md:inline-flex",
+        )}
+      >
+        <RotateCcw className="size-4" />
+        {t("actions.clear")}
+      </button>
     </div>
   );
 
@@ -268,37 +269,43 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
 
       <form
         onSubmit={applyFilters}
-        className={cn(
-          "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111827]",
-          filterFormClassName,
-        )}
+        className={cn("artistbor-table-filter-shell flex flex-col", filterFormClassName)}
       >
         <div
           className={cn(
-            "grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111827] md:grid-cols-3",
+            "artistbor-table-filter-panel grid gap-3 md:grid-cols-3",
             filterGridClassName,
           )}
         >
-          {filterFields.map((field) => (
-            <div
-              key={field.name}
-              className={cn(showFilterSettingsButton && !mobileFiltersOpen && "hidden md:block")}
-            >
-              <FormField
-                label={field.label}
-                type={field.type ?? "text"}
-                options={field.options}
-                placeholder={field.placeholder}
-                hideLabel={field.hideLabel}
-                compact={field.compact}
-                prefixIcon={field.prefixIcon}
-                value={String((draftFilters as Record<string, unknown>)[field.name] ?? "")}
-                onChange={(value) =>
-                  setDraftFilters((current) => ({ ...current, [field.name]: value }))
-                }
-              />
-            </div>
-          ))}
+          {filterFields.map((field) => {
+            const value = String((draftFilters as Record<string, unknown>)[field.name] ?? "");
+            const isSearchFilter = field.name === "search" || Boolean(field.prefixIcon);
+
+            return (
+              <div
+                key={field.name}
+                className={cn(showFilterSettingsButton && !mobileFiltersOpen && "hidden md:block")}
+              >
+                <FormField
+                  label={field.label}
+                  type={field.type ?? "text"}
+                  options={field.options}
+                  placeholder={field.placeholder}
+                  hideLabel={field.hideLabel}
+                  compact={field.compact}
+                  prefixIcon={field.prefixIcon}
+                  className={cn(
+                    isSearchFilter && "artistbor-filter-search",
+                    isSearchFilter && value && "artistbor-filter-search-active",
+                  )}
+                  value={value}
+                  onChange={(value) =>
+                    setDraftFilters((current) => ({ ...current, [field.name]: value }))
+                  }
+                />
+              </div>
+            );
+          })}
           {inlineFilterActions ? filterActions : null}
         </div>
         {inlineFilterActions ? null : filterActions}

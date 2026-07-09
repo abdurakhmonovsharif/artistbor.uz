@@ -89,8 +89,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "min-h-screen bg-slate-50 text-slate-950 transition-[grid-template-columns] duration-200 dark:bg-[#0f172a] dark:text-slate-100 lg:grid",
-        sidebarCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]",
+        "mx-auto min-h-screen min-w-[1280px] max-w-[2600px] bg-[#f7f9fc] text-slate-950 transition-[grid-template-columns] duration-200 dark:bg-[#0f172a] dark:text-slate-100 lg:grid [--artistbor-main-padding:20px] [--artistbor-sidebar-width:220px] min-[1366px]:[--artistbor-main-padding:22px] min-[1366px]:[--artistbor-sidebar-width:228px] min-[1440px]:[--artistbor-main-padding:24px] min-[1440px]:[--artistbor-sidebar-width:240px] min-[1536px]:[--artistbor-main-padding:32px] min-[1536px]:[--artistbor-sidebar-width:248px] min-[1920px]:[--artistbor-main-padding:40px] min-[1920px]:[--artistbor-sidebar-width:264px] min-[2400px]:[--artistbor-main-padding:48px] min-[2400px]:[--artistbor-sidebar-width:280px]",
+        sidebarCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[var(--artistbor-sidebar-width)_1fr]",
       )}
     >
       <Sidebar
@@ -108,7 +108,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           onToggleNavigation={handleToggleNavigation}
           onLogout={handleLogout}
         />
-        <main className="px-4 py-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="px-[var(--artistbor-main-padding)] py-[var(--artistbor-main-padding)]">{children}</main>
       </div>
     </div>
   );

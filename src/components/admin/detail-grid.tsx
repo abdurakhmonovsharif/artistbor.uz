@@ -1,6 +1,7 @@
 "use client";
 
 import { isRecord, normalizeDate, toDisplay } from "@/lib/utils";
+import { formatPhone } from "@/lib/phone-format";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import type { UnknownRecord } from "@/types/api";
 
@@ -52,6 +53,7 @@ export function formatDetailValue(key: string, value: unknown): React.ReactNode 
   }
   if (typeof value === "boolean") return value ? "Ha" : "Yo'q";
   if (looksLikeDate(key, value)) return normalizeDate(value);
+  if (looksLikePhone(key)) return formatPhone(value) || toDisplay(value);
   if (Array.isArray(value)) {
     const visible = value.filter((item) => !isEmptyValue(item));
     if (!visible.length) return "—";
@@ -92,6 +94,11 @@ function compactValue(value: unknown): string {
     return "Obyekt";
   }
   return toDisplay(value);
+}
+
+function looksLikePhone(key: string) {
+  const normalizedKey = key.toLowerCase();
+  return normalizedKey === "phone" || normalizedKey.endsWith("_phone") || normalizedKey.includes("phone_number");
 }
 
 function looksLikeDate(key: string, value: unknown) {

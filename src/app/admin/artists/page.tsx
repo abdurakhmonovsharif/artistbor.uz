@@ -4,10 +4,15 @@ import { type ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, us
 import Link from "next/link";
 import { Button, Drawer, Input, Modal, Select, Tabs } from "antd";
 import {
+  ArrowDownUp,
   CalendarDays,
   CalendarPlus,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Clock,
   ExternalLink,
   Eye,
@@ -33,14 +38,16 @@ import {
   X,
 } from "lucide-react";
 import {
-  AdminFilterForm,
-  adminFilterActionClass,
-  adminFilterControlClass,
-} from "@/components/admin/admin-filter-form";
-import { adminActionButtonLargeClass, adminPrimaryActionButtonClass } from "@/components/admin/admin-action-button";
+  adminActionButtonLargeClass,
+  adminPrimaryActionButtonClass,
+} from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
-import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
-import { Pagination } from "@/components/admin/pagination";
+import {
+  DateFilterSelect,
+  getDateFilterPatch,
+  inferDateFilterMode,
+  type DateFilterValue,
+} from "@/components/admin/date-filter-select";
 import { FormField, type FormFieldOption } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
@@ -69,6 +76,7 @@ import {
 } from "@/lib/api/admin-content";
 import { API_BASE_URL } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 import type { ArtistProfile, Category, District, ListResult, Region, UnknownRecord } from "@/types/api";
@@ -109,6 +117,9 @@ const initialFilters: ArtistFilters = {
   is_verified: "",
   is_top: "",
   status: "",
+  date_from: "",
+  date_to: "",
+  sort: "-created_at",
   page: 1,
   limit,
 };
@@ -116,30 +127,6 @@ const initialFilters: ArtistFilters = {
 const resourceTabs: ResourceTab[] = ["services", "availability", "gallery", "videos", "comments", "ratings"];
 
 type ArtistsLabels = ReturnType<typeof getArtistsLabels>;
-
-function getArtistColumns(labels: ArtistsLabels): DataTableColumn<ArtistProfile>[] {
-  return [
-    { key: "id", label: "ID", kind: "number", render: (row) => getArtistId(row) ?? "—" },
-    {
-      key: "full_name",
-      label: labels.artist,
-      render: (row) => <ArtistTableIdentity artist={row} labels={labels} />,
-    },
-    { key: "phone", label: labels.phone, render: (row) => row.phone || row.extra_phone || "—" },
-    {
-      key: "status_label",
-      label: labels.status,
-      render: (row) => <LocalizedStatusBadge fieldKey="status" labels={labels} value={row.status_label ?? row.status} />,
-    },
-    { key: "created_at", label: labels.createdAt, kind: "date" },
-    { key: "rating", label: labels.rating, kind: "number" },
-    {
-      key: "is_verified",
-      label: labels.verified,
-      render: (row) => <LocalizedStatusBadge fieldKey="is_verified" labels={labels} value={row.is_verified} />,
-    },
-  ];
-}
 
 function getDetailTabs(labels: ArtistsLabels): { key: DetailTab; label: string }[] {
   return [
@@ -181,41 +168,6 @@ function mergeArtistCategoryFallback(row: ArtistProfile, detail: ArtistProfile):
   return merged as ArtistProfile;
 }
 
-function ArtistTableIdentity({
-  artist,
-  labels,
-}: {
-  artist: ArtistProfile;
-  labels: ArtistsLabels;
-}) {
-  const photoUrl = getArtistPhotoUrl(artist);
-  const artistName = getArtistName(artist, labels);
-
-  return (
-    <div className="flex items-center gap-3">
-      {photoUrl ? (
-        <div
-          aria-label={artistName}
-          className="size-10 shrink-0 rounded-full border border-slate-200 bg-cover bg-center dark:border-white/10"
-          style={{ backgroundImage: `url(${photoUrl})` }}
-        />
-      ) : (
-        <div className="grid size-10 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-black text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-          {getArtistInitials(artist, labels)}
-        </div>
-      )}
-      <div className="min-w-0">
-        <p className="truncate font-black text-slate-900 dark:text-white">
-          {artistName}
-        </p>
-        <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {artist.email || artist.phone || "—"}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export default function ArtistsPage() {
   const [filters, setFilters] = useState<ArtistFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<ArtistFilters>(initialFilters);
@@ -225,9 +177,9 @@ export default function ArtistsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
-  const { locale, t } = useI18n();
+  const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
+  const { locale } = useI18n();
   const labels = getArtistsLabels(locale);
-  const columns = getArtistColumns(labels);
   const toast = useToast();
   const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
@@ -303,6 +255,7 @@ export default function ArtistsPage() {
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
+    setDateFilterMode(inferDateFilterMode(initialFilters));
   };
 
   const changePage = (page: number) => {
@@ -314,19 +267,34 @@ export default function ArtistsPage() {
     setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
   };
 
+  const changeDraftFilter = (next: Partial<ArtistFilters>) => {
+    setDraftFilters((current) => ({ ...current, ...next }));
+    setFilters((current) => ({
+      ...current,
+      ...next,
+      page: 1,
+      limit: Number(current.limit) || limit,
+    }));
+  };
+
+  const changeDateFilter = (value: DateFilterValue) => {
+    setDateFilterMode(value.mode);
+    changeDraftFilter(getDateFilterPatch(value));
+  };
+
   const page = Number(filters.page ?? 1);
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[1.8px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+          <h1 className="mt-2 text-[28px] font-bold leading-tight tracking-[-0.02em] text-[#0f172a] dark:text-white">
             {labels.title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
         </div>
@@ -340,55 +308,71 @@ export default function ArtistsPage() {
         </button>
       </div>
 
-      <AdminFilterForm
+      <form
         onSubmit={applyFilters}
-        gridClassName="md:grid-cols-[minmax(180px,1.2fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(140px,0.65fr)_auto] md:items-center"
-        mobileLabel={t("actions.search")}
+        className="artistbor-table-filter-shell overflow-x-auto"
       >
-          <Input
-            allowClear
-            prefix={<Search className="size-4 text-slate-400" />}
-            placeholder={labels.searchPlaceholder}
-            value={draftFilters.search ?? ""}
-            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
-            className={`${adminFilterControlClass} h-10`}
-          />
-          <Select
-            className={`${adminFilterControlClass} h-10`}
-            value={draftFilters.is_verified ?? ""}
-            onChange={(is_verified) => setDraftFilters((current) => ({ ...current, is_verified }))}
-            options={[
-              { label: `${labels.verified}: ${labels.all}`, value: "" },
-              { label: labels.yes, value: 1 },
-              { label: labels.no, value: 0 },
-            ]}
-          />
-          <Select
-            className={`${adminFilterControlClass} h-10`}
-            value={draftFilters.is_top ?? ""}
-            onChange={(is_top) => setDraftFilters((current) => ({ ...current, is_top }))}
-            options={[
-              { label: `${labels.top}: ${labels.all}`, value: "" },
-              { label: labels.yes, value: 1 },
-              { label: labels.no, value: 0 },
-            ]}
-          />
-          <Input
-            type="number"
-            value={draftFilters.status ?? ""}
-            placeholder={`${labels.status}: ${labels.all}`}
-            onChange={(event) => setDraftFilters((current) => ({ ...current, status: event.target.value }))}
-            className={`${adminFilterControlClass} h-10`}
-          />
-          <Button
-            htmlType="button"
-            className={`${adminFilterActionClass} h-10`}
-            icon={<RotateCcw className="size-4" />}
-            onClick={resetFilters}
-          >
-            {labels.reset}
-          </Button>
-      </AdminFilterForm>
+        <div className="artistbor-table-filter-panel overflow-x-auto">
+          <div className="flex min-h-[38px] min-w-[900px] items-center gap-2.5">
+            <Input
+              allowClear
+              prefix={<Search className="size-4 text-[#94a3b8]" />}
+              placeholder={labels.searchPlaceholder}
+              value={draftFilters.search ?? ""}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+              className={cn(
+                "artistbor-filter-search !h-[38px] !rounded-xl !border-[#e6ebf2] !bg-white !text-sm !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+                draftFilters.search && "artistbor-filter-search-active",
+              )}
+            />
+            <Select
+              className="artistbor-compact-select !h-[38px] !w-[170px] shrink-0"
+              value={draftFilters.status ?? ""}
+              onChange={(status) => changeDraftFilter({ status })}
+              options={[
+                { label: `${labels.status}: ${labels.all}`, value: "" },
+                ...artistStatusOptions(labels),
+              ]}
+            />
+
+            <Select
+              className="artistbor-compact-select !h-[38px] !w-[210px] shrink-0"
+              value={draftFilters.is_verified ?? ""}
+              onChange={(is_verified) => changeDraftFilter({ is_verified })}
+              options={[
+                { label: `${labels.verified}: ${labels.all}`, value: "" },
+                { label: labels.yes, value: 1 },
+                { label: labels.no, value: 0 },
+              ]}
+            />
+            <DateFilterSelect
+              value={{
+                mode: dateFilterMode,
+                date_from: draftFilters.date_from ?? "",
+                date_to: draftFilters.date_to ?? "",
+              }}
+              labels={{
+                label: labels.dateFilter,
+                newest: labels.newest,
+                oldest: labels.oldest,
+                custom: labels.custom,
+                from: labels.dateFrom,
+                to: labels.dateTo,
+              }}
+              inputClassName="!rounded-xl !text-sm"
+              onChange={changeDateFilter}
+            />
+            <Button
+              htmlType="button"
+              className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-xl !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
+              icon={<RotateCcw className="size-4" />}
+              onClick={resetFilters}
+            >
+              {labels.reset}
+            </Button>
+          </div>
+        </div>
+      </form>
 
       {loading ? (
         <LoadingState />
@@ -397,27 +381,19 @@ export default function ArtistsPage() {
       ) : rows.length === 0 ? (
         <EmptyState />
       ) : (
-        <DataTable
-          columns={columns}
+        <ArtistsTable
           rows={rows}
-          getRowKey={(row, index) => getArtistId(row) ?? index}
-          actions={(row) => (
-            <div className="flex justify-end gap-2">
-              <IconButton label={t("actions.view")} onClick={() => void openDialog("view", row)}>
-                <Eye className="size-4" />
-              </IconButton>
-              <IconButton label={t("actions.edit")} onClick={() => void openDialog("edit", row)}>
-                <Pencil className="size-4" />
-              </IconButton>
-            </div>
-          )}
+          labels={labels}
+          onEdit={(row) => void openDialog("edit", row)}
+          onView={(row) => void openDialog("view", row)}
         />
       )}
 
-      <Pagination
+      <ArtistsPagination
         meta={meta}
         page={page}
         pageSize={Number(filters.limit) || limit}
+        labels={labels}
         onPageChange={changePage}
         onPageSizeChange={changePageSize}
       />
@@ -470,6 +446,430 @@ export default function ArtistsPage() {
       ) : null}
     </section>
   );
+}
+
+function ArtistsTable({
+  rows,
+  labels,
+  onView,
+  onEdit,
+}: {
+  rows: ArtistProfile[];
+  labels: ArtistsLabels;
+  onView: (row: ArtistProfile) => void;
+  onEdit: (row: ArtistProfile) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[30px] bg-white/55 p-1.5 shadow-[0_24px_64px_rgba(15,23,42,0.07)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
+      <div className="overflow-hidden rounded-[calc(30px-0.375rem)] bg-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1012px] border-separate border-spacing-0">
+            <colgroup>
+              <col className="w-12" />
+              <col className="w-[280px]" />
+              <col className="w-[170px]" />
+              <col className="w-28" />
+              <col className="w-[120px]" />
+              <col className="w-[170px]" />
+              <col className="w-28" />
+            </colgroup>
+            <thead>
+              <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
+                <ArtistTableHead label={labels.id} sortable />
+                <ArtistTableHead label={labels.artist} />
+                <ArtistTableHead label={labels.contact} />
+                <ArtistTableHead label={labels.status} />
+                <ArtistTableHead label={labels.rating} sortable />
+                <ArtistTableHead label={labels.lastActivity} sortable />
+                <ArtistTableHead label={labels.actions} align="right" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={`${getArtistId(row) ?? "artist"}-${index}`} className="group h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
+                  <td className="border-b border-[#edf2f7] px-3 py-2 align-middle text-xs font-bold text-[#64748b] dark:border-white/10 dark:text-slate-400">
+                    {toDisplay(getArtistId(row))}
+                  </td>
+                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                    <ArtistIdentityCell artist={row} labels={labels} />
+                  </td>
+                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                    <ArtistContactCell artist={row} />
+                  </td>
+                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                    <ArtistStatusPill artist={row} labels={labels} />
+                  </td>
+                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                    <ArtistRatingCell artist={row} />
+                  </td>
+                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle text-xs font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
+                    {formatArtistActivityDate(getArtistActivityDate(row), labels.locale)}
+                  </td>
+                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <ArtistTableActionButton label={labels.detailTitle} onClick={() => onView(row)}>
+                        <Eye className="size-4" />
+                      </ArtistTableActionButton>
+                      <ArtistTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
+                        <Pencil className="size-4" />
+                      </ArtistTableActionButton>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtistTableHead({
+  label,
+  sortable,
+  align = "left",
+}: {
+  label: string;
+  sortable?: boolean;
+  align?: "left" | "right";
+}) {
+  return (
+    <th
+      className={cn(
+        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-none tracking-[0.16em] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        align === "right" ? "text-right" : "text-left",
+      )}
+    >
+      <span className={cn("inline-flex items-center gap-1.5", align === "right" && "justify-end")}>
+        {label}
+        {sortable ? <ArrowDownUp className="size-3 text-[#94a3b8]" /> : null}
+      </span>
+    </th>
+  );
+}
+
+function ArtistIdentityCell({ artist, labels }: { artist: ArtistProfile; labels: ArtistsLabels }) {
+  const photoUrl = getArtistPhotoUrl(artist);
+  const artistName = getArtistName(artist, labels);
+
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      {photoUrl ? (
+        <div
+          aria-label={artistName}
+          className="size-9 shrink-0 rounded-full border border-[#e6ebf2] bg-cover bg-center dark:border-white/10"
+          style={{ backgroundImage: `url(${photoUrl})` }}
+        />
+      ) : (
+        <div className="grid size-9 shrink-0 place-items-center rounded-full bg-[#fff7ed] text-xs font-bold text-[#f97316] ring-1 ring-[#fed7aa] dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/20">
+          {getArtistInitials(artist, labels)}
+        </div>
+      )}
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
+            {artistName}
+          </p>
+          {isVerifiedArtist(artist) ? (
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-label={labels.verified} />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtistContactCell({ artist }: { artist: ArtistProfile }) {
+  const phone = getArtistTablePhone(artist);
+  const secondary = getArtistSecondaryContact(artist);
+
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
+        {phone}
+      </p>
+      {secondary ? (
+        <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
+          {secondary}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ArtistStatusPill({ artist, labels }: { artist: ArtistProfile; labels: ArtistsLabels }) {
+  const deleted = isDeletedArtist(artist);
+  const label = deleted ? labels.deletedStatus : labels.statusValueLabels.active;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-[0.13em]",
+        deleted
+          ? "bg-rose-50 text-rose-600 ring-1 ring-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20"
+          : "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ArtistRatingCell({ artist }: { artist: ArtistProfile }) {
+  const rating = getArtistTableRating(artist);
+
+  if (rating === undefined) {
+    return <span className="text-sm font-bold text-[#94a3b8]">—</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Star className="size-4 fill-[#f59e0b] text-[#f59e0b]" />
+      <span className="text-[13px] font-bold text-[#0f172a] dark:text-white">
+        {formatNumberValue(rating, "—")}
+      </span>
+    </div>
+  );
+}
+
+function ArtistTableActionButton({
+  label,
+  children,
+  onClick,
+}: {
+  label: string;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="grid size-8 place-items-center rounded-lg border border-[#e6ebf2] bg-white text-[#64748b] transition hover:border-[#fdba74] hover:bg-[#fff7ed] hover:text-[#f97316] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:border-amber-400/40 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+    >
+      {children}
+    </button>
+  );
+}
+
+function ArtistsPagination({
+  meta,
+  page,
+  pageSize,
+  labels,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  meta?: ListResult<ArtistProfile>["meta"];
+  page: number;
+  pageSize: number;
+  labels: ArtistsLabels;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+}) {
+  const { t } = useI18n();
+  const limitValue = normalizePositiveNumber(pageSize || meta?.perPage || meta?.limit, limit);
+  const currentPage = normalizePositiveNumber(meta?.currentPage ?? meta?.page ?? page, 1);
+  const total = getArtistTotalFromMeta(meta);
+  const pageCount = Math.max(
+    1,
+    normalizePositiveNumber(meta?.pageCount, 0) || (total > 0 ? Math.ceil(total / limitValue) : 1),
+  );
+  const canGoPrevious = currentPage > 1;
+  const canGoNext = currentPage < pageCount;
+  const firstItem = total === 0 ? 0 : (currentPage - 1) * limitValue + 1;
+  const lastItem = total === 0 ? 0 : Math.min(currentPage * limitValue, total);
+  const rangeLabel = t("pagination.rangeTotal", { from: firstItem, to: lastItem, total });
+
+  return (
+    <div className="rounded-[26px] bg-white/55 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
+      <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-2 rounded-[calc(26px-0.375rem)] bg-white/95 px-3 text-sm font-semibold text-[#64748b] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <span className="whitespace-nowrap text-xs font-semibold text-[#64748b] dark:text-slate-400">
+          {rangeLabel}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <ArtistPaginationButton
+            label={t("pagination.first")}
+            disabled={!canGoPrevious}
+            onClick={() => onPageChange(1)}
+          >
+            <ChevronsLeft className="size-4" />
+          </ArtistPaginationButton>
+          <ArtistPaginationButton
+            label={t("pagination.previous")}
+            disabled={!canGoPrevious}
+            onClick={() => onPageChange(currentPage - 1)}
+          >
+            <ChevronLeft className="size-4" />
+          </ArtistPaginationButton>
+          <div className="flex items-center gap-1">
+            {getArtistVisiblePages(currentPage, pageCount).map((pageNumber) => (
+              <button
+                type="button"
+                key={pageNumber}
+                onClick={() => onPageChange(pageNumber)}
+                aria-current={pageNumber === currentPage ? "page" : undefined}
+                className={cn(
+                  "grid size-8 place-items-center rounded-lg text-xs font-bold transition",
+                  pageNumber === currentPage
+                    ? "bg-[#fff7ed] text-[#f97316] ring-1 ring-[#fed7aa] dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-400/20"
+                    : "text-[#64748b] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-white",
+                )}
+              >
+                {pageNumber}
+              </button>
+            ))}
+          </div>
+          <ArtistPaginationButton
+            label={t("pagination.next")}
+            disabled={!canGoNext}
+            onClick={() => onPageChange(currentPage + 1)}
+          >
+            <ChevronRight className="size-4" />
+          </ArtistPaginationButton>
+          <ArtistPaginationButton
+            label={t("pagination.last")}
+            disabled={!canGoNext}
+            onClick={() => onPageChange(pageCount)}
+          >
+            <ChevronsRight className="size-4" />
+          </ArtistPaginationButton>
+          <select
+            value={limitValue}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            className="ml-1 h-8 rounded-lg border border-[#e6ebf2] bg-white px-2 text-xs font-bold text-[#0f172a] outline-none transition hover:border-[#cbd5e1] focus:border-[#f97316] dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
+            aria-label={t("pagination.perPage")}
+          >
+            {[20, 50, 100].map((option) => (
+              <option key={option} value={option}>
+                {option} / {labels.page.toLowerCase()}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtistPaginationButton({
+  label,
+  disabled,
+  children,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid size-8 place-items-center rounded-lg text-[#64748b] transition hover:bg-[#f8fafc] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+function getArtistTotalFromMeta(meta?: ListResult<ArtistProfile>["meta"], fallback = 0) {
+  return normalizePositiveNumber(meta?.totalCount ?? meta?.total, fallback);
+}
+
+function normalizePositiveNumber(value: unknown, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function getArtistVisiblePages(page: number, pageCount: number) {
+  const visibleCount = Math.min(5, pageCount);
+  let start = Math.max(1, page - Math.floor(visibleCount / 2));
+  const endOverflow = start + visibleCount - 1 - pageCount;
+
+  if (endOverflow > 0) start = Math.max(1, start - endOverflow);
+
+  return Array.from({ length: visibleCount }, (_, index) => start + index);
+}
+
+function getArtistTablePhone(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  const nested = firstRecordValue(record, ["user", "profile", "artistProfile", "artist_profile"]);
+  const source = nested ? { ...record, ...nested } : record;
+  const value = firstMeaningfulValue(source, ["phone", "extra_phone", "administrator_phone"]);
+  return value ? formatPhone(value) || toDisplay(value) : "—";
+}
+
+function getArtistSecondaryContact(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  const nested = firstRecordValue(record, ["user", "profile", "artistProfile", "artist_profile"]);
+  const source = nested ? { ...record, ...nested } : record;
+  const telegram = firstMeaningfulValue(source, ["telegram", "telegram_username", "telegram_url"]);
+
+  if (telegram) return toDisplay(telegram);
+
+  const email = firstMeaningfulValue(source, ["email"]);
+  return email ? toDisplay(email) : "";
+}
+
+function getArtistTableRating(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  const nested = firstRecordValue(record, ["profile", "artistProfile", "artist_profile", "rating_info"]);
+  const source = nested ? { ...record, ...nested } : record;
+  return numericValue(firstMeaningfulValue(source, ["rating", "average_rating", "avg_rating", "rating_avg"]));
+}
+
+function isVerifiedArtist(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  const nested = firstRecordValue(record, ["user", "profile", "artistProfile", "artist_profile"]);
+  const source = nested ? { ...record, ...nested } : record;
+  return isTruthyValue(firstMeaningfulValue(source, ["is_verified", "verified", "is_confirmed"]));
+}
+
+function isTruthyValue(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value !== "string") return false;
+  return ["1", "true", "yes", "ha", "да"].includes(value.trim().toLowerCase());
+}
+
+function getArtistActivityDate(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  const nested = firstRecordValue(record, ["user", "profile", "artistProfile", "artist_profile"]);
+  const source = nested ? { ...record, ...nested } : record;
+  return firstMeaningfulValue(source, ["last_active_at", "last_seen_at", "last_login_at", "updated_at", "created_at"]);
+}
+
+function formatArtistActivityDate(value: unknown, locale: Locale) {
+  if (!hasMeaningfulValue(value)) return "—";
+
+  if (typeof value === "number") return normalizeDate(value);
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const timestamp = Date.parse(trimmed);
+
+    if (Number.isFinite(timestamp)) {
+      return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "uz-UZ", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(timestamp));
+    }
+
+    return trimmed || "—";
+  }
+
+  return toDisplay(value);
 }
 
 function ArtistDrawer({
@@ -930,8 +1330,8 @@ function CreateArtistDrawer({
 
         <ArtistFormSection title={labels.contactInfo}>
           <div className="grid gap-4 md:grid-cols-2">
-            <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998" })))} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
-            <FormField compact label={labels.extraPhone} value={values.extra_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998" })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone }))} />
+            <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998 " })))} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
+            <FormField compact label={labels.extraPhone} type="tel" value={values.extra_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998 " })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone: formatPhoneInput(extra_phone) }))} />
             <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
           </div>
         </ArtistFormSection>
@@ -979,7 +1379,7 @@ function CreateArtistDrawer({
         <ArtistFormSection title={labels.adminInfo}>
           <div className="grid gap-4 md:grid-cols-2">
             <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
-            <FormField compact label={labels.adminPhone} value={values.administrator_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998" })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone }))} />
+            <FormField compact label={labels.adminPhone} type="tel" value={values.administrator_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998 " })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone: formatPhoneInput(administrator_phone) }))} />
           </div>
         </ArtistFormSection>
 
@@ -1048,7 +1448,7 @@ function ArtistDrawerProfile({
             {labels.id}: {toDisplay(getArtistId(artist))}
           </p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {artist.phone ?? artist.extra_phone ?? "—"}
+            {formatPhone(artist.phone ?? artist.extra_phone) || "—"}
           </p>
         </div>
       </div>
@@ -1328,12 +1728,13 @@ function ArtistPasswordResetModal({
       open={open}
       title={labels.resetPasswordTitle}
       onCancel={onClose}
+      rootClassName="artistbor-confirm-modal"
       footer={null}
       destroyOnHidden
       centered
     >
       <form className="space-y-4 pt-2" onSubmit={submit}>
-        <p className="text-sm leading-5 text-slate-500 dark:text-slate-400">
+        <p className="text-sm leading-5 text-slate-400">
           {labels.resetPasswordDescription(getArtistName(artist, labels))}
         </p>
         <FormField
@@ -1360,14 +1761,14 @@ function ArtistPasswordResetModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.04]"
+            className="artistbor-modal-action artistbor-modal-action--neutral text-sm font-bold"
           >
             {labels.cancel}
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="h-10 rounded-lg border border-amber-300 bg-amber-400 px-3 text-sm font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+            className="artistbor-modal-action artistbor-modal-action--warning text-sm font-bold"
           >
             {submitting ? labels.saving : labels.resetPasswordAction}
           </button>
@@ -1386,7 +1787,7 @@ function ArtistInfoGrid({
 }) {
   const cells = [
     { icon: <User className="size-4" />, label: labels.fullName, value: getArtistName(artist, labels), always: true },
-    { icon: <Phone className="size-4" />, label: labels.phone, value: artist.phone ?? artist.extra_phone, always: true },
+    { icon: <Phone className="size-4" />, label: labels.phone, value: formatPhone(artist.phone ?? artist.extra_phone), always: true },
     { icon: <Mail className="size-4" />, label: labels.email, value: artist.email },
     { icon: <Languages className="size-4" />, label: labels.language, value: artist.badges?.join(", ") },
     {
@@ -1474,7 +1875,7 @@ function ArtistProfileTab({
               <ArtistInfoCell icon={<User className="size-4" />} label={labels.adminName} value={artist.administrator_name} />
             ) : null}
             {hasMeaningfulValue(artist.administrator_phone || artist.extra_phone) ? (
-              <ArtistInfoCell icon={<Phone className="size-4" />} label={labels.adminPhone} value={artist.administrator_phone || artist.extra_phone} />
+              <ArtistInfoCell icon={<Phone className="size-4" />} label={labels.adminPhone} value={formatPhone(artist.administrator_phone || artist.extra_phone)} />
             ) : null}
           </div>
         </ArtistSection>
@@ -1689,8 +2090,8 @@ function EditArtistForm({
 
       <ArtistFormSection hideTitle title={labels.contactInfo}>
         <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.phone} required value={values.phone} error={errors.phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998" })))} onChange={(phone) => setValues((current) => ({ ...current, phone }))} />
-          <FormField compact label={labels.extraPhone} value={values.extra_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998" })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone }))} />
+          <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998 " })))} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
+          <FormField compact label={labels.extraPhone} type="tel" value={values.extra_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998 " })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone: formatPhoneInput(extra_phone) }))} />
           <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
         </div>
       </ArtistFormSection>
@@ -1738,7 +2139,7 @@ function EditArtistForm({
       <ArtistFormSection hideTitle title={labels.adminInfo}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
-          <FormField compact label={labels.adminPhone} value={values.administrator_phone} placeholder="+998..." onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998" })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone }))} />
+          <FormField compact label={labels.adminPhone} type="tel" value={values.administrator_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998 " })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone: formatPhoneInput(administrator_phone) }))} />
         </div>
       </ArtistFormSection>
 
@@ -1747,14 +2148,6 @@ function EditArtistForm({
           <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
           <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
           <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
-        </div>
-      </ArtistFormSection>
-
-      <ArtistFormSection hideTitle title={labels.statistics}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.albumsCount} type="number" value={values.albums_count} placeholder={labels.albumsCount} onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
-          <FormField compact label={labels.fansCount} type="number" value={values.fans_count} placeholder={labels.fansCount} onChange={(fans_count) => setValues((current) => ({ ...current, fans_count }))} />
-          <FormField compact label={labels.rating} type="number" value={values.rating} placeholder={labels.rating} onChange={(rating) => setValues((current) => ({ ...current, rating }))} />
         </div>
       </ArtistFormSection>
     </form>
@@ -1945,7 +2338,7 @@ function initialArtistFormValues(artist: ArtistProfile) {
   return {
     first_name: artist.first_name ?? getFirstNameFromArtist(artist),
     last_name: artist.last_name ?? getLastNameFromArtist(artist),
-    phone: artist.phone ?? "",
+    phone: formatPhoneInput(artist.phone),
     email: artist.email ?? "",
     status: artist.status === undefined || artist.status === null ? "10" : String(artist.status),
     region_id: artist.region_id === undefined || artist.region_id === null ? "" : String(artist.region_id),
@@ -1954,23 +2347,14 @@ function initialArtistFormValues(artist: ArtistProfile) {
     gender: normalizedGender(stringRecordValue(profile, "gender") ?? artist.gender),
     category_ids: artistCategoryValue(artist),
     bio: stringRecordValue(artistProfile, "bio") ?? artist.bio ?? stringRecordValue(profile, "bio") ?? "",
-    albums_count: stringifyOptionalNumber(numberRecordValue(artistProfile, "albums_count") ?? artist.albums_count),
-    fans_count: stringifyOptionalNumber(numberRecordValue(artistProfile, "fans_count") ?? artist.fans_count),
-    extra_phone: stringRecordValue(artistProfile, "extra_phone") ?? artist.extra_phone ?? "",
+    extra_phone: formatPhoneInput(stringRecordValue(artistProfile, "extra_phone") ?? artist.extra_phone),
     administrator_name: stringRecordValue(artistProfile, "administrator_name") ?? artist.administrator_name ?? "",
-    administrator_phone: stringRecordValue(artistProfile, "administrator_phone") ?? artist.administrator_phone ?? "",
+    administrator_phone: formatPhoneInput(stringRecordValue(artistProfile, "administrator_phone") ?? artist.administrator_phone),
     profile_photo_id: profilePhotoId === undefined ? "" : String(profilePhotoId),
     profile_photo_url: getArtistPhotoUrl(artist) ?? "",
     is_verified: booleanRecordValue(artistProfile, "is_verified") ?? Boolean(artist.is_verified),
     is_top: booleanRecordValue(artistProfile, "is_top") ?? Boolean(artist.is_top),
-    rating: stringifyOptionalNumber(numberRecordValue(artistProfile, "rating") ?? artist.rating),
   };
-}
-
-function stringifyOptionalNumber(value: unknown) {
-  if (value === null || value === undefined || value === "") return "";
-  const number = Number(value);
-  return Number.isFinite(number) ? String(number) : "";
 }
 
 function nestedArtistRecord(artist: ArtistProfile, key: string) {
@@ -2624,7 +3008,7 @@ function CommentEditModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
+            className="artistbor-modal-action artistbor-modal-action--neutral text-sm font-bold"
           >
             <X className="size-4" />
             {labels.cancel}
@@ -2632,7 +3016,7 @@ function CommentEditModal({
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
+            className="artistbor-modal-action artistbor-modal-action--success text-sm font-bold"
           >
             <Save className="size-4" />
             {labels.saveComment}
@@ -3235,7 +3619,7 @@ function ScheduleManagementDrawer({
               <ArtistHeaderBadge label={status.label} tone={status.tone} />
             </div>
             <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-              {getArtistName(artist, labels)} · {artist.phone ?? artist.extra_phone ?? "—"}
+              {getArtistName(artist, labels)} · {formatPhone(artist.phone ?? artist.extra_phone) || "—"}
             </p>
           </div>
         }
@@ -3350,55 +3734,93 @@ function BusySlotModal({
       destroyOnHidden
       open={open}
       onCancel={onClose}
-      title={state?.mode === "edit" ? labels.editBusySlot : labels.addAvailability}
-      okText={state?.mode === "edit" ? labels.saveBusySlot : labels.addAvailability}
-      cancelText={labels.cancel}
       confirmLoading={loading}
-      rootClassName="artistbor-confirm-modal"
+      centered
+      width={760}
+      closeIcon={<X className="size-5" />}
+      rootClassName="artistbor-confirm-modal artistbor-busy-slot-modal"
+      title={
+        <div className="artistbor-busy-slot-modal__heading">
+          <div className="artistbor-busy-slot-modal__icon">
+            <CalendarDays className="size-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="artistbor-busy-slot-modal__title">
+              {state?.mode === "edit" ? labels.editBusySlot : labels.addAvailability}
+            </h2>
+            <p className="artistbor-busy-slot-modal__subtitle">Kuni va vaqt oralig&apos;ini belgilang</p>
+          </div>
+        </div>
+      }
       footer={null}
+      styles={{
+        body: { padding: 0 },
+        mask: { backgroundColor: "rgba(2, 6, 23, 0.76)" },
+      }}
     >
-      <form className="grid gap-3" onSubmit={handleSubmit}>
+      <form className="grid gap-4" onSubmit={handleSubmit}>
         <FormField
           compact
           required
           label={labels.date}
           type="date"
+          prefixIcon={<CalendarDays className="size-4 text-emerald-400" />}
+          className="artistbor-busy-slot-field"
+          inputClassName="artistbor-busy-slot-input"
           value={values.date}
           onChange={(date) => setValues((current) => ({ ...current, date }))}
         />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
           <FormField
             compact
             required
             label={labels.startTime}
             type="time"
+            prefixIcon={<Clock className="size-4 text-emerald-400" />}
+            className="artistbor-busy-slot-field"
+            inputClassName="artistbor-busy-slot-input"
             value={values.start_time}
             onChange={(start_time) => setValues((current) => ({ ...current, start_time }))}
           />
+          <div className="hidden self-end px-1 pb-[18px] text-2xl font-light leading-none text-slate-400 sm:block">—</div>
           <FormField
             compact
             required
             label={labels.endTime}
             type="time"
+            prefixIcon={<Clock className="size-4 text-emerald-400" />}
+            className="artistbor-busy-slot-field"
+            inputClassName="artistbor-busy-slot-input"
             value={values.end_time}
             onChange={(end_time) => setValues((current) => ({ ...current, end_time }))}
           />
+        </div>
+        <div className="artistbor-busy-slot-duration">
+          <Clock className="size-4 shrink-0 text-emerald-300" />
+          <span>
+            {labels.duration}: {formatBusySlotDuration(values.start_time, values.end_time) || "—"}
+          </span>
         </div>
         <FormField
           compact
           label={labels.reason}
           type="textarea"
-          rows={3}
+          rows={4}
+          maxLength={200}
+          showCount
+          placeholder="Masalan: Zal band, texnik ish yoki xususiy tadbir..."
+          className="artistbor-busy-slot-field"
+          inputClassName="artistbor-busy-slot-textarea"
           value={values.reason}
           onChange={(reason) => setValues((current) => ({ ...current, reason }))}
         />
-        <div className={cn("mt-2 grid gap-2", state?.mode === "edit" ? "sm:grid-cols-[1fr_1fr_1fr]" : "sm:grid-cols-2")}>
+        <div className={cn("mt-2 grid gap-3", state?.mode === "edit" ? "sm:grid-cols-[1fr_1fr_1fr]" : "sm:grid-cols-2")}>
           {state?.mode === "edit" ? (
             <button
               type="button"
               onClick={onDelete}
               disabled={loading}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10"
+              className="artistbor-busy-slot-action artistbor-busy-slot-action--danger text-sm font-semibold"
             >
               <Trash2 className="size-4" />
               {labels.deleteSchedule}
@@ -3408,7 +3830,7 @@ function BusySlotModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
+            className="artistbor-busy-slot-action artistbor-busy-slot-action--neutral text-sm font-semibold"
           >
             <X className="size-4" />
             {labels.cancel}
@@ -3416,7 +3838,7 @@ function BusySlotModal({
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
+            className="artistbor-busy-slot-action artistbor-busy-slot-action--success text-sm font-semibold"
           >
             <Save className="size-4" />
             {state?.mode === "edit" ? labels.saveBusySlot : labels.addAvailability}
@@ -4176,6 +4598,27 @@ function validateBusySlotForm(values: BusySlotFormValues, labels: ArtistsLabels)
   return "";
 }
 
+function formatBusySlotDuration(startTime: string, endTime: string) {
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+  if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) return "";
+
+  const totalMinutes = endMinutes - startMinutes;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+
+  if (hours > 0) parts.push(`${hours} soat`);
+  if (minutes > 0) parts.push(`${minutes} daqiqa`);
+  return parts.join(" ") || "";
+}
+
+function parseTimeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map((part) => Number(part));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
 function buildBusySlotPayload(values: BusySlotFormValues): ArtistBusySlotPayload {
   const payload: ArtistBusySlotPayload = {
     date: values.date,
@@ -4721,9 +5164,15 @@ function formatDisplayValue(key: string, value: unknown, labels = getArtistsLabe
   if (key.endsWith("_at") || key === "created_at" || key === "updated_at") {
     return normalizeDate(value);
   }
+  if (isPhoneField(key)) return formatPhone(value) || toDisplay(value);
   if (typeof value === "boolean") return value ? labels.yes : labels.no;
   if (isStatusField(key)) return formatEnumValue(key, value, labels);
   return toDisplay(value);
+}
+
+function isPhoneField(key: string) {
+  const normalized = key.toLowerCase();
+  return normalized === "phone" || normalized.endsWith("_phone") || normalized.includes("phone_number");
 }
 
 function formatEnumValue(fieldKey: string, value: unknown, labels: ArtistsLabels) {
@@ -4861,31 +5310,13 @@ function getArtistInitials(artist: ArtistProfile, labels: ArtistsLabels) {
   return initials || "A";
 }
 
-function IconButton({
-  label,
-  children,
-  onClick,
-}: {
-  label: string;
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="cursor-pointer rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:text-slate-300"
-    >
-      {children}
-    </button>
-  );
-}
-
 function applyPhonePrefix(value: unknown, setValue: () => void) {
   if (typeof value === "string" && value.trim()) return;
   setValue();
+}
+
+function formatPhoneInput(value: unknown) {
+  return formatPhone(value);
 }
 
 function buildArtistPayload(values: {
@@ -4900,20 +5331,17 @@ function buildArtistPayload(values: {
   gender: string;
   category_ids: string;
   bio: string;
-  albums_count: string | number | null;
-  fans_count: string | number | null;
   extra_phone: string;
   administrator_name: string;
   administrator_phone: string;
   profile_photo_id: string;
   is_verified: boolean;
   is_top: boolean;
-  rating: string | number | null;
 }) {
   const payload: UpdateArtistPayload = {};
   assignUpdateString(payload, "first_name", values.first_name);
   assignUpdateString(payload, "last_name", values.last_name);
-  assignUpdateString(payload, "phone", values.phone);
+  assignUpdatePhone(payload, "phone", values.phone);
   assignUpdateString(payload, "email", values.email);
   assignUpdateNumber(payload, "status", values.status);
   assignUpdateNumber(payload, "region_id", values.region_id);
@@ -4926,20 +5354,24 @@ function buildArtistPayload(values: {
   if (categoryIds.length) payload.category_ids = categoryIds;
   assignUpdateString(payload, "bio", values.bio);
   assignUpdateString(payload, "artist_bio", values.bio);
-  assignUpdateNumber(payload, "albums_count", values.albums_count);
-  assignUpdateNumber(payload, "fans_count", values.fans_count);
-  assignUpdateString(payload, "extra_phone", values.extra_phone);
+  assignUpdatePhone(payload, "extra_phone", values.extra_phone);
   assignUpdateString(payload, "administrator_name", values.administrator_name);
-  assignUpdateString(payload, "administrator_phone", values.administrator_phone);
+  assignUpdatePhone(payload, "administrator_phone", values.administrator_phone);
   assignUpdateNumber(payload, "profile_photo_id", values.profile_photo_id);
   payload.is_verified = Boolean(values.is_verified);
   payload.is_top = Boolean(values.is_top);
-  assignUpdateNumber(payload, "rating", values.rating);
   return payload;
 }
 
 function assignUpdateString(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: unknown) {
   const normalized = typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value).trim();
+  if (normalized) {
+    (payload as Record<string, unknown>)[key] = normalized;
+  }
+}
+
+function assignUpdatePhone(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: unknown) {
+  const normalized = normalizePhoneForApi(value);
   if (normalized) {
     (payload as Record<string, unknown>)[key] = normalized;
   }
@@ -4982,7 +5414,7 @@ function initialCreateArtistValues() {
 function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistValues>): CreateArtistPayload {
   const payload: CreateArtistPayload = {
     first_name: values.first_name.trim(),
-    phone: values.phone.trim(),
+    phone: normalizePhoneForApi(values.phone),
     password: values.password,
   };
 
@@ -4997,9 +5429,9 @@ function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistV
     payload.gender = values.gender;
   }
   assignString(payload, "artist_bio", values.bio);
-  assignString(payload, "extra_phone", values.extra_phone);
+  assignPhone(payload, "extra_phone", values.extra_phone);
   assignString(payload, "administrator_name", values.administrator_name);
-  assignString(payload, "administrator_phone", values.administrator_phone);
+  assignPhone(payload, "administrator_phone", values.administrator_phone);
   assignNumber(payload, "albums_count", values.albums_count);
   assignNumber(payload, "fans_count", values.fans_count);
   assignNumber(payload, "profile_photo_id", values.profile_photo_id);
@@ -5014,6 +5446,13 @@ function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistV
 
 function assignString(payload: CreateArtistPayload, key: keyof CreateArtistPayload, value: unknown) {
   const normalized = typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value).trim();
+  if (normalized) {
+    (payload as Record<string, unknown>)[key] = normalized;
+  }
+}
+
+function assignPhone(payload: CreateArtistPayload, key: keyof CreateArtistPayload, value: unknown) {
+  const normalized = normalizePhoneForApi(value);
   if (normalized) {
     (payload as Record<string, unknown>)[key] = normalized;
   }
@@ -5140,6 +5579,7 @@ function getArtistsLabels(locale: string) {
       comments: "Комментарии",
       commentsEmptyDescription: "Для этого артиста пока нет комментариев.",
       commentsEmptyTitle: "Комментариев нет",
+      contact: "Контакт",
       contactInfo: "Контактная информация",
       create: "Создать",
       createArtist: "Создать артиста",
@@ -5148,7 +5588,9 @@ function getArtistsLabels(locale: string) {
       created: "Артист создан",
       creating: "Создается...",
       createdAt: "Создано",
+      custom: "Настроить",
       date: "Дата",
+      dateFilter: "Дата",
       dateFrom: "Дата с",
       dateTo: "Дата до",
       deletedStatus: "Удалено",
@@ -5230,6 +5672,7 @@ function getArtistsLabels(locale: string) {
       minutesShort: "мин",
       moreActions: "Дополнительные действия",
       name: "Имя",
+      newest: "Новые",
       no: "Нет",
       noAvailabilityData: "Нет данных по доступности",
       noImage: "Нет изображения",
@@ -5237,6 +5680,7 @@ function getArtistsLabels(locale: string) {
       noVideoHint: "Видео не найдено. Можно повторно проверить на странице видео с фильтром по артисту.",
       notFoundTitle: (title: string) => `${title} не найдено`,
       objectType: "Объект",
+      oldest: "Старые",
       oneObject: "1 объект",
       openVideo: "Открыть",
       page: "Страница",
@@ -5344,7 +5788,8 @@ function getArtistsLabels(locale: string) {
       updated: "Артист обновлен",
       updatedAt: "Обновлено",
       endTime: "Время окончания",
-      reason: "Причина",
+      lastActivity: "Последняя активность",
+      reason: "Примечание",
       saveBusySlot: "Сохранить",
       saveComment: "Сохранить",
       saving: "Сохраняется...",
@@ -5428,6 +5873,7 @@ function getArtistsLabels(locale: string) {
     comments: "Izohlar",
     commentsEmptyDescription: "Bu sanatkor uchun hali izoh yozilmagan.",
     commentsEmptyTitle: "Izohlar yo'q",
+    contact: "Aloqa",
     contactInfo: "Kontakt ma'lumotlari",
     create: "Yaratish",
     createArtist: "Sanatkor yaratish",
@@ -5436,7 +5882,9 @@ function getArtistsLabels(locale: string) {
     created: "Sanatkor yaratildi",
     creating: "Yaratilmoqda...",
     createdAt: "Yaratilgan",
+    custom: "Sozlash",
     date: "Sana",
+    dateFilter: "Sana",
     dateFrom: "Boshlanish sanasi",
     dateTo: "Tugash sanasi",
     deletedStatus: "O'chirilgan",
@@ -5518,6 +5966,7 @@ function getArtistsLabels(locale: string) {
     minutesShort: "daq",
     moreActions: "Qo'shimcha amallar",
     name: "Ism",
+    newest: "Yangilari",
     no: "Yo'q",
     noAvailabilityData: "Bo'sh vaqt ma'lumotlari yo'q",
     noImage: "Rasm yo'q",
@@ -5525,6 +5974,7 @@ function getArtistsLabels(locale: string) {
     noVideoHint: "Video topilmadi. Videolar sahifasida sanatkor filter orqali qayta tekshirishingiz mumkin.",
     notFoundTitle: (title: string) => `${title} topilmadi`,
     objectType: "Obyekt",
+    oldest: "Eng eskilari",
     oneObject: "1 ta obyekt",
     openVideo: "Ochish",
     page: "Sahifa",
@@ -5632,7 +6082,8 @@ function getArtistsLabels(locale: string) {
     updated: "Sanatkor yangilandi",
     updatedAt: "Yangilangan",
     endTime: "Tugash vaqti",
-    reason: "Sabab",
+    lastActivity: "Oxirgi faollik",
+    reason: "Izoh",
     saveBusySlot: "Saqlash",
     saveComment: "Saqlash",
     saving: "Saqlanmoqda...",

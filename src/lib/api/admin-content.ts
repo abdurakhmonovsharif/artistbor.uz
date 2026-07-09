@@ -125,6 +125,9 @@ export type UserFilters = {
   role?: string | number;
   status?: string;
   search?: string;
+  date_from?: string;
+  date_to?: string;
+  sort?: string;
   page?: number;
   limit?: number;
   expand?: string;
@@ -136,6 +139,9 @@ export type StaffFilters = {
   role?: string | number;
   status?: string;
   search?: string;
+  date_from?: string;
+  date_to?: string;
+  sort?: string;
   page?: number;
   limit?: number;
   expand?: string;
@@ -172,6 +178,9 @@ export type ArtistFilters = {
   is_verified?: string;
   is_top?: string;
   status?: string;
+  date_from?: string;
+  date_to?: string;
+  sort?: string;
   page?: number;
   limit?: number;
 };
@@ -189,15 +198,12 @@ export type UpdateArtistPayload = {
   birth_date?: string;
   gender?: "male" | "female" | "other";
   artist_bio?: string;
-  albums_count?: number;
-  fans_count?: number;
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;
   profile_photo_id?: number;
   is_verified?: boolean;
   is_top?: boolean;
-  rating?: number;
 };
 
 export type CreateArtistPayload = {
@@ -256,6 +262,7 @@ export type OrderFilters = {
   client_id?: string;
   date_from?: string;
   date_to?: string;
+  sort?: string;
   page?: number;
   limit?: number;
   expand?: string;
@@ -355,6 +362,7 @@ export type NotificationFilters = {
   type?: string;
   date_from?: string;
   date_to?: string;
+  sort?: string;
   page?: number;
   limit?: number;
 };

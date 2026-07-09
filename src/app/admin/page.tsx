@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Clock3,
   CreditCard,
+  FileText,
   MessageSquare,
   PackageCheck,
   RefreshCcw,
@@ -28,7 +29,6 @@ import {
   type DashboardStats,
   type DashboardStatsFilters,
 } from "@/lib/api/admin-content";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { cn, toDisplay } from "@/lib/utils";
 import { useTheme } from "@/lib/theme/theme-provider";
@@ -153,63 +153,60 @@ export default function AdminHome() {
   };
 
   return (
-    <section className="space-y-6 pb-8">
-      <header className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950 md:p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+    <section className="dashboard-page min-w-0 space-y-4 pb-2">
+      <header className="rounded-[30px] bg-white/55 p-1.5 shadow-[0_26px_70px_rgba(15,23,42,0.08)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
+        <div className="flex min-h-[96px] flex-col justify-between gap-4 rounded-[calc(30px-0.375rem)] bg-white/95 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] min-[1320px]:flex-row min-[1320px]:items-center">
           <div className="max-w-3xl">
-            <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+            <p className="inline-flex rounded-full bg-[#fff4e5] px-3 py-1 text-[10px] font-black uppercase leading-none tracking-[0.2em] text-[#c26a00] ring-1 ring-[#ffcf73]/50 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-300/15">
               Artistbor
             </p>
-            <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+            <h1 className="mt-3 text-[clamp(25px,2vw,32px)] font-black leading-[1.08] tracking-[-0.035em] text-[#0f172a] dark:text-white">
               {labels.title}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-[21px] text-[#64748b] dark:text-slate-400">
               {labels.description}
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 xl:max-w-[620px] xl:items-end">
+          <div className="dashboard-filter-shell artistbor-table-filter-shell flex h-11 w-full shrink-0 items-center gap-1.5 overflow-x-auto rounded-full bg-[#f8fafc] p-1 ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10 min-[1320px]:w-auto min-[1320px]:overflow-visible">
             {stats?.period ? (
-              <p className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
-                <CalendarDays className="size-4 text-amber-500" />
-                {toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}
+              <p className="dashboard-date-pill inline-flex h-9 w-[210px] shrink-0 items-center gap-2 rounded-full bg-white px-3 text-[13px] font-bold leading-none text-[#0f172a] ring-1 ring-[#e6ebf2] dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 min-[1440px]:w-[238px]">
+                <CalendarDays className="size-3.5 text-[#475569]" />
+                <span className="truncate">{toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}</span>
               </p>
             ) : null}
-
-            <div className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-2 dark:border-white/10 dark:bg-white/[0.03] sm:flex-row xl:w-auto">
-              <Select
-                value={customOpen ? "custom" : filters.period}
-                onChange={(value) => handlePeriodSelect(value as DashboardPeriod)}
-                options={[
-                  ...periodOptions.map((option) => ({
-                    label: option.label,
-                    value: option.value,
-                  })),
-                  { label: labels.customRange, value: "custom" },
-                ]}
-                className="!h-11 w-full sm:!w-44"
-                aria-label={labels.periodAria}
+            <Select
+              value={customOpen ? "custom" : filters.period}
+              onChange={(value) => handlePeriodSelect(value as DashboardPeriod)}
+              options={[
+                ...periodOptions.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                })),
+                { label: labels.customRange, value: "custom" },
+              ]}
+              className="dashboard-period-select !h-9 !w-[124px] shrink-0 min-[1440px]:!w-[148px]"
+              aria-label={labels.periodAria}
+            />
+            {customOpen ? (
+              <RangePicker
+                format="DD.MM.YYYY"
+                onChange={handleRangeChange}
+                className="!h-9 !w-[246px] shrink-0 !rounded-full"
+                placeholder={[labels.rangeStart, labels.rangeEnd]}
+                aria-label={labels.customRange}
               />
-              {customOpen ? (
-                <RangePicker
-                  format="DD.MM.YYYY"
-                  onChange={handleRangeChange}
-                  className="!h-11 w-full !rounded-xl sm:!w-64"
-                  placeholder={[labels.rangeStart, labels.rangeEnd]}
-                  aria-label={labels.customRange}
-                />
-              ) : null}
-              <Button
-                type="default"
-                onClick={() => void fetchStats(filters)}
-                disabled={loading}
-                icon={<RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />}
-                className="!h-11 !rounded-xl !border-slate-200 !px-4 !font-black dark:!border-white/10"
-                aria-label={labels.refreshAria}
-              >
-                {labels.refresh}
-              </Button>
-            </div>
+            ) : null}
+            <Button
+              type="default"
+              onClick={() => void fetchStats(filters)}
+              disabled={loading}
+              icon={<RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />}
+              className="!h-9 !w-[112px] shrink-0 !rounded-full !border-[#e6ebf2] !bg-white !px-3 !font-extrabold !text-[#0f172a] dark:!border-white/10 dark:!bg-slate-950 dark:!text-white min-[1440px]:!w-32 min-[1440px]:!px-4"
+              aria-label={labels.refreshAria}
+            >
+              {labels.refresh}
+            </Button>
           </div>
         </div>
       </header>
@@ -237,7 +234,7 @@ export default function AdminHome() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1600px]:grid-cols-6">
             <MetricCard
               label={labels.totalOrders}
               value={formatNumber(numberValue(counters?.total_orders), locale)}
@@ -282,11 +279,13 @@ export default function AdminHome() {
             />
           </div>
 
-          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+          <div className="dashboard-main-grid grid grid-cols-1 gap-4 xl:grid-cols-2 min-[1600px]:grid-cols-[minmax(430px,1.12fr)_minmax(350px,0.88fr)_minmax(292px,0.68fr)] min-[1920px]:grid-cols-[minmax(580px,1.16fr)_minmax(430px,0.9fr)_minmax(360px,400px)]">
             <Panel
               title={labels.ordersByDay}
               description={labels.ordersByDayDescription}
               icon={BarChart3}
+              className="xl:col-span-2 min-[1600px]:col-span-1"
+              action={<PanelFrequency label={labels.daily} />}
             >
               <OrdersColumnChart
                 rows={orderChartRows}
@@ -305,9 +304,19 @@ export default function AdminHome() {
             </Panel>
 
             <Panel
+              title={labels.operationQueue}
+              description={labels.operationQueueDescription}
+              icon={Clock3}
+            >
+              <QueueList counters={counters} labels={labels} locale={locale} />
+            </Panel>
+
+            <Panel
               title={labels.revenueByDay}
               description={labels.revenueByDayDescription}
               icon={TrendingUp}
+              className="xl:col-span-2"
+              action={<PanelFrequency label={labels.daily} />}
             >
               <RevenueLineChart
                 rows={revenueChartRows}
@@ -315,14 +324,6 @@ export default function AdminHome() {
                 labels={labels}
                 locale={locale}
               />
-            </Panel>
-
-            <Panel
-              title={labels.operationQueue}
-              description={labels.operationQueueDescription}
-              icon={Clock3}
-            >
-              <QueueList counters={counters} labels={labels} locale={locale} />
             </Panel>
           </div>
 
@@ -369,17 +370,19 @@ function MetricCard({
       href={href}
       className={dashboardMetricCardClass}
     >
-      <div className="min-w-0">
-        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
-          {label}
-        </p>
-        <p className="mt-1 break-words text-xl font-black text-slate-950 dark:text-white">
-          {value}
-        </p>
+      <div className="flex min-h-[88px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-full ring-1 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-105", toneClass)}>
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold leading-4 text-[#475569] dark:text-slate-300">
+            {label}
+          </p>
+          <p className="mt-2 break-words text-[clamp(19px,1.35vw,25px)] font-black leading-[1.15] tracking-[-0.035em] text-[#0f172a] dark:text-white">
+            {value}
+          </p>
+        </div>
       </div>
-      <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl ring-1 transition group-hover:scale-105", toneClass)}>
-        <Icon className="size-4" />
-      </span>
     </Link>
   );
 }
@@ -410,46 +413,66 @@ function CompactMetric({
       href={href}
       className={dashboardMetricCardClass}
     >
-      <div className="min-w-0">
-        <p className="truncate text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
-          {label}
-        </p>
-        <p className="mt-1 text-xl font-black text-slate-950 dark:text-white">{value}</p>
+      <div className="flex min-h-[88px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-50 ring-1 ring-[#e6ebf2] dark:bg-white/[0.04] dark:ring-white/10">
+          <Icon className={cn("size-4 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-110", toneClass)} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold leading-4 text-[#475569] dark:text-slate-300">
+            {label}
+          </p>
+          <p className="mt-2 text-[clamp(19px,1.35vw,25px)] font-black leading-[1.15] tracking-[-0.035em] text-[#0f172a] dark:text-white">{value}</p>
+        </div>
       </div>
-      <Icon className={cn("size-5 shrink-0 transition group-hover:scale-110", toneClass)} />
     </Link>
   );
 }
 
 const dashboardMetricCardClass =
-  "group flex min-h-[112px] items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm transition hover:border-amber-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-white/10 dark:bg-slate-950 dark:hover:border-amber-400";
+  "group block rounded-[26px] bg-white/55 p-1 shadow-[0_18px_42px_rgba(15,23,42,0.055)] ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[2px] hover:bg-white/80 hover:shadow-[0_24px_54px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:bg-white/[0.035] dark:ring-white/10 dark:hover:bg-white/[0.055]";
 
 function Panel({
   title,
   description,
   icon: Icon,
+  action,
+  className,
   children,
 }: {
   title: string;
   description: string;
   icon: LucideIcon;
+  action?: React.ReactNode;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-black text-slate-950 dark:text-white">{title}</h2>
-          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {description}
-          </p>
+    <section className={cn("rounded-[28px] bg-white/55 p-1.5 shadow-[0_22px_58px_rgba(15,23,42,0.06)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10", className)}>
+      <div className="h-full rounded-[calc(28px-0.375rem)] bg-white/95 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-black leading-5 tracking-[-0.015em] text-[#0f172a] dark:text-white">{title}</h2>
+            <p className="mt-1 text-xs leading-[17px] text-[#64748b] dark:text-slate-400">
+              {description}
+            </p>
+          </div>
+          {action ?? (
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#fff4e5] text-[#d97706] ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
+              <Icon className="size-3.5" />
+            </span>
+          )}
         </div>
-        <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
-          <Icon className="size-3.5" />
-        </span>
+        {children}
       </div>
-      {children}
     </section>
+  );
+}
+
+function PanelFrequency({ label }: { label: string }) {
+  return (
+    <span className="inline-flex h-8 min-w-[82px] items-center justify-center rounded-full bg-[#f8fafc] px-3 text-xs font-black text-[#334155] ring-1 ring-[#e6ebf2] dark:bg-white/[0.04] dark:text-white dark:ring-white/10">
+      {label}
+    </span>
   );
 }
 
@@ -472,23 +495,26 @@ function OrdersColumnChart({
   if (!rows.length) return <EmptyState title={labels.chartDataEmpty} />;
 
   const hasData = rows.some((row) => row.value > 0);
-  const bandPadding = rows.length <= 1 ? 0.86 : rows.length <= 7 ? 0.72 : 0.44;
-  const config: ColumnConfig = {
+  const config: LineConfig = {
     data: rows,
     xField: "label",
     yField: "value",
-    height: 240,
+    height: 172,
     autoFit: true,
     legend: false,
     theme: getDashboardChartTheme(chartTokens),
-    scale: {
-      x: { padding: bandPadding },
-    },
     style: {
-      fill: chartTokens.primary,
-      fillOpacity: chartTokens.barOpacity,
-      radiusTopLeft: 7,
-      radiusTopRight: 7,
+      stroke: "#f97316",
+      lineWidth: 2,
+    },
+    point: {
+      sizeField: 4,
+      shapeField: "circle",
+      style: {
+        fill: "#ffffff",
+        stroke: "#f97316",
+        lineWidth: 2,
+      },
     },
     axis: {
       x: getChartAxis(chartTokens, { labelAutoHide: true, labelAutoRotate: false }),
@@ -509,11 +535,12 @@ function OrdersColumnChart({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} locale={locale} />
       <ChartBox empty={!hasData}>
-        <AntColumn {...config} />
+        <AntLine {...config} />
       </ChartBox>
+      <ChartLegend color="#f97316" label={labels.ordersCountLegend} />
     </div>
   );
 }
@@ -538,12 +565,12 @@ function RevenueLineChart({
     data: rows,
     xField: "label",
     yField: "value",
-    height: 240,
+    height: 184,
     autoFit: true,
     legend: false,
     theme: getDashboardChartTheme(chartTokens),
     style: {
-      stroke: chartTokens.primary,
+      stroke: "#10b981",
       lineWidth: 2,
     },
     point: {
@@ -551,7 +578,7 @@ function RevenueLineChart({
       shapeField: "circle",
       style: {
         fill: chartTokens.chartSurface,
-        stroke: chartTokens.primary,
+        stroke: "#10b981",
         lineWidth: 2,
       },
     },
@@ -574,11 +601,12 @@ function RevenueLineChart({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} locale={locale} />
       <ChartBox empty={!hasData}>
         <AntLine {...config} />
       </ChartBox>
+      <ChartLegend color="#10b981" label={labels.revenueLegend} />
     </div>
   );
 }
@@ -597,25 +625,19 @@ function OrderStatusDonut({
   if (!rows.length) return <EmptyState title={labels.statusDataEmpty} />;
 
   const hasData = rows.some((row) => row.value > 0);
+  const total = sumChartValues(rows);
   const config: PieConfig = {
     data: rows,
     angleField: "value",
     colorField: "label",
-    height: 240,
+    height: 156,
     innerRadius: 0.68,
     theme: getDashboardChartTheme(chartTokens),
     scale: {
-      color: { range: ["#f59e0b", "#fbbf24", "#d97706", "#fcd34d", "#b45309", "#fef3c7"] },
+      color: { range: ["#f59e0b", "#f43f5e", "#8b5cf6", "#10b981", "#cbd5e1", "#3b82f6"] },
     },
     label: false,
-    legend: {
-      color: {
-        position: "bottom",
-        itemLabelFill: chartTokens.label,
-        itemLabelFontWeight: 700,
-        layout: { justifyContent: "center" },
-      },
-    },
+    legend: false,
     tooltip: {
       title: (datum: ChartRow) => datum.label,
       items: [
@@ -629,24 +651,70 @@ function OrderStatusDonut({
   };
 
   return (
-    <div className="space-y-4">
-      <ChartBox empty={!hasData}>
-        <AntPie {...config} />
-      </ChartBox>
-      <div className="grid gap-2">
-        {rows.map((row) => (
+    <div className="space-y-3">
+      <div className="grid items-center gap-4 min-[1440px]:grid-cols-[150px_1fr] min-[1920px]:grid-cols-[168px_1fr]">
+        <div className="relative mx-auto w-full max-w-[168px]">
+          <ChartBox empty={!hasData} compact>
+            <AntPie {...config} />
+          </ChartBox>
+          <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
+            <div>
+              <p className="text-xs font-semibold text-[#64748b] dark:text-slate-400">{labels.summaryTotal}</p>
+              <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-[#0f172a] dark:text-white">
+                {formatNumber(total, locale)}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          {rows.map((row, index) => (
           <div
             key={`${row.label}-${row.value}`}
-            className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10"
+            className="flex items-center justify-between gap-3 text-[13px]"
           >
-            <StatusBadge value={row.label} />
-            <span className="text-sm font-black text-slate-700 dark:text-slate-200">
-              {row.display}
+            <span className="flex min-w-0 items-center gap-3">
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: statusPalette[index % statusPalette.length] }}
+              />
+              <span className="truncate font-semibold text-[#334155] dark:text-slate-200">{row.label}</span>
+            </span>
+            <span className="shrink-0 font-bold text-[#0f172a] dark:text-white">
+              {row.display} ({formatPercent(row.value, total, locale)})
             </span>
           </div>
-        ))}
+          ))}
+        </div>
       </div>
+      <Link
+        href="/admin/orders"
+        className="flex h-10 items-center justify-center gap-2 rounded-full bg-[#f8fafc] text-sm font-bold text-[#334155] transition-colors duration-500 hover:bg-[#fff4e5] hover:text-[#ea580c] dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+      >
+        {labels.viewAllStatuses}
+        <ChevronRightIcon />
+      </Link>
     </div>
+  );
+}
+
+const statusPalette = ["#f59e0b", "#f43f5e", "#8b5cf6", "#10b981", "#cbd5e1", "#3b82f6"];
+
+function ChartLegend({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex justify-center">
+      <span className="inline-flex items-center gap-2 text-xs font-semibold text-[#64748b] dark:text-slate-400">
+        <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg className="size-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m9 18 6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -669,7 +737,7 @@ function TopCategoriesBar({
     data: rows,
     xField: "label",
     yField: "value",
-    height: 240,
+    height: 190,
     autoFit: true,
     legend: false,
     theme: getDashboardChartTheme(chartTokens),
@@ -711,9 +779,22 @@ function TopCategoriesBar({
   );
 }
 
-function ChartBox({ children, empty }: { children: React.ReactNode; empty?: boolean }) {
+function ChartBox({
+  children,
+  empty,
+  compact,
+}: {
+  children: React.ReactNode;
+  empty?: boolean;
+  compact?: boolean;
+}) {
   return (
-    <div className="relative min-h-[250px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-[#0b1020]">
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950",
+        compact ? "min-h-[154px]" : "min-h-[184px]",
+      )}
+    >
       {children}
       {empty ? <EmptyChartOverlay /> : null}
     </div>
@@ -725,7 +806,7 @@ function ChartSkeleton() {
   const labels = getDashboardLabels(locale);
 
   return (
-    <div className="grid min-h-[260px] place-items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.14em] text-slate-400 dark:border-white/10 dark:bg-white/[0.03]">
+    <div className="grid min-h-[184px] place-items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-[0.14em] text-slate-400 dark:border-white/10 dark:bg-white/[0.03]">
       {labels.chartLoading}
     </div>
   );
@@ -749,17 +830,17 @@ function ChartSummary({
 
   return (
     <div className="grid gap-2 sm:grid-cols-3">
-      <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
+      <div className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-950/[0.04] dark:bg-white/[0.035] dark:ring-white/10">
         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryTotal}</p>
         <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">{totalDisplay}</p>
       </div>
-      <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
+      <div className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-950/[0.04] dark:bg-white/[0.035] dark:ring-white/10">
         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryPeak}</p>
         <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">
           {peak?.display ?? "—"}
         </p>
       </div>
-      <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-white/10">
+      <div className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-950/[0.04] dark:bg-white/[0.035] dark:ring-white/10">
         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryPoints}</p>
         <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{formatNumber(rows.length, locale)}</p>
       </div>
@@ -851,55 +932,95 @@ function QueueList({
 }) {
   const items = [
     {
-      label: labels.pendingOrders,
-      value: numberValue(counters?.pending_orders),
+      label: labels.pendingApplications,
+      description: labels.pendingApplicationsQueueDescription,
+      value: numberValue(counters?.pending_applications),
       icon: Clock3,
-      tone: "text-amber-600 dark:text-amber-300",
+      tone: "orange",
+      href: "/admin/applications",
+    },
+    {
+      label: labels.pendingOrders,
+      description: labels.pendingOrdersQueueDescription,
+      value: numberValue(counters?.pending_orders),
+      icon: FileText,
+      tone: "purple",
+      href: "/admin/orders",
     },
     {
       label: labels.paymentPending,
+      description: labels.paymentPendingQueueDescription,
       value: numberValue(counters?.payment_pending),
       icon: CreditCard,
-      tone: "text-rose-600 dark:text-rose-300",
+      tone: "red",
+      href: "/admin/orders",
     },
     {
       label: labels.pendingComments,
+      description: labels.pendingCommentsQueueDescription,
       value: numberValue(counters?.pending_comments),
       icon: MessageSquare,
-      tone: "text-sky-600 dark:text-sky-300",
+      tone: "blue",
+      href: "/admin/comments",
     },
     {
       label: labels.cancelledOrders,
+      description: labels.cancelledOrdersQueueDescription,
       value: numberValue(counters?.cancelled_orders),
       icon: XCircle,
-      tone: "text-slate-500 dark:text-slate-300",
+      tone: "slate",
+      href: "/admin/orders",
     },
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {items.map((item) => {
         const Icon = item.icon;
+        const toneClass = queueToneClass[item.tone as keyof typeof queueToneClass];
         return (
-          <div
+          <Link
             key={item.label}
-            className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 px-4 py-3 dark:border-white/10"
+            href={item.href}
+            className="flex min-h-[52px] items-center justify-between gap-3 rounded-2xl bg-[#f8fafc] px-3 py-2 ring-1 ring-slate-950/[0.045] transition-all duration-500 hover:-translate-y-[1px] hover:bg-[#fffaf2] hover:ring-amber-300/45 dark:bg-white/[0.035] dark:ring-white/10 dark:hover:bg-amber-400/10"
           >
             <div className="flex min-w-0 items-center gap-3">
-              <Icon className={cn("size-5 shrink-0", item.tone)} />
-              <span className="truncate text-sm font-black text-slate-700 dark:text-slate-200">
-                {item.label}
+              <span className={cn("grid size-8 shrink-0 place-items-center rounded-full", toneClass.box)}>
+                <Icon className={cn("size-4", toneClass.icon)} />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-bold text-[#0f172a] dark:text-white">
+                  {item.label}
+                </span>
+                <span className="mt-0.5 block truncate text-[11px] font-medium text-[#64748b] dark:text-slate-400">
+                  {item.description}
+                </span>
               </span>
             </div>
-            <span className="text-lg font-black text-slate-950 dark:text-white">
+            <span className="shrink-0 text-base font-black text-[#0f172a] dark:text-white">
               {formatNumber(item.value, locale)}
             </span>
-          </div>
+          </Link>
         );
       })}
+      <Link
+        href="/admin/orders"
+        className="flex h-10 items-center justify-center gap-2 rounded-full bg-[#fff4e5] text-sm font-bold text-[#ea580c] transition-colors duration-500 hover:bg-[#ffedd5]"
+      >
+        {labels.viewAllQueue}
+        <ChevronRightIcon />
+      </Link>
     </div>
   );
 }
+
+const queueToneClass = {
+  orange: { box: "bg-orange-50", icon: "text-orange-500" },
+  purple: { box: "bg-violet-50", icon: "text-violet-500" },
+  red: { box: "bg-rose-50", icon: "text-rose-500" },
+  blue: { box: "bg-blue-50", icon: "text-blue-500" },
+  slate: { box: "bg-slate-100", icon: "text-slate-500" },
+};
 
 function TopArtists({
   artists,
@@ -920,7 +1041,7 @@ function TopArtists({
         return (
           <div
             key={artist.id ?? `${name}-${index}`}
-            className="flex items-center gap-4 rounded-2xl border border-slate-100 px-4 py-3 dark:border-white/10"
+            className="flex items-center gap-4 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-950/[0.045] dark:bg-white/[0.035] dark:ring-white/10"
           >
             <span className="w-6 text-sm font-black text-slate-400">#{index + 1}</span>
             {avatarUrl ? (
@@ -995,12 +1116,14 @@ function getDashboardLabels(locale: Locale) {
     return {
       artistFallback: "Артист",
       cancelledOrders: "Отмененные заказы",
+      cancelledOrdersQueueDescription: "Отмененные заказы за период",
       categoryFallback: "Категория",
       chartDataEmpty: "Данные для графика не найдены",
       chartLoading: "Загрузка графика",
       completed: "Завершенные заказы",
       count: "Количество",
       customRange: "Диапазон дат",
+      daily: "День",
       description: "Следите за состоянием платформы через ключевые метрики и диаграммы.",
       loadFailed: "Не удалось загрузить статистику. Попробуйте еще раз.",
       loading: "Загрузка статистики...",
@@ -1014,11 +1137,16 @@ function getDashboardLabels(locale: Locale) {
       orders: "Заказы",
       ordersByDay: "Заказы по дням",
       ordersByDayDescription: "Количество заказов за выбранный период.",
+      ordersCountLegend: "Количество заказов",
       ordersUnit: "заказов",
       paymentPending: "Ожидает оплаты",
+      paymentPendingQueueDescription: "Заказы, ожидающие оплаты",
       pendingApplications: "Ожидающие заявки",
+      pendingApplicationsQueueDescription: "Просмотрите новые заявки",
       pendingComments: "Ожидающие комментарии",
+      pendingCommentsQueueDescription: "Комментарии, ожидающие проверки",
       pendingOrders: "Ожидающие заказы",
+      pendingOrdersQueueDescription: "Заказы, ожидающие подтверждения",
       periodAria: "Период статистики",
       rangeEnd: "Конец",
       rangeStart: "Начало",
@@ -1028,6 +1156,7 @@ function getDashboardLabels(locale: Locale) {
       revenue: "Доход",
       revenueByDay: "Доход по дням",
       revenueByDayDescription: "Динамика ежедневного дохода.",
+      revenueLegend: "Доход (UZS)",
       selectedPeriodEmpty: "За выбранный период данных нет",
       statusAccepted: "Принято",
       statusActive: "Активный",
@@ -1057,6 +1186,8 @@ function getDashboardLabels(locale: Locale) {
       totalOrders: "Всего заказов",
       totalRevenue: "Общий доход",
       unknown: "Неизвестно",
+      viewAllQueue: "Посмотреть всю очередь",
+      viewAllStatuses: "Посмотреть все статусы",
       week: "Эта неделя",
       weekHint: "7 дней",
     };
@@ -1065,12 +1196,14 @@ function getDashboardLabels(locale: Locale) {
   return {
     artistFallback: "Ijodkor",
     cancelledOrders: "Bekor qilingan buyurtmalar",
+    cancelledOrdersQueueDescription: "Tanlangan davrdagi bekor buyurtmalar",
     categoryFallback: "Kategoriya",
     chartDataEmpty: "Grafik ma'lumotlari topilmadi",
     chartLoading: "Grafik yuklanmoqda",
     completed: "Yakunlangan buyurtmalar",
     count: "Soni",
     customRange: "Sana oralig'i",
+    daily: "Kunlik",
     description: "Platforma holatini asosiy raqamlar va diagrammalar orqali kuzating.",
     loadFailed: "Statistika yuklanmadi. Qayta urinib ko'ring.",
     loading: "Statistika yuklanmoqda...",
@@ -1084,11 +1217,16 @@ function getDashboardLabels(locale: Locale) {
     orders: "Buyurtmalar",
     ordersByDay: "Buyurtmalar kunlar bo'yicha",
     ordersByDayDescription: "Tanlangan davrdagi buyurtmalar soni.",
+    ordersCountLegend: "Buyurtmalar soni",
     ordersUnit: "buyurtma",
     paymentPending: "To'lov kutilmoqda",
+    paymentPendingQueueDescription: "To'lovni kutayotgan buyurtmalar",
     pendingApplications: "Kutilayotgan arizalar",
+    pendingApplicationsQueueDescription: "Yangi arizalarni ko'rib chiqing",
     pendingComments: "Kutilayotgan izohlar",
+    pendingCommentsQueueDescription: "Ko'rib chiqilmagan izohlar",
     pendingOrders: "Kutilayotgan buyurtmalar",
+    pendingOrdersQueueDescription: "Tasdiqlashni kutayotgan buyurtmalar",
     periodAria: "Statistika davri",
     rangeEnd: "Tugash",
     rangeStart: "Boshlanish",
@@ -1098,6 +1236,7 @@ function getDashboardLabels(locale: Locale) {
     revenue: "Daromad",
     revenueByDay: "Daromad kunlar bo'yicha",
     revenueByDayDescription: "Kunlik daromad dinamikasi.",
+    revenueLegend: "Daromad (UZS)",
     selectedPeriodEmpty: "Tanlangan davrda ma'lumot yo'q",
     statusAccepted: "Qabul qilingan",
     statusActive: "Faol",
@@ -1127,6 +1266,8 @@ function getDashboardLabels(locale: Locale) {
     totalOrders: "Jami buyurtmalar",
     totalRevenue: "Jami daromad",
     unknown: "Noma'lum",
+    viewAllQueue: "Barcha navbatni ko'rish",
+    viewAllStatuses: "Barcha holatlarni ko'rish",
     week: "Bu hafta",
     weekHint: "7 kun",
   };
@@ -1158,11 +1299,15 @@ function formatNumber(value: number, locale: Locale) {
 }
 
 function formatCurrency(value: number, locale: Locale) {
+  return `UZS ${formatNumber(Math.round(value), locale)}`;
+}
+
+function formatPercent(value: number, total: number, locale: Locale) {
+  if (!total) return "0%";
   return new Intl.NumberFormat(intlLocale(locale), {
-    style: "currency",
-    currency: "UZS",
-    maximumFractionDigits: 0,
-  }).format(value);
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format((value / total) * 100) + "%";
 }
 
 function formatCompactCurrency(value: number, locale: Locale, labels: DashboardLabels) {

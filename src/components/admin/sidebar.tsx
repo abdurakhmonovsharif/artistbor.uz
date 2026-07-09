@@ -71,7 +71,7 @@ export function Sidebar({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-24px)] flex-col border-r border-slate-200/80 bg-white shadow-lg shadow-slate-950/10 transition-[transform,width] duration-200 dark:border-white/10 dark:bg-[#111827] lg:sticky lg:top-0 lg:h-screen lg:max-w-none lg:translate-x-0 lg:shadow-none",
-          compact ? "lg:w-20" : "lg:w-[280px]",
+          compact ? "lg:w-20" : "lg:w-[var(--artistbor-sidebar-width)]",
           open ? "translate-x-0" : "-translate-x-full",
           compact && "artistbor-sidebar-collapsed",
         )}

@@ -35,6 +35,7 @@ import {
   type UpdateCommentPayload,
 } from "@/lib/api/admin-content";
 import { getArtistSelectOptions } from "@/lib/artist-display";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { cn, normalizeDate, toDisplay } from "@/lib/utils";
 import type { ArtistProfile, CommentRecord, ListResult } from "@/types/api";
 
@@ -100,6 +101,8 @@ const initialFilters: CommentFilters = {
 };
 
 export default function CommentsPage() {
+  const { locale } = useI18n();
+  const toastLabels = getCommentToastLabels(locale);
   const [tab, setTab] = useState<Tab>("all");
   const [filters, setFilters] = useState<CommentFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<CommentFilters>(initialFilters);
@@ -154,7 +157,7 @@ export default function CommentsPage() {
 
   const openDialog = async (type: "view" | "edit", row: CommentRecord) => {
     if (!row.id) {
-      toast.error("Comment ID topilmadi");
+      toast.error(toastLabels.idNotFound);
       return;
     }
     setSubmitting(true);
@@ -162,7 +165,7 @@ export default function CommentsPage() {
       const comment = await commentsApi.detail(row.id);
       setDialog({ type, comment });
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Izoh tafsilotlari yuklanmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.detailLoadFailed);
     } finally {
       setSubmitting(false);
     }
@@ -199,21 +202,21 @@ export default function CommentsPage() {
     try {
       if (type === "delete") {
         await commentsApi.delete(dialog.comment.id);
-        toast.success("Izoh ochirildi");
+        toast.success(toastLabels.deleted);
       } else if (type === "publish") {
         await commentsApi.publish(dialog.comment.id);
-        toast.success("Izoh ko'rsatildi");
+        toast.success(toastLabels.published);
       } else if (type === "unpublish") {
         await commentsApi.unpublish(dialog.comment.id);
-        toast.success("Izoh yashirildi");
+        toast.success(toastLabels.unpublished);
       } else {
         await commentsApi.restore(dialog.comment.id);
-        toast.success("Izoh tiklandi");
+        toast.success(toastLabels.restored);
       }
       setDialog(null);
       await fetchComments();
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Amal bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.actionFailed);
     } finally {
       setSubmitting(false);
     }
@@ -362,11 +365,11 @@ export default function CommentsPage() {
             setSubmitting(true);
             try {
               await commentsApi.update(dialog.comment.id, payload);
-              toast.success("Izoh yangilandi");
+              toast.success(toastLabels.updated);
               setDialog(null);
               await fetchComments();
             } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : "Yangilash bajarilmadi");
+              toast.error(caught instanceof Error ? caught.message : toastLabels.updateFailed);
             } finally {
               setSubmitting(false);
             }
@@ -499,6 +502,34 @@ function FormActions({ loading, onClose }: { loading: boolean; onClose: () => vo
       </button>
     </div>
   );
+}
+
+function getCommentToastLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      actionFailed: "Не удалось выполнить действие",
+      deleted: "Комментарий удален",
+      detailLoadFailed: "Не удалось загрузить детали комментария",
+      idNotFound: "ID комментария не найден",
+      published: "Комментарий опубликован",
+      restored: "Комментарий восстановлен",
+      unpublished: "Комментарий скрыт",
+      updated: "Комментарий обновлен",
+      updateFailed: "Не удалось обновить комментарий",
+    };
+  }
+
+  return {
+    actionFailed: "Amal bajarilmadi",
+    deleted: "Izoh o'chirildi",
+    detailLoadFailed: "Izoh tafsilotlari yuklanmadi",
+    idNotFound: "Comment ID topilmadi",
+    published: "Izoh ko'rsatildi",
+    restored: "Izoh tiklandi",
+    unpublished: "Izoh yashirildi",
+    updated: "Izoh yangilandi",
+    updateFailed: "Yangilash bajarilmadi",
+  };
 }
 
 function IconButton({

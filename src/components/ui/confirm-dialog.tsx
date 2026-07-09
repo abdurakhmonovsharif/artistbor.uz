@@ -25,24 +25,24 @@ export function ConfirmDialog({
   const { t } = useI18n();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]">
-      <section className="w-full max-w-[480px] rounded-xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-[#202020]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-[2px]">
+      <section className="relative isolate w-full max-w-[480px] rounded-xl border border-white/10 bg-[#111827] p-6 text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_28px_80px_rgba(2,6,23,0.56)] before:pointer-events-none before:absolute before:inset-px before:z-0 before:rounded-[10px] before:border before:border-white/[0.04] before:content-['']">
         <header className="flex items-start justify-between gap-4">
-          <h2 className="text-base font-black text-slate-950 dark:text-white">
+          <h2 className="text-base font-black text-slate-50">
             {title ?? t("actions.confirm")}
           </h2>
           <button
             type="button"
             onClick={onCancel}
-            className="grid size-8 shrink-0 place-items-center rounded-xl border border-rose-400/80 bg-transparent text-rose-400 transition hover:border-rose-500 hover:bg-rose-50 hover:text-rose-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 dark:border-rose-500/80 dark:text-rose-400 dark:hover:border-rose-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+            className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-rose-400/70 bg-transparent text-rose-400 transition-[background-color,border-color,color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-rose-300 hover:bg-rose-500/10 hover:text-rose-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
             aria-label={t("actions.close")}
           >
             <X className="size-4" />
           </button>
         </header>
 
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-          <p className="text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-sm font-semibold leading-6 text-slate-200">
             {message}
           </p>
         </div>
@@ -53,10 +53,8 @@ export function ConfirmDialog({
             disabled={loading}
             onClick={onConfirm}
             className={cn(
-              "inline-flex h-10 w-1/2 cursor-pointer items-center justify-center gap-2 rounded-lg border px-5 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60",
-              danger
-                ? "border-rose-300 bg-transparent text-rose-600 hover:border-rose-400 hover:bg-rose-50 dark:border-rose-500/60 dark:text-rose-200 dark:hover:bg-rose-500/10"
-                : "border-emerald-300 bg-transparent text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 dark:border-emerald-400/50 dark:text-emerald-200 dark:hover:bg-emerald-400/10",
+              "artistbor-modal-action w-1/2 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60",
+              danger ? "artistbor-modal-action--danger" : "artistbor-modal-action--success",
             )}
           >
             {danger ? <XCircle className="size-4" /> : <CheckCircle2 className="size-4" />}

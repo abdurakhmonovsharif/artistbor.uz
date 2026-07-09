@@ -3,6 +3,7 @@
 import { Drawer } from "antd";
 import { AtSign, Copy, MapPin, Phone, UserRound, X } from "lucide-react";
 import type { ArtistApplication } from "@/types/api";
+import { formatPhone } from "@/lib/phone-format";
 import { toDisplay } from "@/lib/utils";
 import { getApplicationLabels } from "@/components/admin/applications/application-labels";
 import {
@@ -31,19 +32,19 @@ export function ApplicationContactDrawer({
   const rows = [
     {
       label: labels.primaryPhone,
-      value: getContactValue(application, ["phone", "main_phone"]),
+      value: getFormattedContactPhone(application, ["phone", "main_phone"]),
       icon: <Phone className="size-4" />,
       copyable: true,
     },
     {
       label: labels.extraPhone,
-      value: getContactValue(application, ["extra_phone", "additional_phone"]),
+      value: getFormattedContactPhone(application, ["extra_phone", "additional_phone"]),
       icon: <Phone className="size-4" />,
       copyable: true,
     },
     {
       label: labels.adminPhone,
-      value: getContactValue(application, ["administrator_phone", "admin_phone"]),
+      value: getFormattedContactPhone(application, ["administrator_phone", "admin_phone"]),
       icon: <UserRound className="size-4" />,
       copyable: true,
     },
@@ -141,4 +142,9 @@ export function ApplicationContactDrawer({
       </div>
     </Drawer>
   );
+}
+
+function getFormattedContactPhone(application: ArtistApplication, keys: string[]) {
+  const value = getContactValue(application, keys);
+  return formatPhone(value) || value;
 }

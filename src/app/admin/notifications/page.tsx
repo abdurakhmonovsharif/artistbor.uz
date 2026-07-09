@@ -1,12 +1,18 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, SendToBack, X } from "lucide-react";
 import {
   AdminFilterForm,
   adminFilterActionClass,
   adminFilterControlClass,
 } from "@/components/admin/admin-filter-form";
+import {
+  DateFilterSelect,
+  getDateFilterPatch,
+  inferDateFilterMode,
+  type DateFilterValue,
+} from "@/components/admin/date-filter-select";
 import {
   adminActionButtonClass,
   adminActionButtonLargeClass,
@@ -26,6 +32,7 @@ import {
   type SendAllNotificationPayload,
 } from "@/lib/api/admin-content";
 import type { ListResult, NotificationRecord } from "@/types/api";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 
 type DialogState =
@@ -33,57 +40,23 @@ type DialogState =
   | { type: "send-all" }
   | null;
 
-const notificationTypes = [
-  { label: "System", value: "system" },
-  { label: "Order", value: "order" },
-  { label: "Promo", value: "promo" },
-];
-
 const limit = 20;
-
-const columns: DataTableColumn<NotificationRecord>[] = [
-  { key: "id", label: "ID", kind: "number" },
-  {
-    key: "title",
-    label: "Sarlavha",
-    render: (row) => (
-      <span className="line-clamp-2 max-w-xs text-sm font-black text-slate-900 dark:text-white">
-        {toDisplay(row.title ?? row.title_uz ?? row.subject)}
-      </span>
-    ),
-  },
-  {
-    key: "message",
-    label: "Xabar",
-    render: (row) => (
-      <span className="line-clamp-2 max-w-md text-sm font-semibold text-slate-600 dark:text-slate-300">
-        {toDisplay(row.message ?? row.body ?? row.text)}
-      </span>
-    ),
-  },
-  { key: "type", label: "Turi", render: (row) => <StatusBadge value={row.type} /> },
-  { key: "created_at", label: "Yaratilgan", render: (row) => normalizeDate(row.created_at) },
-];
-
-const notificationDetailFields: DetailField[] = [
-  { key: "id", label: "ID" },
-  { key: "title", label: "Sarlavha" },
-  { key: "title_uz", label: "Sarlavha UZ" },
-  { key: "message", label: "Xabar" },
-  { key: "body", label: "Matn" },
-  { key: "type", label: "Turi" },
-  { key: "created_at", label: "Yaratilgan" },
-];
 
 const initialFilters: NotificationFilters = {
   type: "",
   date_from: "",
   date_to: "",
+  sort: "-created_at",
   page: 1,
   limit,
 };
 
 export default function NotificationsPage() {
+  const { locale } = useI18n();
+  const labels = useMemo(() => getNotificationLabels(locale), [locale]);
+  const notificationTypes = useMemo(() => getNotificationTypes(labels), [labels]);
+  const columns = useMemo(() => getNotificationColumns(labels), [labels]);
+  const notificationDetailFields = useMemo(() => getNotificationDetailFields(labels), [labels]);
   const [filters, setFilters] = useState<NotificationFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<NotificationFilters>(initialFilters);
   const [rows, setRows] = useState<NotificationRecord[]>([]);
@@ -92,6 +65,7 @@ export default function NotificationsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
   const toast = useToast();
 
   const fetchNotifications = useCallback(async () => {
@@ -102,11 +76,11 @@ export default function NotificationsPage() {
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Xabarnomalar yuklanmadi");
+      setError(caught instanceof Error ? caught.message : labels.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, labels]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -117,7 +91,7 @@ export default function NotificationsPage() {
 
   const openDetail = async (row: NotificationRecord) => {
     if (!row.id) {
-      toast.error("Notification ID topilmadi");
+      toast.error(labels.idNotFound);
       return;
     }
     setSubmitting(true);
@@ -125,7 +99,7 @@ export default function NotificationsPage() {
       const notification = await notificationsApi.detail(row.id);
       setDialog({ type: "view", notification });
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Xabarnoma tafsilotlari yuklanmadi");
+      toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
     } finally {
       setSubmitting(false);
     }
@@ -140,6 +114,12 @@ export default function NotificationsPage() {
   const resetFilters = () => {
     setDraftFilters(initialFilters);
     setFilters(initialFilters);
+    setDateFilterMode(inferDateFilterMode(initialFilters));
+  };
+
+  const changeDateFilter = (value: DateFilterValue) => {
+    setDateFilterMode(value.mode);
+    changeFilters({ ...draftFilters, ...getDateFilterPatch(value) });
   };
 
   const changePage = (page: number) => {
@@ -160,13 +140,13 @@ export default function NotificationsPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
-            Xabarnomalar
+            {labels.eyebrow}
           </p>
           <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
-            Xabarnomalar
+            {labels.title}
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
-            Foydalanuvchilarga yuborilgan xabarnomalarni ko&apos;rish va yangi xabar yuborish.
+            {labels.description}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -176,18 +156,18 @@ export default function NotificationsPage() {
             className={adminActionButtonLargeClass}
           >
             <SendToBack className="size-4" />
-            Send all
+            {labels.sendAllAction}
           </button>
         </div>
       </div>
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
-        gridClassName="md:grid-cols-[minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_auto] md:items-center"
-        mobileLabel="Filter"
+        gridClassName="md:grid-cols-[minmax(150px,0.7fr)_minmax(260px,1.4fr)_auto] md:items-center"
+        mobileLabel={labels.filter}
       >
           <FormField
-            label="Type"
+            label={labels.type}
             type="select"
             className={adminFilterControlClass}
             hideLabel
@@ -196,39 +176,38 @@ export default function NotificationsPage() {
             options={notificationTypes}
             onChange={(type) => changeFilters({ ...draftFilters, type })}
           />
-          <FormField
-            label="Sanadan"
-            type="date"
+          <DateFilterSelect
             className={adminFilterControlClass}
-            hideLabel
-            compact
-            value={draftFilters.date_from ?? ""}
-            onChange={(date_from) => changeFilters({ ...draftFilters, date_from })}
-          />
-          <FormField
-            label="Sanagacha"
-            type="date"
-            className={adminFilterControlClass}
-            hideLabel
-            compact
-            value={draftFilters.date_to ?? ""}
-            onChange={(date_to) => changeFilters({ ...draftFilters, date_to })}
+            value={{
+              mode: dateFilterMode,
+              date_from: draftFilters.date_from ?? "",
+              date_to: draftFilters.date_to ?? "",
+            }}
+            labels={{
+              label: labels.dateFilter,
+              newest: labels.newest,
+              oldest: labels.oldest,
+              custom: labels.custom,
+              from: labels.dateFrom,
+              to: labels.dateTo,
+            }}
+            onChange={changeDateFilter}
           />
           <button
             type="button"
             onClick={resetFilters}
             className={`${adminFilterActionClass} h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300`}
           >
-            Tozalash
+            {labels.clear}
           </button>
       </AdminFilterForm>
 
       {loading ? (
-        <LoadingState label="Xabarnomalar yuklanmoqda..." />
+        <LoadingState label={labels.loading} />
       ) : error ? (
         <ErrorState message={error} />
       ) : rows.length === 0 ? (
-        <EmptyState title="Xabarnomalar topilmadi" />
+        <EmptyState title={labels.empty} />
       ) : (
         <DataTable
           columns={columns}
@@ -236,7 +215,7 @@ export default function NotificationsPage() {
           getRowKey={(row, index) => row.id ?? index}
           actions={(row) => (
             <div className="flex justify-end gap-2">
-              <IconButton label="Korish" onClick={() => void openDetail(row)}>
+              <IconButton label={labels.view} onClick={() => void openDetail(row)}>
                 <Eye className="size-4" />
               </IconButton>
             </div>
@@ -263,7 +242,7 @@ export default function NotificationsPage() {
       )}
 
       {dialog?.type === "view" ? (
-        <AdminDrawer title="Xabarnoma tafsilotlari" onClose={() => setDialog(null)} size="min(100vw, 720px)">
+        <AdminDrawer title={labels.detailTitle} onClose={() => setDialog(null)} size="min(100vw, 720px)">
           <div className="p-4">
             <DetailGrid record={dialog.notification} fields={notificationDetailFields} />
           </div>
@@ -272,17 +251,19 @@ export default function NotificationsPage() {
 
       {dialog?.type === "send-all" ? (
         <SendAllModal
+          labels={labels}
+          notificationTypes={notificationTypes}
           loading={submitting}
           onClose={() => setDialog(null)}
           onSubmit={async (payload) => {
             setSubmitting(true);
             try {
               await notificationsApi.sendAll(payload);
-              toast.success("Xabarnoma barcha foydalanuvchilarga yuborildi");
+              toast.success(labels.sentAll);
               setDialog(null);
               await fetchNotifications();
             } catch (caught) {
-              toast.error(caught instanceof Error ? caught.message : "Xabarnoma yuborilmadi");
+              toast.error(caught instanceof Error ? caught.message : labels.sendFailed);
             } finally {
               setSubmitting(false);
             }
@@ -294,10 +275,14 @@ export default function NotificationsPage() {
 }
 
 function SendAllModal({
+  labels,
+  notificationTypes,
   loading,
   onClose,
   onSubmit,
 }: {
+  labels: NotificationLabels;
+  notificationTypes: Array<{ label: string; value: string }>;
   loading: boolean;
   onClose: () => void;
   onSubmit: (payload: SendAllNotificationPayload) => Promise<void>;
@@ -318,7 +303,7 @@ function SendAllModal({
       message: values.message,
     };
     if (values.type) payload.type = values.type;
-    const data = parseData(values.data);
+    const data = parseData(values.data, labels);
     if (data.error) {
       setError(data.error);
       return;
@@ -328,20 +313,29 @@ function SendAllModal({
   };
 
   return (
-    <AdminDrawer title="Barchaga xabarnoma yuborish" onClose={onClose}>
+    <AdminDrawer title={labels.sendAllTitle} onClose={onClose}>
       <form onSubmit={submit} className="space-y-5 p-4">
-        <NotificationBaseFields values={values} setValues={setValues} />
+        <NotificationBaseFields
+          labels={labels}
+          notificationTypes={notificationTypes}
+          values={values}
+          setValues={setValues}
+        />
         {error ? <p className="text-sm font-semibold text-rose-500">{error}</p> : null}
-        <FormActions loading={loading} onClose={onClose} />
+        <FormActions labels={labels} loading={loading} onClose={onClose} />
       </form>
     </AdminDrawer>
   );
 }
 
 function NotificationBaseFields({
+  labels,
+  notificationTypes,
   values,
   setValues,
 }: {
+  labels: NotificationLabels;
+  notificationTypes: Array<{ label: string; value: string }>;
   values: {
     title: string;
     message: string;
@@ -355,14 +349,14 @@ function NotificationBaseFields({
       <div className="grid gap-4 md:grid-cols-2">
         <FormField
           compact
-          label="Sarlavha"
+          label={labels.titleField}
           value={values.title}
           required
           onChange={(title) => setValues((current) => ({ ...current, title }))}
         />
         <FormField
           compact
-          label="Type"
+          label={labels.type}
           type="select"
           value={values.type}
           options={notificationTypes}
@@ -370,7 +364,7 @@ function NotificationBaseFields({
         />
       </div>
       <FormField
-        label="Message"
+        label={labels.messageField}
         type="textarea"
         rows={4}
         required
@@ -378,7 +372,7 @@ function NotificationBaseFields({
         onChange={(message) => setValues((current) => ({ ...current, message }))}
       />
       <FormField
-        label="Data JSON"
+        label={labels.dataJson}
         type="textarea"
         rows={4}
         value={values.data}
@@ -389,20 +383,31 @@ function NotificationBaseFields({
   );
 }
 
-function parseData(value: string): { value?: Record<string, unknown>; error?: string } {
+function parseData(
+  value: string,
+  labels: NotificationLabels,
+): { value?: Record<string, unknown>; error?: string } {
   if (!value.trim()) return {};
   try {
     const parsed = JSON.parse(value);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { error: "Data JSON object bolishi kerak" };
+      return { error: labels.dataJsonObject };
     }
     return { value: parsed as Record<string, unknown> };
   } catch {
-    return { error: "Data JSON notogri formatda" };
+    return { error: labels.dataJsonInvalid };
   }
 }
 
-function FormActions({ loading, onClose }: { loading: boolean; onClose: () => void }) {
+function FormActions({
+  labels,
+  loading,
+  onClose,
+}: {
+  labels: NotificationLabels;
+  loading: boolean;
+  onClose: () => void;
+}) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <button
@@ -411,7 +416,7 @@ function FormActions({ loading, onClose }: { loading: boolean; onClose: () => vo
         className={adminActionButtonClass}
       >
         <X className="size-4" />
-        Yopish
+        {labels.close}
       </button>
       <button
         type="submit"
@@ -419,10 +424,142 @@ function FormActions({ loading, onClose }: { loading: boolean; onClose: () => vo
         className={adminPrimaryActionButtonClass}
       >
         <CheckCircle2 className="size-4" />
-        {loading ? "Yuborilmoqda..." : "Yuborish"}
+        {loading ? labels.sending : labels.send}
       </button>
     </div>
   );
+}
+
+type NotificationLabels = ReturnType<typeof getNotificationLabels>;
+
+function getNotificationTypes(labels: NotificationLabels) {
+  return [
+    { label: labels.systemType, value: "system" },
+    { label: labels.orderType, value: "order" },
+    { label: labels.promoType, value: "promo" },
+  ];
+}
+
+function getNotificationColumns(labels: NotificationLabels): DataTableColumn<NotificationRecord>[] {
+  return [
+    { key: "id", label: "ID", kind: "number" },
+    {
+      key: "title",
+      label: labels.titleField,
+      render: (row) => (
+        <span className="line-clamp-2 max-w-xs text-sm font-black text-slate-900 dark:text-white">
+          {toDisplay(row.title ?? row.title_uz ?? row.subject)}
+        </span>
+      ),
+    },
+    {
+      key: "message",
+      label: labels.messageField,
+      render: (row) => (
+        <span className="line-clamp-2 max-w-md text-sm font-semibold text-slate-600 dark:text-slate-300">
+          {toDisplay(row.message ?? row.body ?? row.text)}
+        </span>
+      ),
+    },
+    { key: "type", label: labels.type, render: (row) => <StatusBadge value={row.type} /> },
+    { key: "created_at", label: labels.createdAt, render: (row) => normalizeDate(row.created_at) },
+  ];
+}
+
+function getNotificationDetailFields(labels: NotificationLabels): DetailField[] {
+  return [
+    { key: "id", label: "ID" },
+    { key: "title", label: labels.titleField },
+    { key: "title_uz", label: labels.titleUz },
+    { key: "message", label: labels.messageField },
+    { key: "body", label: labels.body },
+    { key: "type", label: labels.type },
+    { key: "created_at", label: labels.createdAt },
+  ];
+}
+
+function getNotificationLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      body: "Текст",
+      clear: "Очистить",
+      close: "Закрыть",
+      createdAt: "Создано",
+      custom: "Настроить",
+      dataJson: "Data JSON",
+      dataJsonInvalid: "Data JSON имеет неверный формат",
+      dataJsonObject: "Data JSON должен быть объектом",
+      dateFrom: "С даты",
+      dateFilter: "Дата",
+      dateTo: "По дату",
+      description: "Просмотр отправленных пользователям уведомлений и отправка нового сообщения.",
+      detailLoadFailed: "Не удалось загрузить детали уведомления",
+      detailTitle: "Детали уведомления",
+      empty: "Уведомления не найдены",
+      eyebrow: "Уведомления",
+      filter: "Фильтр",
+      idNotFound: "ID уведомления не найден",
+      loadFailed: "Не удалось загрузить уведомления",
+      loading: "Загрузка уведомлений...",
+      messageField: "Сообщение",
+      newest: "Новые",
+      oldest: "Старые",
+      orderType: "Заказ",
+      promoType: "Промо",
+      send: "Отправить",
+      sendAllAction: "Отправить всем",
+      sendAllTitle: "Отправить уведомление всем",
+      sendFailed: "Не удалось отправить уведомление",
+      sending: "Отправка...",
+      sentAll: "Уведомление отправлено всем пользователям",
+      systemType: "Системное",
+      title: "Уведомления",
+      titleField: "Заголовок",
+      titleUz: "Заголовок UZ",
+      type: "Тип",
+      view: "Просмотр",
+    };
+  }
+
+  return {
+    body: "Matn",
+    clear: "Tozalash",
+    close: "Yopish",
+    createdAt: "Yaratilgan",
+    custom: "Sozlash",
+    dataJson: "Data JSON",
+    dataJsonInvalid: "Data JSON noto'g'ri formatda",
+    dataJsonObject: "Data JSON object bo'lishi kerak",
+    dateFrom: "Sanadan",
+    dateFilter: "Sana",
+    dateTo: "Sanagacha",
+    description: "Foydalanuvchilarga yuborilgan xabarnomalarni ko'rish va yangi xabar yuborish.",
+    detailLoadFailed: "Xabarnoma tafsilotlari yuklanmadi",
+    detailTitle: "Xabarnoma tafsilotlari",
+    empty: "Xabarnomalar topilmadi",
+    eyebrow: "Xabarnomalar",
+    filter: "Filter",
+    idNotFound: "Notification ID topilmadi",
+    loadFailed: "Xabarnomalar yuklanmadi",
+    loading: "Xabarnomalar yuklanmoqda...",
+    messageField: "Xabar",
+    newest: "Yangilari",
+    oldest: "Eng eskilari",
+    orderType: "Buyurtma",
+    promoType: "Promo",
+    send: "Yuborish",
+    sendAllAction: "Barchaga yuborish",
+    sendAllTitle: "Barchaga xabarnoma yuborish",
+    sendFailed: "Xabarnoma yuborilmadi",
+    sending: "Yuborilmoqda...",
+    sentAll: "Xabarnoma barcha foydalanuvchilarga yuborildi",
+    systemType: "Tizim",
+    title: "Xabarnomalar",
+    titleField: "Sarlavha",
+    titleUz: "Sarlavha UZ",
+    type: "Turi",
+    view: "Ko'rish",
+  };
 }
 
 function IconButton({

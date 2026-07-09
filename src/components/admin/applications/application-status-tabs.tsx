@@ -19,7 +19,7 @@ export function ApplicationStatusTabs({
   const { locale } = useI18n();
 
   return (
-    <div className="border-b border-slate-200 dark:border-white/10">
+    <div className="border-b border-[#e6ebf2] dark:border-white/10">
       <div className="flex gap-7 overflow-x-auto overflow-y-hidden">
         {tabs.map((tab) => {
           const selected = tab === active;
@@ -33,7 +33,7 @@ export function ApplicationStatusTabs({
               className={cn(
                 "relative inline-flex h-12 shrink-0 cursor-pointer items-center gap-2 text-sm font-semibold transition",
                 selected
-                  ? "text-blue-600 dark:text-amber-300"
+                  ? "text-[#f97316] dark:text-amber-300"
                   : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
               )}
             >
@@ -42,14 +42,14 @@ export function ApplicationStatusTabs({
                 className={cn(
                   "rounded-full px-2 py-0.5 text-xs font-bold",
                   selected
-                    ? "bg-blue-50 text-blue-600 dark:bg-amber-400/10 dark:text-amber-300"
+                    ? "bg-[#fff7ed] text-[#f97316] ring-1 ring-[#fed7aa] dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20"
                     : statusCountClass(tab),
                 )}
               >
                 {count}
               </span>
               {selected ? (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-blue-600 dark:bg-amber-400" />
+                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#f97316] dark:bg-amber-400" />
               ) : null}
             </button>
           );

@@ -18,6 +18,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { artistsApi, ratingsApi, type RatingFilters } from "@/lib/api/admin-content";
 import { getArtistSelectOptions } from "@/lib/artist-display";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { normalizeDate } from "@/lib/utils";
 import type { ArtistProfile, ListResult, RatingRecord } from "@/types/api";
 
@@ -58,6 +59,8 @@ const initialFilters: RatingFilters = {
 };
 
 export default function RatingsPage() {
+  const { locale } = useI18n();
+  const toastLabels = getRatingToastLabels(locale);
   const [filters, setFilters] = useState<RatingFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<RatingFilters>(initialFilters);
   const [artistOptions, setArtistOptions] = useState<ArtistProfile[]>([]);
@@ -108,7 +111,7 @@ export default function RatingsPage() {
 
   const openDetail = async (row: RatingRecord) => {
     if (!row.id) {
-      toast.error("Rating ID topilmadi");
+      toast.error(toastLabels.idNotFound);
       return;
     }
     setSubmitting(true);
@@ -116,7 +119,7 @@ export default function RatingsPage() {
       const rating = await ratingsApi.detail(row.id);
       setDialog({ type: "view", rating });
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Reyting tafsilotlari yuklanmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.detailLoadFailed);
     } finally {
       setSubmitting(false);
     }
@@ -156,11 +159,11 @@ export default function RatingsPage() {
     setSubmitting(true);
     try {
       await ratingsApi.delete(dialog.rating.id);
-      toast.success("Reyting ochirildi");
+      toast.success(toastLabels.deleted);
       setDialog(null);
       await fetchRatings();
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Ochirish bajarilmadi");
+      toast.error(caught instanceof Error ? caught.message : toastLabels.deleteFailed);
     } finally {
       setSubmitting(false);
     }
@@ -311,4 +314,22 @@ function IconButton({
       {children}
     </button>
   );
+}
+
+function getRatingToastLabels(locale: string) {
+  if (locale === "ru") {
+    return {
+      deleted: "Рейтинг удален",
+      deleteFailed: "Не удалось удалить рейтинг",
+      detailLoadFailed: "Не удалось загрузить детали рейтинга",
+      idNotFound: "ID рейтинга не найден",
+    };
+  }
+
+  return {
+    deleted: "Reyting o'chirildi",
+    deleteFailed: "O'chirish bajarilmadi",
+    detailLoadFailed: "Reyting tafsilotlari yuklanmadi",
+    idNotFound: "Rating ID topilmadi",
+  };
 }
