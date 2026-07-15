@@ -89,16 +89,13 @@ export default function LoginPage() {
         <HeroPanel />
 
         <section className="relative flex min-h-[100dvh] items-center justify-center px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
-          <div className="artistbor-reveal w-full max-w-[500px] rounded-[30px] bg-white/55 p-1.5 shadow-[0_26px_70px_rgba(15,23,42,0.08)] ring-1 ring-slate-950/[0.06]">
-            <div className="rounded-[calc(30px-0.375rem)] bg-white/95 px-5 py-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:px-8 sm:py-8">
+          <div className="artistbor-reveal w-full max-w-[500px] rounded-xl bg-white/55 p-1.5 shadow-[0_26px_70px_rgba(15,23,42,0.08)] ring-1 ring-slate-950/[0.06]">
+            <div className="rounded-xl bg-white/95 px-5 py-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:px-8 sm:py-8">
               <div className="flex flex-col items-center text-center">
-                <div className="grid size-[86px] place-items-center rounded-[24px] bg-[#fff4e5] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_14px_30px_rgba(255,176,0,0.13)] ring-1 ring-[#ffcf73]/50">
-                  <BrandLogo className="h-[68px] w-[120px]" />
+                <div className="grid h-[86px] w-[112px] place-items-center rounded-xl bg-[#fff4e5] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_14px_30px_rgba(255,176,0,0.13)] ring-1 ring-[#ffcf73]/50">
+                  <BrandLogo className="h-[68px] w-[104px]" />
                 </div>
-                <p className="mt-6 inline-flex rounded-full bg-[#fff7e6] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#b87300] ring-1 ring-[#ffdc8a]/70">
-                  Secure admin access
-                </p>
-                <h1 className="mt-4 text-[clamp(26px,3vw,36px)] font-black leading-[1.04] tracking-[-0.02em] text-[#0d1322]">
+                <h1 className="mt-6 text-[clamp(26px,3vw,36px)] font-black leading-[1.04] tracking-[-0.02em] text-[#0d1322]">
                   Boshqaruv paneliga kirish
                 </h1>
                 <p className="mt-3 max-w-[340px] text-sm font-medium leading-6 text-[#667085]">
@@ -108,7 +105,7 @@ export default function LoginPage() {
 
               <form onSubmit={submit} className="mt-8 space-y-4">
                 <label className="group flex h-12 items-center gap-3 rounded-xl bg-[#f8fafc] px-3.5 ring-1 ring-[#e6ebf2] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] focus-within:bg-white focus-within:ring-[#ffcf73] focus-within:shadow-[0_12px_26px_rgba(15,23,42,0.06)]">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-[#8b98b5] ring-1 ring-[#e6ebf2] transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-focus-within:-translate-y-[1px] group-focus-within:text-[#d97706]">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-white text-[#8b98b5] ring-1 ring-[#e6ebf2] transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-focus-within:-translate-y-[1px] group-focus-within:text-[#d97706]">
                     <Phone className="size-[18px]" />
                   </span>
                   <input
@@ -123,7 +120,7 @@ export default function LoginPage() {
                 </label>
 
                 <label className="group flex h-12 items-center gap-3 rounded-xl bg-[#f8fafc] px-3.5 ring-1 ring-[#e6ebf2] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] focus-within:bg-white focus-within:ring-[#ffcf73] focus-within:shadow-[0_12px_26px_rgba(15,23,42,0.06)]">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-[#8b98b5] ring-1 ring-[#e6ebf2] transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-focus-within:-translate-y-[1px] group-focus-within:text-[#d97706]">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-white text-[#8b98b5] ring-1 ring-[#e6ebf2] transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-focus-within:-translate-y-[1px] group-focus-within:text-[#d97706]">
                     <LockKeyhole className="size-[18px]" />
                   </span>
                   <input
@@ -136,7 +133,7 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
-                    className="grid size-8 shrink-0 place-items-center rounded-lg text-[#9aa6b8] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-white hover:text-[#101828] focus:outline-none focus:ring-2 focus:ring-[#ffb000]/45"
+                    className="grid size-8 shrink-0 place-items-center rounded-xl text-[#9aa6b8] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-white hover:text-[#101828] focus:outline-none focus:ring-2 focus:ring-[#ffb000]/45"
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     onClick={() => setShowPassword((current) => !current)}
                   >
@@ -150,22 +147,16 @@ export default function LoginPage() {
                       type="checkbox"
                       checked={rememberDevice}
                       onChange={(event) => setRememberDevice(event.target.checked)}
-                      className="size-[18px] rounded-[6px] accent-[#ffb000]"
+                      className="size-[18px] rounded-xl accent-[#ffb000]"
                     />
-                    <span>Qurilmani eslab qolish</span>
+                    <span className="select-none">Qurilmani eslab qolish</span>
                   </label>
-                  <button
-                    type="button"
-                    className="w-max cursor-pointer rounded-lg px-1 py-0.5 font-bold text-[#c97900]! transition-colors duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:text-[#925400] focus:outline-none focus:ring-2 focus:ring-[#ffb000]/35"
-                  >
-                    Parolni unutdingizmi?
-                  </button>
                 </div>
 
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="group mt-2 flex h-12 w-full cursor-pointer items-center justify-between rounded-2xl bg-[#ffb000] px-2.5 pl-5 text-[15px] font-black text-[#101828] shadow-[0_14px_30px_rgba(255,176,0,0.22)] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-[1px] hover:bg-[#ffa600] hover:shadow-[0_18px_34px_rgba(255,176,0,0.28)] active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-[#ffb000]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="group mt-2 flex h-12 w-full cursor-pointer items-center justify-between rounded-xl bg-[#ffb000] px-2.5 pl-5 text-[15px] font-black text-[#101828] shadow-[0_14px_30px_rgba(255,176,0,0.22)] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-[1px] hover:bg-[#ffa600] hover:shadow-[0_18px_34px_rgba(255,176,0,0.28)] active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-[#ffb000]/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span>{submitting ? t("login.submitting") : "Kirish"}</span>
                   <span className="grid size-9 place-items-center rounded-xl bg-[#101828]/10 transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:-translate-y-[1px] group-hover:translate-x-1 group-hover:scale-105">
@@ -209,9 +200,6 @@ function HeroPanel() {
             Artistbor
             <span className="block text-[#ffd45a]">admin studio.</span>
           </h2>
-          <p className="mt-6 max-w-[520px] text-[15px] font-medium leading-7 text-white/66">
-            Buyurtmalar, ijodkorlar va kontent oqimini bitta aniq, himoyalangan boshqaruv markazida kuzatish.
-          </p>
         </div>
       </div>
 
