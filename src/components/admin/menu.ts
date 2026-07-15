@@ -16,7 +16,12 @@ import {
   Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ADMIN_ROLE, normalizeStaffRole, type AdminRouteRule } from "@/lib/auth/permissions";
+import {
+  ADMIN_ROLE,
+  MODERATOR_OR_ADMIN_ROLES,
+  normalizeStaffRole,
+  type AdminRouteRule,
+} from "@/lib/auth/permissions";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import type { User } from "@/types/api";
 
@@ -62,7 +67,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     labelKey: "menu.ordersGroup",
     children: [
       { labelKey: "menu.orders", href: "/admin/orders", icon: PackageCheck },
-      { labelKey: "menu.comments", href: "/admin/comments", icon: MessageSquare },
+      { labelKey: "menu.comments", href: "/admin/comments", icon: MessageSquare, roles: MODERATOR_OR_ADMIN_ROLES },
       { labelKey: "menu.ratings", href: "/admin/ratings", icon: Star },
     ],
   },
@@ -70,7 +75,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     key: "content",
     labelKey: "menu.content",
     children: [
-      { labelKey: "menu.videos", href: "/admin/videos", icon: Video },
+      { labelKey: "menu.videos", href: "/admin/videos", icon: Video, roles: MODERATOR_OR_ADMIN_ROLES },
       { labelKey: "menu.notifications", href: "/admin/notifications", icon: Bell },
       { labelKey: "menu.faq", href: "/admin/faq", icon: HelpCircle },
     ],

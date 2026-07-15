@@ -189,12 +189,15 @@ export default function OperatorsPage() {
     }
   };
 
-  const updateOperator = async (user: User, payload: UpdateStaffPayload) => {
+  const updateOperatorWithPassword = async (user: User, payload: UpdateStaffPayload, password?: string) => {
     if (!user.id) return;
     setSubmitting(true);
     try {
       await staffApi.update(user.id, payload);
-      toast.success(labels.updated);
+      if (password) {
+        await staffApi.resetPassword(user.id, password);
+      }
+      toast.success(password ? labels.updatedWithPassword : labels.updated);
       setDialog(null);
       await fetchStaff();
     } catch (caught) {
@@ -328,9 +331,9 @@ export default function OperatorsPage() {
           loading={submitting}
           onClose={() => setDialog(null)}
           onSubmitCreate={createOperator}
-          onSubmitUpdate={(payload) => {
+          onSubmitUpdate={(payload, password) => {
             if (dialog.type !== "edit") return Promise.resolve();
-            return updateOperator(dialog.user, payload);
+            return updateOperatorWithPassword(dialog.user, payload, password);
           }}
         />
       ) : null}
@@ -564,7 +567,7 @@ function StaffDrawer({
   loading: boolean;
   onClose: () => void;
   onSubmitCreate?: (payload: CreateStaffPayload) => Promise<void>;
-  onSubmitUpdate?: (payload: UpdateStaffPayload) => Promise<void>;
+  onSubmitUpdate?: (payload: UpdateStaffPayload, password?: string) => Promise<void>;
 }) {
   const [values, setValues] = useState({
     phone: formatPhoneInput(user?.phone),
@@ -606,7 +609,7 @@ function StaffDrawer({
       email: values.email || undefined,
       role: 20,
       status: Number(values.status),
-    });
+    }, values.password.trim() || undefined);
   };
 
   return (
@@ -640,7 +643,7 @@ function StaffDrawer({
       styles={adminDrawerStyles}
     >
       <form id={formId} onSubmit={submit} className="space-y-5 p-4">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4">
           <FormField compact autoComplete="off" label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
           {mode === "create" ? (
             <FormField compact autoComplete="new-password" label={labels.password} type="password" required value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
@@ -659,7 +662,10 @@ function StaffDrawer({
               onChange={(status) => setValues((current) => ({ ...current, status }))}
             />
           ) : null}
-          <FormField compact autoComplete="off" className="md:col-span-2" label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
+          <FormField compact autoComplete="off" label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
+          {mode === "edit" ? (
+            <FormField compact autoComplete="new-password" label={labels.newPassword} type="password" value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
+          ) : null}
         </div>
       </form>
     </Drawer>
@@ -818,6 +824,7 @@ function getOperatorLabels(locale: string) {
       inactiveStatus: "Неактивный",
       lastName: "Фамилия",
       loadFailed: "Не удалось загрузить операторов",
+      newPassword: "Новый пароль",
       newest: "Новые",
       oldest: "Старые",
       operator: "Оператор",
@@ -835,6 +842,7 @@ function getOperatorLabels(locale: string) {
       unblocked: "Оператор разблокирован",
       unblockTitle: "Разблокировка",
       updated: "Оператор обновлен",
+      updatedWithPassword: "Оператор и пароль обновлены",
       updateFailed: "Не удалось обновить",
     };
   }
@@ -869,6 +877,7 @@ function getOperatorLabels(locale: string) {
     inactiveStatus: "Nofaol",
     lastName: "Familiya",
     loadFailed: "Operatorlar yuklanmadi",
+    newPassword: "Yangi parol",
     newest: "Yangilari",
     oldest: "Eng eskilari",
     operator: "Operator",
@@ -886,6 +895,7 @@ function getOperatorLabels(locale: string) {
     unblocked: "Operator blokdan chiqarildi",
     unblockTitle: "Blokdan chiqarish",
     updated: "Operator yangilandi",
+    updatedWithPassword: "Operator va parol yangilandi",
     updateFailed: "Yangilash bajarilmadi",
   };
 }

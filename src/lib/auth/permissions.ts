@@ -5,6 +5,7 @@ export const STAFF_ROLES = [20, 25, 30] as const;
 export const ADMIN_ROLE: StaffRole = 30;
 export const MODERATOR_ROLE: StaffRole = 25;
 export const OPERATOR_ROLE: StaffRole = 20;
+export const MODERATOR_OR_ADMIN_ROLES = [MODERATOR_ROLE, ADMIN_ROLE] as const;
 
 export type AdminRouteRule = {
   path: string;
@@ -18,11 +19,20 @@ const STAFF_ROLE_LABELS: Record<string, StaffRole> = {
 };
 
 export const ADMIN_ROUTE_RULES: AdminRouteRule[] = [
+  { path: "/admin/comments", roles: MODERATOR_OR_ADMIN_ROLES },
+  { path: "/admin/videos", roles: MODERATOR_OR_ADMIN_ROLES },
   { path: "/admin/users", roles: [ADMIN_ROLE] },
   { path: "/admin/operators", roles: [ADMIN_ROLE] },
   { path: "/admin/settings", roles: [ADMIN_ROLE] },
   { path: "/admin/trash", roles: [ADMIN_ROLE] },
 ];
+
+export type AdminAction = "artistCommentsModerate" | "artistVideosRead";
+
+const ADMIN_ACTION_RULES: Record<AdminAction, readonly StaffRole[]> = {
+  artistCommentsModerate: MODERATOR_OR_ADMIN_ROLES,
+  artistVideosRead: MODERATOR_OR_ADMIN_ROLES,
+};
 
 export function normalizeStaffRole(role: User["role"]): StaffRole | null {
   if (role === OPERATOR_ROLE || role === MODERATOR_ROLE || role === ADMIN_ROLE) {
@@ -57,4 +67,11 @@ export function canAccessAdminRoute(role: User["role"], pathname: string) {
 
 export function isAdminRole(role: User["role"]) {
   return normalizeStaffRole(role) === ADMIN_ROLE;
+}
+
+export function canUseAdminAction(role: User["role"] | null | undefined, action: AdminAction) {
+  if (role === null || role === undefined) return false;
+  const normalized = normalizeStaffRole(role);
+  if (!normalized) return false;
+  return ADMIN_ACTION_RULES[action].includes(normalized);
 }

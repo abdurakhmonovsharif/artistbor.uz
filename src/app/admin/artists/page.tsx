@@ -81,6 +81,8 @@ import {
   type UploadedFileRecord,
 } from "@/lib/api/admin-content";
 import { API_BASE_URL } from "@/lib/api/client";
+import { useAuth } from "@/lib/auth/auth-provider";
+import { canUseAdminAction } from "@/lib/auth/permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
   formatMoneyInput,
@@ -150,15 +152,18 @@ const resourceTabs: ResourceTab[] = ["services", "finance", "availability", "gal
 
 type ArtistsLabels = ReturnType<typeof getArtistsLabels>;
 
-function getDetailTabs(labels: ArtistsLabels): { key: DetailTab; label: string }[] {
+function getDetailTabs(
+  labels: ArtistsLabels,
+  permissions: { canViewVideos: boolean; canModerateComments: boolean },
+): { key: DetailTab; label: string }[] {
   return [
     { key: "profile", label: labels.profile },
     { key: "services", label: labels.services },
     { key: "finance", label: labels.finance },
     { key: "availability", label: labels.availability },
     { key: "gallery", label: labels.gallery },
-    { key: "videos", label: labels.videos },
-    { key: "comments", label: labels.comments },
+    ...(permissions.canViewVideos ? [{ key: "videos" as const, label: labels.videos }] : []),
+    ...(permissions.canModerateComments ? [{ key: "comments" as const, label: labels.comments }] : []),
     { key: "ratings", label: labels.ratings },
   ];
 }
@@ -922,8 +927,14 @@ function ArtistDrawer({
   onSubmit: (payload: UpdateArtistPayload) => Promise<void>;
 }) {
   const { locale } = useI18n();
+  const { user } = useAuth();
   const labels = getArtistsLabels(locale);
-  const detailTabs = getDetailTabs(labels);
+  const canViewArtistVideos = canUseAdminAction(user?.role, "artistVideosRead");
+  const canModerateArtistComments = canUseAdminAction(user?.role, "artistCommentsModerate");
+  const detailTabs = getDetailTabs(labels, {
+    canViewVideos: canViewArtistVideos,
+    canModerateComments: canModerateArtistComments,
+  });
   const [activeTab, setActiveTab] = useState<DetailTab>("profile");
   const [resources, setResources] = useState<Record<ResourceTab, DetailResourceState>>(
     createDetailResources,
@@ -934,8 +945,17 @@ function ArtistDrawer({
   const formId = artistId ? `artist-edit-form-${artistId}` : "artist-edit-form";
 
   useEffect(() => {
+    if (!detailTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab("profile");
+    }
+  }, [activeTab, detailTabs]);
+
+  useEffect(() => {
     if (!artist) return;
-    setResources(createDetailResources(true));
+    const initialResources = createDetailResources(true);
+    if (!canViewArtistVideos) initialResources.videos = { loading: false, error: null, rows: [] };
+    if (!canModerateArtistComments) initialResources.comments = { loading: false, error: null, rows: [] };
+    setResources(initialResources);
     if (!artistId) {
       setResources(createDetailResources(false, labels.artistIdMissing));
       return;
@@ -1007,14 +1027,25 @@ function ArtistDrawer({
     void loadFinance();
     void loadResource("availability", artistAvailabilityApi.list(currentArtistId));
     void loadResource("gallery", artistGalleryApi.list({ artist_id: currentArtistId }));
-    void loadResource("videos", artistVideosApi.list({ artist_id: currentArtistId }));
-    void loadResource("comments", commentsApi.byArtist(currentArtistId));
+    if (canViewArtistVideos) {
+      void loadResource("videos", artistVideosApi.list({ artist_id: currentArtistId }));
+    }
+    if (canModerateArtistComments) {
+      void loadResource("comments", commentsApi.byArtist(currentArtistId));
+    }
     void loadResource("ratings", ratingsApi.byArtist(currentArtistId, 1, limit));
 
     return () => {
       ignore = true;
     };
-  }, [artist, artistId, labels.artistIdMissing, labels.resourceLoadFailed]);
+  }, [
+    artist,
+    artistId,
+    canModerateArtistComments,
+    canViewArtistVideos,
+    labels.artistIdMissing,
+    labels.resourceLoadFailed,
+  ]);
 
   const reloadServices = useCallback(async () => {
     if (!artistId) return;
@@ -1089,7 +1120,7 @@ function ArtistDrawer({
   }, [artistId, labels.resourceLoadFailed]);
 
   const reloadComments = useCallback(async () => {
-    if (!artistId) return;
+    if (!artistId || !canModerateArtistComments) return;
 
     setResources((current) => ({
       ...current,
@@ -1122,7 +1153,7 @@ function ArtistDrawer({
         },
       }));
     }
-  }, [artistId, labels.resourceLoadFailed]);
+  }, [artistId, canModerateArtistComments, labels.resourceLoadFailed]);
 
   const reloadRatings = useCallback(async () => {
     if (!artistId) return;
