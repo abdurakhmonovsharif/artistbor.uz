@@ -173,6 +173,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [dialogError, setDialogError] = useState("");
   const toast = useToast();
   const activeStatus = orderStatusTabFromValue(draftFilters.status);
   const page = Number(filters.page ?? 1);
@@ -403,6 +404,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
 
   const runSimpleAction = async (type: "confirm" | "complete", deadlineMinutes?: number) => {
     if (!dialog || dialog.type !== type || !dialog.order.id) return;
+    setDialogError("");
     setSubmitting(true);
     try {
       if (type === "confirm") {
@@ -412,6 +414,10 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           confirmOrder = { ...dialog.order, ...detail };
         } catch {
           confirmOrder = dialog.order;
+        }
+        if (isOrderScheduleExpired(confirmOrder)) {
+          setDialogError(labels.orderExpiredConfirmBlocked);
+          return;
         }
         await ordersApi.confirm(dialog.order.id, {
           ...buildConfirmOrderPayload(confirmOrder),
@@ -425,7 +431,12 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       setDialog(null);
       await Promise.all([fetchOrders(), fetchStatusCounts()]);
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
+      const message = resolveOrderActionErrorMessage(caught, labels, type);
+      if (type === "confirm") {
+        setDialogError(message);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -668,10 +679,15 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
 
       {dialog?.type === "confirm" ? (
         <ConfirmOrderModal
+          actionError={dialogError}
           loading={submitting}
           labels={labels}
-          onClose={() => setDialog(null)}
+          onClose={() => {
+            setDialogError("");
+            setDialog(null);
+          }}
           onSubmit={(deadlineMinutes) => runSimpleAction("confirm", deadlineMinutes)}
+          onChange={() => setDialogError("")}
         />
       ) : null}
 
@@ -1978,14 +1994,18 @@ function EditOrderDrawer({
 }
 
 function ConfirmOrderModal({
+  actionError,
   loading,
   labels,
   onClose,
+  onChange,
   onSubmit,
 }: {
+  actionError?: string;
   loading: boolean;
   labels: OrderLabels;
   onClose: () => void;
+  onChange?: () => void;
   onSubmit: (deadlineMinutes?: number) => Promise<void>;
 }) {
   const [deadlineMinutes, setDeadlineMinutes] = useState("30");
@@ -2033,15 +2053,22 @@ function ConfirmOrderModal({
         <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           {labels.confirmDialogMessage}
         </p>
+        {actionError ? (
+          <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm font-semibold leading-5 text-rose-200">
+            {actionError}
+          </div>
+        ) : null}
         <FormField
           label={labels.deadlineMinutesLabel}
-          type="number"
+          type="text"
+          inputMode="numeric"
           placeholder={labels.deadlineMinutesPlaceholder}
           value={deadlineMinutes}
           error={error}
           onChange={(value) => {
             setDeadlineMinutes(value);
             setError("");
+            onChange?.();
           }}
         />
       </form>
@@ -2370,6 +2397,37 @@ function buildConfirmOrderPayload(order: OrderRecord): ConfirmOrderPayload {
     comment: stringValue(order.comment) ?? stringValue(order.notes),
     total_price: order.total_price === null || order.total_price === undefined || order.total_price === "" ? undefined : order.total_price,
   });
+}
+
+function isOrderScheduleExpired(order: OrderRecord, nowMs = Date.now()) {
+  const scheduledMs = getOrderScheduleStartMs(order);
+  return typeof scheduledMs === "number" && nowMs > scheduledMs;
+}
+
+function getOrderScheduleStartMs(order: OrderRecord) {
+  const date = stringValue(order.date);
+  if (!date) return undefined;
+
+  const time = stringValue(order.time) ?? stringValue(order.start_time) ?? "00:00";
+  const normalizedTime = normalizeOrderTimeForDate(time);
+  const parsed = new Date(`${date}T${normalizedTime}`);
+  const timestamp = parsed.getTime();
+  return Number.isNaN(timestamp) ? undefined : timestamp;
+}
+
+function normalizeOrderTimeForDate(time: string) {
+  const [hours = "00", minutes = "00", seconds = "00"] = time.trim().split(":");
+  return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}:${seconds.padStart(2, "0")}`;
+}
+
+function resolveOrderActionErrorMessage(caught: unknown, labels: OrderLabels, type: "confirm" | "complete") {
+  const message = caught instanceof Error ? caught.message : "";
+  if (type === "confirm" && isValidationFailedMessage(message)) return labels.orderExpiredConfirmBlocked;
+  return message || labels.actionFailed;
+}
+
+function isValidationFailedMessage(message: string) {
+  return message.trim().toLowerCase().includes("validation failed");
 }
 
 function getOrderPayments(order: OrderRecord): OrderPaymentRecord[] {
@@ -2752,7 +2810,7 @@ function getOrderLabels(locale: Locale) {
       close: "Закрыть",
       completeAction: "Завершить",
       completeActionDescription: "Подтвержденный → Завершенный. Используется после выполнения заказа.",
-      completeDialogMessage: "Подтвердить перевод заказа в статус выполненного?",
+      completeDialogMessage: "Подтвердить отметку заказа как завершенного?",
       completeDialogTitle: "Завершение заказа",
       completedToast: "Заказ завершен",
       contactAction: "Контакты",
@@ -2803,6 +2861,7 @@ function getOrderLabels(locale: Locale) {
       openReceiptAction: "Открыть чек",
       openYandexMap: "Открыть в Яндекс Картах",
       orderColumn: "Заказ",
+      orderExpiredConfirmBlocked: "Срок заказа истек. Измените дату или время, затем подтвердите заказ.",
       orderStatusLabel: "Статус заказа",
       orderTitle: "Заказ",
       paymentAll: "Оплата: Все",
@@ -2893,7 +2952,7 @@ function getOrderLabels(locale: Locale) {
     close: "Yopish",
     completeAction: "Yakunlash",
     completeActionDescription: "Tasdiqlangan → Yakunlangan. Ish bajarilganidan keyin bosiladi.",
-    completeDialogMessage: "Buyurtmani bajarildi deb belgilashni tasdiqlaysizmi?",
+    completeDialogMessage: "Buyurtma yakunlandi deb belgilashni tasdiqlaysizmi?",
     completeDialogTitle: "Buyurtmani yakunlash",
     completedToast: "Buyurtma bajarildi",
     contactAction: "Aloqa",
@@ -2944,6 +3003,7 @@ function getOrderLabels(locale: Locale) {
     openReceiptAction: "Chekni ochish",
     openYandexMap: "Yandex xaritada ochish",
     orderColumn: "Buyurtma",
+    orderExpiredConfirmBlocked: "Buyurtma muddati o'tgan. Sanani yoki vaqtni o'zgartirib, keyin tasdiqlang.",
     orderStatusLabel: "Buyurtma holati",
     orderTitle: "Buyurtma",
     paymentAll: "To'lov: Barchasi",

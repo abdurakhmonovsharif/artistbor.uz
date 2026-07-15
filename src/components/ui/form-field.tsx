@@ -25,6 +25,7 @@ export function FormField({
   prefixIcon,
   className,
   inputClassName,
+  inputMode,
   selectIconClassName,
   suffix,
   autoComplete,
@@ -47,6 +48,7 @@ export function FormField({
   prefixIcon?: ReactNode;
   className?: string;
   inputClassName?: string;
+  inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
   selectIconClassName?: string;
   suffix?: ReactNode;
   autoComplete?: string;
@@ -128,6 +130,7 @@ export function FormField({
             required={required}
             placeholder={placeholder}
             type={isPassword && showPassword ? "text" : type}
+            inputMode={inputMode}
             autoComplete={autoComplete}
             disabled={disabled}
             onFocus={onFocus}
