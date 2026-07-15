@@ -1,10 +1,12 @@
 import { apiClient, unwrapData } from "@/lib/api/client";
 import type {
   ArtistApplication,
+  ArtistBalanceRecord,
   ArtistAvailabilityRecord,
   ArtistGalleryRecord,
   ArtistProfile,
   ArtistServiceRecord,
+  ArtistTransactionRecord,
   ArtistVideoRecord,
   Category,
   CommentRecord,
@@ -191,20 +193,36 @@ export type UpdateArtistPayload = {
   phone?: string;
   email?: string;
   status?: number;
-  region_id?: number;
-  district_id?: number;
   category_ids?: number[];
   bio?: string;
-  birth_date?: string;
-  gender?: "male" | "female" | "other";
-  artist_bio?: string;
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;
   profile_photo_id?: number;
-  is_verified?: boolean;
   is_top?: boolean;
+  card_last_four?: string;
+  card_token?: string;
 };
+
+export type ArtistServiceRegionPricePayload = {
+  region_id: number;
+  price: number;
+};
+
+export type ArtistServiceAssignmentPayload = {
+  artist_id: number;
+  service_id: number;
+  price: number;
+  note?: string;
+  region_prices?: ArtistServiceRegionPricePayload[];
+};
+
+export type ArtistServiceUpdatePayload = Partial<{
+  price: number;
+  note: string;
+  status: number;
+  region_prices: ArtistServiceRegionPricePayload[];
+}>;
 
 export type CreateArtistPayload = {
   first_name: string;
@@ -228,6 +246,12 @@ export type CreateArtistPayload = {
   is_verified?: boolean;
   is_top?: boolean;
   category_ids?: number[];
+  services?: Array<{
+    service_id: number;
+    price: number;
+    note?: string;
+    region_prices?: ArtistServiceRegionPricePayload[];
+  }>;
 };
 
 export type UploadedFileRecord = UnknownRecord & {
@@ -309,7 +333,35 @@ export type ConfirmOrderPayload = Partial<{
   address: string;
   comment: string;
   total_price: number | string;
+  deadline_minutes: number;
 }>;
+
+export type VerifyOrderPaymentPayload = {
+  payment_id: number;
+};
+
+export type RejectOrderPaymentPayload = VerifyOrderPaymentPayload & {
+  reason?: string;
+};
+
+export type AdminConfigItem = {
+  key: string;
+  value: string;
+  type?: "float" | "int" | "string" | "boolean" | string;
+  description?: string | null;
+};
+
+export type AdminConfigUpdatePayload =
+  | {
+      key: string;
+      value: string;
+    }
+  | {
+      configs: Array<{
+        key: string;
+        value: string;
+      }>;
+    };
 
 export type CommentFilters = {
   status?: string;
@@ -336,6 +388,19 @@ export type RatingFilters = {
 export type ArtistServiceFilters = {
   artist_id?: number;
   service_id?: number;
+};
+
+export type ArtistRegionPriceRecord = UnknownRecord & {
+  id?: number;
+  artist_service_id?: number;
+  region_id?: number;
+  region_name?: string;
+  price?: number | string;
+};
+
+export type ArtistRegionPricePayload = {
+  region_id: number;
+  price: number;
 };
 
 export type ArtistAvailabilityFilters = {
@@ -704,6 +769,14 @@ export const artistsApi = {
     const response = await apiClient.get(`/v1/admin/artist/${id}`);
     return unwrapData<ArtistProfile>(response.data);
   },
+  async balance(id: number) {
+    const response = await apiClient.get(`/v1/admin/artist/${id}/balance`);
+    return unwrapData<ArtistBalanceRecord>(response.data);
+  },
+  async transactions(id: number) {
+    const response = await apiClient.get(`/v1/admin/artist/${id}/transactions`);
+    return unwrapData<ArtistTransactionRecord[]>(response.data);
+  },
   async update(id: number, payload: UpdateArtistPayload) {
     // TODO: Swagger omits update artist response body shape.
     const response = await apiClient.put(`/v1/admin/artist/${id}`, payload);
@@ -730,6 +803,30 @@ export const artistServicesApi = {
       params: compactParams(filters),
     });
     return normalizeList<ArtistServiceRecord>(response.data);
+  },
+  async assign(payload: ArtistServiceAssignmentPayload) {
+    const response = await apiClient.post("/v1/admin/artist-service/assign", payload);
+    return unwrapData<ArtistServiceRecord>(response.data);
+  },
+  async update(id: number, payload: ArtistServiceUpdatePayload) {
+    const response = await apiClient.put(`/v1/admin/artist-service/${id}`, payload);
+    return unwrapData<ArtistServiceRecord>(response.data);
+  },
+  async delete(id: number) {
+    const response = await apiClient.delete(`/v1/admin/artist-service/${id}`);
+    return unwrapData<unknown>(response.data);
+  },
+  async regionPrices(id: number) {
+    const response = await apiClient.get(`/v1/admin/artist-service/${id}/region-prices`);
+    return unwrapData<ArtistRegionPriceRecord[]>(response.data);
+  },
+  async upsertRegionPrice(id: number, payload: ArtistRegionPricePayload) {
+    const response = await apiClient.post(`/v1/admin/artist-service/${id}/region-prices`, payload);
+    return unwrapData<ArtistRegionPriceRecord | UnknownRecord>(response.data);
+  },
+  async deleteRegionPrice(id: number) {
+    const response = await apiClient.delete(`/v1/admin/region-price/${id}`);
+    return unwrapData<unknown>(response.data);
   },
 };
 
@@ -850,6 +947,14 @@ export const ordersApi = {
   async confirm(id: number, payload: ConfirmOrderPayload = {}) {
     // TODO: Swagger omits confirm response body shape.
     const response = await apiClient.post(`/v1/admin/order/${id}/confirm`, compactParams(payload));
+    return unwrapData<unknown>(response.data);
+  },
+  async verifyPayment(id: number, payload: VerifyOrderPaymentPayload) {
+    const response = await apiClient.post(`/v1/admin/order/${id}/verify-payment`, payload);
+    return unwrapData<unknown>(response.data);
+  },
+  async rejectPayment(id: number, payload: RejectOrderPaymentPayload) {
+    const response = await apiClient.post(`/v1/admin/order/${id}/reject-payment`, compactParams(payload));
     return unwrapData<unknown>(response.data);
   },
   async reschedule(id: number, payload: RescheduleOrderPayload) {
@@ -987,6 +1092,17 @@ export const dashboardApi = {
   async quickStats() {
     const response = await apiClient.get("/v1/admin/dashboard/quick-stats");
     return unwrapData<DashboardQuickStats>(response.data);
+  },
+};
+
+export const adminConfigApi = {
+  async list() {
+    const response = await apiClient.get("/v1/admin/config");
+    return unwrapData<AdminConfigItem[]>(response.data);
+  },
+  async update(payload: AdminConfigUpdatePayload) {
+    const response = await apiClient.post("/v1/admin/config", payload);
+    return unwrapData<AdminConfigItem[] | AdminConfigItem | UnknownRecord>(response.data);
   },
 };
 

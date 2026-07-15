@@ -2,7 +2,7 @@
 
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Drawer, Input, Modal, Select, Tabs } from "antd";
+import { Drawer, Input, Modal, Tabs } from "antd";
 import {
   AtSign,
   CalendarClock,
@@ -25,7 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
-import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminDrawer, adminDrawerClassNames, adminDrawerStyles, adminDrawerSubtitleStyles } from "@/components/admin/admin-drawer";
 import {
   DateFilterSelect,
   getDateFilterPatch,
@@ -55,15 +55,18 @@ import {
   ordersApi,
   type ConfirmOrderPayload,
   regionsApi,
+  type RejectOrderPaymentPayload,
   servicesApi,
   usersApi,
+  type VerifyOrderPaymentPayload,
   type OrderFilters,
   type UpdateOrderPayload,
 } from "@/lib/api/admin-content";
 import { getArtistName } from "@/lib/artist-display";
-import { formatBookingDate, formatBookingTimeRange, formatUnixDateTime } from "@/lib/order-format";
+import { formatBookingDate, formatBookingTimeRange, formatUnixDateTime, isExpired } from "@/lib/order-format";
 import { getOrderUiStatus } from "@/lib/order-status";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { MONEY_CURRENCY_LABEL } from "@/lib/money-format";
 import { formatPhone } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import type { Locale } from "@/lib/i18n/translations";
@@ -75,6 +78,7 @@ import type {
   OrderRecord,
   Region,
   Service,
+  OrderPaymentRecord,
   UnknownRecord,
   User,
 } from "@/types/api";
@@ -86,6 +90,8 @@ type DialogState =
   | { type: "confirm"; order: OrderRecord }
   | { type: "complete"; order: OrderRecord }
   | { type: "cancel"; order: OrderRecord }
+  | { type: "verify-payment"; order: OrderRecord; payment: OrderPaymentRecord }
+  | { type: "reject-payment"; order: OrderRecord; payment: OrderPaymentRecord }
   | null;
 
 const limit = 20;
@@ -102,9 +108,9 @@ const orderStatusTabValues: OrderStatusTab[] = [
   { key: "all", value: "" },
   { key: "pending", value: "10" },
   { key: "payment_pending", value: "20" },
-  { key: "confirmed", value: "confirmed" },
-  { key: "completed", value: "completed" },
-  { key: "cancelled", value: "cancelled" },
+  { key: "confirmed", value: "30" },
+  { key: "completed", value: "50" },
+  { key: "cancelled", value: "40" },
 ];
 
 const initialStatusCounts: Record<OrderStatusTabKey, number> = {
@@ -118,7 +124,6 @@ const initialStatusCounts: Record<OrderStatusTabKey, number> = {
 
 const initialFilters: OrderFilters = {
   status: "",
-  payment_status: "",
   artist_id: "",
   date_from: "",
   date_to: "",
@@ -151,7 +156,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const { locale } = useI18n();
   const labels = useMemo(() => getOrderLabels(locale), [locale]);
   const orderStatusTabs = useMemo(() => getOrderStatusTabs(labels), [labels]);
-  const paymentStatusOptions = useMemo(() => getPaymentStatusOptions(labels), [labels]);
   const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(initialOrderFilters);
   const [searchDraft, setSearchDraft] = useState("");
@@ -261,7 +265,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         const next: OrderFilters = {
           ...current,
           status: normalizeOrderStatusFilter(draftFilters.status),
-          payment_status: draftFilters.payment_status ?? "",
           artist_id: draftFilters.artist_id ?? "",
           date_from: draftFilters.date_from ?? "",
           date_to: draftFilters.date_to ?? "",
@@ -278,7 +281,6 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     draftFilters.artist_id,
     draftFilters.date_from,
     draftFilters.date_to,
-    draftFilters.payment_status,
     draftFilters.sort,
     draftFilters.status,
   ]);
@@ -326,7 +328,9 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     }
     setSubmitting(true);
     try {
-      const order = await ordersApi.detail(row.id, { expand: "client,artist,service,subService,region,district" });
+      const order = await ordersApi.detail(row.id, {
+        expand: "client,artist,service,subService,region,district,invoice,orderPayments,history",
+      });
       setDialog({ type: "details", order: { ...row, ...order } });
     } catch {
       setDialog({ type: "details", order: row });
@@ -397,7 +401,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
   };
 
-  const runSimpleAction = async (type: "confirm" | "complete") => {
+  const runSimpleAction = async (type: "confirm" | "complete", deadlineMinutes?: number) => {
     if (!dialog || dialog.type !== type || !dialog.order.id) return;
     setSubmitting(true);
     try {
@@ -409,11 +413,48 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         } catch {
           confirmOrder = dialog.order;
         }
-        await ordersApi.confirm(dialog.order.id, buildConfirmOrderPayload(confirmOrder));
+        await ordersApi.confirm(dialog.order.id, {
+          ...buildConfirmOrderPayload(confirmOrder),
+          deadline_minutes: deadlineMinutes,
+        });
         toast.success(labels.confirmedToast);
       } else {
         await ordersApi.complete(dialog.order.id);
         toast.success(labels.completedToast);
+      }
+      setDialog(null);
+      await Promise.all([fetchOrders(), fetchStatusCounts()]);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openPaymentAction = (type: "verify-payment" | "reject-payment", order: OrderRecord) => {
+    const payment = findPendingOrderPayment(order);
+    if (!payment?.id) {
+      toast.error(labels.pendingPaymentNotFound);
+      return;
+    }
+    setDialog({ type, order, payment });
+  };
+
+  const runPaymentAction = async (type: "verify-payment" | "reject-payment", reason?: string) => {
+    if (!dialog || dialog.type !== type || !dialog.order.id || !dialog.payment.id) return;
+    setSubmitting(true);
+    try {
+      if (type === "verify-payment") {
+        const payload: VerifyOrderPaymentPayload = { payment_id: dialog.payment.id };
+        await ordersApi.verifyPayment(dialog.order.id, payload);
+        toast.success(labels.paymentVerifiedToast);
+      } else {
+        const payload: RejectOrderPaymentPayload = {
+          payment_id: dialog.payment.id,
+          reason: stringValue(reason),
+        };
+        await ordersApi.rejectPayment(dialog.order.id, payload);
+        toast.success(labels.paymentRejectedToast);
       }
       setDialog(null);
       await Promise.all([fetchOrders(), fetchStatusCounts()]);
@@ -431,15 +472,15 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       : undefined);
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
           {labels.eyebrow}
         </p>
-        <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
           {labels.title}
         </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
           {labels.description}
         </p>
       </div>
@@ -447,7 +488,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       <OrderStatusTabs tabs={orderStatusTabs} active={activeStatus} counts={statusCounts} onChange={changeStatus} />
 
       <div className="artistbor-table-filter-shell overflow-x-auto">
-        <div className="artistbor-table-filter-panel min-h-[64px] grid gap-3 md:grid-cols-[auto_minmax(170px,0.75fr)_minmax(260px,1.2fr)_auto] md:items-center">
+        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-slate-400" />}
@@ -455,17 +496,9 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
             value={searchDraft}
             onChange={(event) => setSearchDraft(event.target.value)}
             className={cn(
-              "artistbor-filter-search h-10",
+              "artistbor-table-filter-control artistbor-filter-search h-10",
               searchDraft && "artistbor-filter-search-active",
             )}
-          />
-          <Select
-            className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[180px] shrink-0 md:justify-self-start"
-            value={draftFilters.payment_status ?? ""}
-            onChange={(payment_status) =>
-              setDraftFilters((current) => ({ ...current, payment_status }))
-            }
-            options={paymentStatusOptions}
           />
           <DateFilterSelect
             value={{
@@ -482,13 +515,13 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
               to: labels.dateTo,
             }}
             selectClassName="!w-[180px]"
-            inputClassName="!rounded-lg"
+            inputClassName="!rounded-xl"
             onChange={changeDateRange}
           />
           <button
             type="button"
             onClick={resetFilters}
-            className="artistbor-filter-reset inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
+            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 px-4 md:col-start-4"
           >
             <RotateCcw className="size-4" />
             {labels.reset}
@@ -589,6 +622,12 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         onCancel={() => {
           if (dialog?.type === "details") setDialog({ type: "cancel", order: dialog.order });
         }}
+        onVerifyPayment={() => {
+          if (dialog?.type === "details") openPaymentAction("verify-payment", dialog.order);
+        }}
+        onRejectPayment={() => {
+          if (dialog?.type === "details") openPaymentAction("reject-payment", dialog.order);
+        }}
         labels={labels}
       />
 
@@ -628,13 +667,11 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       ) : null}
 
       {dialog?.type === "confirm" ? (
-        <ConfirmDialog
+        <ConfirmOrderModal
           loading={submitting}
-          title={labels.confirmDialogTitle}
-          message={labels.confirmDialogMessage}
-          confirmLabel={labels.confirmAction}
-          onCancel={() => setDialog(null)}
-          onConfirm={() => runSimpleAction("confirm")}
+          labels={labels}
+          onClose={() => setDialog(null)}
+          onSubmit={(deadlineMinutes) => runSimpleAction("confirm", deadlineMinutes)}
         />
       ) : null}
 
@@ -671,6 +708,26 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         />
       ) : null}
 
+      {dialog?.type === "verify-payment" ? (
+        <ConfirmDialog
+          loading={submitting}
+          title={labels.verifyPaymentDialogTitle}
+          message={labels.verifyPaymentDialogMessage}
+          confirmLabel={labels.verifyPaymentAction}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => runPaymentAction("verify-payment")}
+        />
+      ) : null}
+
+      {dialog?.type === "reject-payment" ? (
+        <RejectPaymentModal
+          loading={submitting}
+          labels={labels}
+          onClose={() => setDialog(null)}
+          onSubmit={(reason) => runPaymentAction("reject-payment", reason)}
+        />
+      ) : null}
+
     </section>
   );
 }
@@ -688,15 +745,6 @@ function getOrderStatusTabs(labels: OrderLabels): Array<OrderStatusTab & { label
     ...tab,
     label: labels.statusTabs[tab.key],
   }));
-}
-
-function getPaymentStatusOptions(labels: OrderLabels) {
-  return [
-    { label: labels.paymentAll, value: "" },
-    { label: labels.paymentPending, value: "10" },
-    { label: labels.paymentPaid, value: "20" },
-    { label: labels.paymentRefunded, value: "30" },
-  ];
 }
 
 function localizeOrderStatus(status: ReturnType<typeof getOrderUiStatus>, labels: OrderLabels) {
@@ -743,8 +791,8 @@ function OrderStatusTabs({
   onChange: (status: OrderStatusTabKey) => void;
 }) {
   return (
-    <div className="w-full self-stretch border-b border-slate-200 dark:border-white/10">
-      <div className="flex gap-7 overflow-x-auto overflow-y-hidden pl-2">
+    <div className="border-b border-[#e6ebf2] dark:border-white/10">
+      <div className="flex gap-7 overflow-x-auto overflow-y-hidden">
         {tabs.map((tab) => {
           const selected = tab.key === active;
 
@@ -756,7 +804,7 @@ function OrderStatusTabs({
               className={cn(
                 "relative inline-flex h-12 shrink-0 cursor-pointer items-center gap-2 text-sm font-semibold transition",
                 selected
-                  ? "text-blue-600 dark:text-amber-300"
+                  ? "text-[#f97316] dark:text-amber-300"
                   : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
               )}
             >
@@ -765,14 +813,14 @@ function OrderStatusTabs({
                 className={cn(
                   "rounded-full px-2 py-0.5 text-xs font-bold",
                   selected
-                    ? "bg-blue-50 text-blue-600 dark:bg-amber-400/10 dark:text-amber-300"
+                    ? "bg-[#fff7ed] text-[#f97316] ring-1 ring-[#fed7aa] dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20"
                     : orderStatusCountClass(tab.key),
                 )}
               >
                 {counts[tab.key] ?? 0}
               </span>
               {selected ? (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-blue-600 dark:bg-amber-400" />
+                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#f97316] dark:bg-amber-400" />
               ) : null}
             </button>
           );
@@ -800,11 +848,11 @@ function OrdersDataTable({
   onOpenContact: (order: OrderRecord) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111827]">
-      <div className="admin-table-scroll overflow-x-auto">
-        <table className="w-full min-w-[920px] border-collapse">
+    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px] border-separate border-spacing-0">
           <thead>
-            <tr className="h-11 border-b border-slate-200 bg-slate-50 text-left dark:border-white/10 dark:bg-white/[0.03]">
+            <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
               <TableHead>{labels.orderColumn}</TableHead>
               <TableHead>{labels.serviceColumn}</TableHead>
               <TableHead>{labels.clientColumn}</TableHead>
@@ -821,12 +869,16 @@ function OrdersDataTable({
               const subService = getServiceDisplay(row.subService ?? row.sub_service, row.sub_service_id, serviceMap, labels);
 
               return (
-                <tr
-                  key={String(row.id ?? index)}
-                  className="h-14 border-b border-slate-100 transition last:border-0 hover:bg-slate-50/80 dark:border-white/10 dark:hover:bg-white/[0.035]"
-                >
+                  <tr
+                    key={String(row.id ?? index)}
+                    className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]"
+                  >
                   <TableCell>
-                    <OrderIdCell id={row.id} />
+                    <OrderIdCell
+                      id={row.id}
+                      createdAt={firstOrderTimestamp(row, ["created_at", "createdAt"])}
+                      labels={labels}
+                    />
                   </TableCell>
                   <TableCell>
                     <div className="min-w-0">
@@ -844,14 +896,14 @@ function OrdersDataTable({
                     <DateTimeCell date={row.date} time={row.time ?? row.start_time} timeTo={row.time_to ?? row.end_time} />
                   </TableCell>
                   <TableCell>
-                    <OrderStatusBadge status={localizeOrderStatus(getOrderUiStatus(row), labels)} />
+                    <OrderStatusCell order={row} labels={labels} />
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => onOpenContact(row)}
-                        className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+                        className="grid size-8 cursor-pointer place-items-center rounded-[10px] border border-[#e6ebf2] bg-white text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
                         aria-label={labels.contactAction}
                         title={labels.contactAction}
                       >
@@ -860,7 +912,7 @@ function OrdersDataTable({
                       <button
                         type="button"
                         onClick={() => onOpenDetail(row)}
-                        className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+                        className="grid size-8 cursor-pointer place-items-center rounded-[10px] border border-[#e6ebf2] bg-white text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
                         aria-label={labels.viewAction}
                         title={labels.viewAction}
                       >
@@ -884,7 +936,7 @@ function PaymentStatusBadge({ order, labels }: { order: OrderRecord; labels: Ord
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black leading-none",
+        "inline-flex h-6 max-w-full items-center rounded-full border px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]",
         payment.tone === "paid"
           ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-700 dark:text-emerald-300"
           : payment.tone === "refunded"
@@ -893,6 +945,137 @@ function PaymentStatusBadge({ order, labels }: { order: OrderRecord; labels: Ord
       )}
     >
       {payment.label}
+    </span>
+  );
+}
+
+function OrderPaymentsPanel({
+  order,
+  labels,
+  onVerifyPayment,
+  onRejectPayment,
+}: {
+  order: OrderRecord;
+  labels: OrderLabels;
+  onVerifyPayment: () => void;
+  onRejectPayment: () => void;
+}) {
+  const payments = getOrderPayments(order);
+  const pendingPayment = findPendingOrderPayment(order);
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#121a2a]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.paymentsTitle}</h4>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{labels.paymentsDescription}</p>
+        </div>
+        <PaymentStatusBadge order={order} labels={labels} />
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <PaymentMetaItem label={labels.advanceAmountLabel}>
+          <MoneyText value={order.advance_amount} emptyLabel={labels.priceNotSet} locale={labels.locale} />
+        </PaymentMetaItem>
+        <PaymentMetaItem label={labels.paymentDeadlineLabel}>
+          {formatPaymentDeadline(order)}
+        </PaymentMetaItem>
+      </div>
+
+      {payments.length ? (
+        <div className="mt-3 space-y-2">
+          {payments.map((payment, index) => (
+            <div
+              key={String(payment.id ?? index)}
+              className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/[0.035]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                    {payment.type ? toDisplay(payment.type) : labels.paymentReceiptLabel}
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-950 dark:text-white">
+                    <MoneyText value={payment.paid_amount ?? payment.amount} emptyLabel={labels.priceNotSet} locale={labels.locale} />
+                  </p>
+                </div>
+                <PaymentRecordStatusBadge payment={payment} labels={labels} />
+              </div>
+
+              <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+                <span>{labels.createdAtLabel}: {formatNullableUnixDate(payment.created_at)}</span>
+                <span>{labels.verifiedAtLabel}: {formatNullableUnixDate(payment.verified_at)}</span>
+              </div>
+
+              {payment.notes ? (
+                <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-medium text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-white/10">
+                  {payment.notes}
+                </p>
+              ) : null}
+
+              {payment.receipt_file_url ? (
+                <a
+                  href={payment.receipt_file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-blue-500/10"
+                >
+                  {labels.openReceiptAction}
+                  <ExternalLink className="size-3.5" />
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm font-semibold text-slate-500 dark:border-white/15 dark:bg-white/[0.035] dark:text-slate-400">
+          {labels.noPaymentReceipts}
+        </div>
+      )}
+
+      {pendingPayment ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onVerifyPayment}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/15"
+          >
+            <CreditCard className="size-4" />
+            {labels.verifyPaymentAction}
+          </button>
+          <button
+            type="button"
+            onClick={onRejectPayment}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-black text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/15"
+          >
+            <XCircle className="size-4" />
+            {labels.rejectPaymentAction}
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function PaymentMetaItem({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-white/[0.035] dark:ring-white/10">
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
+      <div className="mt-1 text-sm font-bold text-slate-950 dark:text-white">{children}</div>
+    </div>
+  );
+}
+
+function PaymentRecordStatusBadge({ payment, labels }: { payment: OrderPaymentRecord; labels: OrderLabels }) {
+  const normalized = normalizePaymentRecordStatus(payment.status);
+  const toneClass = {
+    pending: "border-amber-300/40 bg-amber-400/10 text-amber-700 dark:text-amber-300",
+    verified: "border-emerald-300/40 bg-emerald-400/10 text-emerald-700 dark:text-emerald-300",
+    rejected: "border-rose-300/40 bg-rose-400/10 text-rose-700 dark:text-rose-300",
+  }[normalized];
+
+  return (
+    <span className={cn("inline-flex h-6 max-w-full shrink-0 items-center rounded-full border px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]", toneClass)}>
+      {labels.paymentRecordStatuses[normalized]}
     </span>
   );
 }
@@ -925,6 +1108,8 @@ function OrderDetailDrawer({
   onConfirm,
   onComplete,
   onCancel,
+  onVerifyPayment,
+  onRejectPayment,
   labels,
 }: {
   order: OrderRecord | null;
@@ -940,6 +1125,8 @@ function OrderDetailDrawer({
   onConfirm: () => void;
   onComplete: () => void;
   onCancel: () => void;
+  onVerifyPayment: () => void;
+  onRejectPayment: () => void;
   labels: OrderLabels;
 }) {
   if (!order || !client || !artist || !service || !subService || !region || !district) return null;
@@ -956,12 +1143,7 @@ function OrderDetailDrawer({
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5 text-rose-500" />}
       rootClassName="artistbor-application-drawer artistbor-order-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
+      classNames={adminDrawerClassNames}
       title={
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
@@ -977,16 +1159,12 @@ function OrderDetailDrawer({
           onConfirm={onConfirm}
           onComplete={onComplete}
           onCancel={onCancel}
+          onVerifyPayment={onVerifyPayment}
+          onRejectPayment={onRejectPayment}
           labels={labels}
         />
       }
-      styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 64, padding: "0 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      styles={adminDrawerStyles}
     >
       <div className="space-y-3.5 p-4">
         <div className="flex items-center gap-3">
@@ -1019,7 +1197,9 @@ function OrderDetailDrawer({
                     <OrderInfoCell icon={<CalendarDays className="size-4" />} label={labels.dateLabel} value={formatBookingDate(order.date)} />
                     <OrderInfoCell icon={<CalendarClock className="size-4" />} label={labels.timeLabel} value={timeRange.primary} />
                     <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.paymentLabel} value={<PaymentStatusBadge order={order} labels={labels} />} />
-                    <OrderInfoCell icon={<WalletCards className="size-4" />} label={labels.priceLabel} value={<MoneyText value={order.total_price} emptyLabel={labels.priceNotSet} currencyLabel={labels.currency} locale={labels.locale} />} />
+                    <OrderInfoCell icon={<WalletCards className="size-4" />} label={labels.priceLabel} value={<MoneyText value={order.total_price} emptyLabel={labels.priceNotSet} locale={labels.locale} />} />
+                    <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.advanceAmountLabel} value={<MoneyText value={order.advance_amount} emptyLabel={labels.priceNotSet} locale={labels.locale} />} />
+                    <OrderInfoCell icon={<CalendarClock className="size-4" />} label={labels.paymentDeadlineLabel} value={formatPaymentDeadline(order)} />
                     <OrderInfoCell icon={<MapPin className="size-4" />} label={labels.regionLabel} value={formatLocationText(region, district)} />
                     <OrderInfoCell
                       icon={<MapPin className="size-4" />}
@@ -1029,6 +1209,12 @@ function OrderDetailDrawer({
                     <OrderInfoCell className="sm:col-span-2" icon={<MapPin className="size-4" />} label={labels.addressLabel} value={order.address} />
                     <OrderInfoCell className="sm:col-span-2" icon={<Pencil className="size-4" />} label={labels.noteLabel} value={order.comment ?? order.notes} />
                   </div>
+                  <OrderPaymentsPanel
+                    order={order}
+                    labels={labels}
+                    onVerifyPayment={onVerifyPayment}
+                    onRejectPayment={onRejectPayment}
+                  />
                 </div>
               ),
             },
@@ -1055,6 +1241,8 @@ function OrderDrawerActions({
   onConfirm,
   onComplete,
   onCancel,
+  onVerifyPayment,
+  onRejectPayment,
   labels,
 }: {
   order: OrderRecord;
@@ -1062,9 +1250,12 @@ function OrderDrawerActions({
   onConfirm: () => void;
   onComplete: () => void;
   onCancel: () => void;
+  onVerifyPayment: () => void;
+  onRejectPayment: () => void;
   labels: OrderLabels;
 }) {
   const primaryAction = getPrimaryOrderAction(order, labels);
+  const pendingPayment = findPendingOrderPayment(order);
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -1086,6 +1277,22 @@ function OrderDrawerActions({
           onClick={onComplete}
         />
       ) : null}
+      {pendingPayment ? (
+        <>
+          <DrawerActionButton
+            icon={<CreditCard className="size-4" />}
+            label={labels.verifyPaymentAction}
+            tone="payment"
+            onClick={onVerifyPayment}
+          />
+          <DrawerActionButton
+            icon={<XCircle className="size-4" />}
+            label={labels.rejectPaymentAction}
+            tone="danger"
+            onClick={onRejectPayment}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1098,7 +1305,7 @@ function DrawerActionButton({
 }: {
   icon: React.ReactNode;
   label: string;
-  tone?: "default" | "confirm" | "complete" | "danger";
+  tone?: "default" | "confirm" | "complete" | "danger" | "payment";
   onClick: () => void;
 }) {
   const toneClass = {
@@ -1108,6 +1315,8 @@ function DrawerActionButton({
       "border-sky-200 text-sky-700 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-500/30 dark:text-sky-300 dark:hover:bg-sky-500/10",
     complete:
       "border-emerald-200 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10",
+    payment:
+      "border-blue-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:hover:bg-blue-500/10",
     danger:
       "border-rose-200 text-rose-600 hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10",
   }[tone];
@@ -1268,12 +1477,7 @@ function OrderContactDrawer({
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
       rootClassName="artistbor-application-drawer artistbor-contact-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
+      classNames={adminDrawerClassNames}
       title={
         <div className="min-w-0">
           <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">{labels.contactAction}</p>
@@ -1291,13 +1495,7 @@ function OrderContactDrawer({
           {labels.close}
         </button>
       }
-      styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 82, padding: "12px 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      styles={adminDrawerSubtitleStyles}
     >
       <div className="p-4">
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#121a2a]">
@@ -1430,7 +1628,7 @@ function TableHead({ children, className }: { children: React.ReactNode; classNa
   return (
     <th
       className={cn(
-        "px-3 text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400",
+        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
         className,
       )}
     >
@@ -1440,13 +1638,16 @@ function TableHead({ children, className }: { children: React.ReactNode; classNa
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-3 py-2 align-middle text-sm", className)}>{children}</td>;
+  return <td className={cn("border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
 }
 
-function OrderIdCell({ id }: { id: unknown }) {
+function OrderIdCell({ id, createdAt, labels }: { id: unknown; createdAt: unknown; labels: OrderLabels }) {
   return (
     <div className="min-w-0">
-      <p className="text-sm font-black text-slate-950 dark:text-white">#{formatOrderId(id)}</p>
+      <p className="text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">#{formatOrderId(id)}</p>
+      <p className="mt-1 whitespace-nowrap text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
+        {labels.createdAtLabel}: {formatNullableUnixDate(createdAt)}
+      </p>
     </div>
   );
 }
@@ -1472,14 +1673,17 @@ function OrderMobileCard({
   onPrimary: (action: PrimaryOrderAction["action"]) => void;
   labels: OrderLabels;
 }) {
-  const status = localizeOrderStatus(getOrderUiStatus(row), labels);
   const primaryAction = getPrimaryOrderAction(row, labels);
 
   return (
     <article className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-700/70 dark:bg-[#111827]">
       <div className="flex items-start justify-between gap-3">
-        <OrderIdCell id={row.id} />
-        <OrderStatusBadge status={status} />
+        <OrderIdCell
+          id={row.id}
+          createdAt={firstOrderTimestamp(row, ["created_at", "createdAt"])}
+          labels={labels}
+        />
+        <OrderStatusCell order={row} labels={labels} align="end" />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -1526,6 +1730,38 @@ function OrderMobileCard({
   );
 }
 
+function OrderStatusCell({
+  order,
+  labels,
+  align = "start",
+}: {
+  order: OrderRecord;
+  labels: OrderLabels;
+  align?: "start" | "end";
+}) {
+  const baseStatus = getOrderUiStatus(order);
+  const localizedStatus = localizeOrderStatus(baseStatus, labels);
+  const hasPaymentDeadline = hasOrderPaymentDeadline(order);
+  const expired = baseStatus.key === "payment_pending" && hasPaymentDeadline && isExpired(order.payment_deadline ?? order.payment_expires_at);
+  const status = expired ? { ...localizedStatus, label: labels.paymentExpired, tone: "red" as const } : localizedStatus;
+
+  return (
+    <div className={cn("inline-flex min-w-0 flex-col gap-1.5", align === "end" ? "items-end text-right" : "items-start text-left")}>
+      <OrderStatusBadge status={status} />
+      {baseStatus.key === "payment_pending" && hasPaymentDeadline ? (
+        <p
+          className={cn(
+            "whitespace-nowrap text-xs font-medium leading-4",
+            expired ? "text-rose-600 dark:text-rose-300" : "text-slate-500 dark:text-slate-400",
+          )}
+        >
+          {labels.paymentDeadlineLabel}: {formatPaymentDeadline(order)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function LabeledEntity({ label, entity }: { label: string; entity: EntityDisplay }) {
   return (
     <div>
@@ -1543,7 +1779,7 @@ function OrdersSkeleton() {
       {Array.from({ length: 5 }).map((_, index) => (
         <div
           key={index}
-          className="h-24 animate-pulse rounded-[22px] border border-slate-100 bg-white shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827]"
+          className="h-24 animate-pulse rounded-[18px] border border-slate-100 bg-white shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827]"
         >
           <div className="flex h-full items-center gap-4 px-5">
             <div className="h-12 w-32 rounded-2xl bg-slate-100 dark:bg-slate-800" />
@@ -1731,12 +1967,85 @@ function EditOrderDrawer({
             className="md:col-span-2"
             label={labels.priceLabel}
             placeholder="1 500 000"
+            suffix={MONEY_CURRENCY_LABEL}
             value={values.total_price}
             onChange={(total_price) => setValues((current) => ({ ...current, total_price: formatNumberInput(total_price) }))}
           />
         </div>
       </form>
     </AdminDrawer>
+  );
+}
+
+function ConfirmOrderModal({
+  loading,
+  labels,
+  onClose,
+  onSubmit,
+}: {
+  loading: boolean;
+  labels: OrderLabels;
+  onClose: () => void;
+  onSubmit: (deadlineMinutes?: number) => Promise<void>;
+}) {
+  const [deadlineMinutes, setDeadlineMinutes] = useState("30");
+  const [error, setError] = useState("");
+  const formId = "order-confirm-form";
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!deadlineMinutes.trim()) {
+      await onSubmit(30);
+      return;
+    }
+    const parsed = parseNumberInput(deadlineMinutes);
+    if (!parsed || parsed <= 0) {
+      setError(labels.requiredField);
+      return;
+    }
+    await onSubmit(Math.trunc(parsed));
+  };
+
+  return (
+    <Modal
+      centered
+      open
+      rootClassName="artistbor-confirm-modal"
+      width={480}
+      title={labels.confirmDialogTitle}
+      onCancel={onClose}
+      closeIcon={<X className="size-4" />}
+      footer={
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            form={formId}
+            disabled={loading}
+            className="artistbor-modal-action artistbor-modal-action--success w-1/2 text-sm font-black"
+          >
+            <ShieldCheck className="size-4" />
+            {loading ? labels.processing : labels.confirmAction}
+          </button>
+        </div>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5">
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+          {labels.confirmDialogMessage}
+        </p>
+        <FormField
+          label={labels.deadlineMinutesLabel}
+          type="number"
+          placeholder={labels.deadlineMinutesPlaceholder}
+          value={deadlineMinutes}
+          error={error}
+          onChange={(value) => {
+            setDeadlineMinutes(value);
+            setError("");
+          }}
+        />
+      </form>
+    </Modal>
   );
 }
 
@@ -1792,6 +2101,71 @@ function CancelOrderModal({
           label={labels.reasonLabel}
           type="textarea"
           rows={7}
+          required
+          value={reason}
+          error={error}
+          onChange={(value) => {
+            setReason(value);
+            setError("");
+          }}
+        />
+      </form>
+    </Modal>
+  );
+}
+
+function RejectPaymentModal({
+  loading,
+  labels,
+  onClose,
+  onSubmit,
+}: {
+  loading: boolean;
+  labels: OrderLabels;
+  onClose: () => void;
+  onSubmit: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const formId = "order-payment-reject-form";
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!reason.trim()) {
+      setError(labels.requiredField);
+      return;
+    }
+    await onSubmit(reason.trim());
+  };
+
+  return (
+    <Modal
+      centered
+      open
+      rootClassName="artistbor-confirm-modal"
+      width={480}
+      title={labels.rejectPaymentDialogTitle}
+      onCancel={onClose}
+      closeIcon={<X className="size-4" />}
+      footer={
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            form={formId}
+            disabled={loading}
+            className="artistbor-modal-action artistbor-modal-action--danger w-1/2 text-sm font-black"
+          >
+            <XCircle className="size-4" />
+            {loading ? labels.processing : labels.rejectPaymentAction}
+          </button>
+        </div>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5">
+        <FormField
+          label={labels.reasonLabel}
+          type="textarea"
+          rows={6}
           required
           value={reason}
           error={error}
@@ -1866,7 +2240,7 @@ function PrimitiveValue({
   if (isLocationIdKey(fieldKey)) {
     return <LocationName fieldKey={fieldKey} value={value} fallback={toDisplay(value)} />;
   }
-  if (isStatusField(fieldKey)) return <StatusBadge value={value} />;
+  if (isStatusField(fieldKey)) return <StatusBadge value={value} fieldKey={fieldKey} />;
   if (fieldKey.endsWith("_at") || fieldKey === "created_at" || fieldKey === "updated_at") {
     return <span>{normalizeDate(value)}</span>;
   }
@@ -1891,9 +2265,9 @@ function normalizeOrderStatusFilter(value: unknown) {
   if (!normalized) return "";
   if (normalized === "10" || normalized === "pending") return "10";
   if (normalized === "20" || normalized === "payment_pending") return "20";
-  if (normalized === "30") return "confirmed";
-  if (normalized === "50") return "completed";
-  if (normalized === "40") return "cancelled";
+  if (normalized === "30" || normalized === "confirmed") return "30";
+  if (normalized === "50" || normalized === "completed") return "50";
+  if (normalized === "40" || normalized === "cancelled") return "40";
   return orderStatusTabValues.some((tab) => tab.value === normalized) ? normalized : "";
 }
 
@@ -1920,7 +2294,6 @@ function getResultCount(result: ListResult<OrderRecord>) {
 function sameOrderFilters(left: OrderFilters, right: OrderFilters) {
   return (
     String(left.status ?? "") === String(right.status ?? "") &&
-    String(left.payment_status ?? "") === String(right.payment_status ?? "") &&
     String(left.artist_id ?? "") === String(right.artist_id ?? "") &&
     String(left.date_from ?? "") === String(right.date_from ?? "") &&
     String(left.date_to ?? "") === String(right.date_to ?? "") &&
@@ -1999,6 +2372,27 @@ function buildConfirmOrderPayload(order: OrderRecord): ConfirmOrderPayload {
   });
 }
 
+function getOrderPayments(order: OrderRecord): OrderPaymentRecord[] {
+  const direct = order.orderPayments;
+  if (Array.isArray(direct)) return direct;
+
+  const snakeCase = order.order_payments;
+  if (Array.isArray(snakeCase)) return snakeCase;
+
+  return [];
+}
+
+function findPendingOrderPayment(order: OrderRecord) {
+  return getOrderPayments(order).find((payment) => normalizePaymentRecordStatus(payment.status) === "pending");
+}
+
+function normalizePaymentRecordStatus(status: unknown): "pending" | "verified" | "rejected" {
+  const normalized = String(status ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized.includes("verified") || normalized.includes("approved") || normalized.includes("tasdiq")) return "verified";
+  if (normalized.includes("rejected") || normalized.includes("reject") || normalized.includes("rad")) return "rejected";
+  return "pending";
+}
+
 function compactPayload<T extends Record<string, unknown>>(value: T) {
   return Object.fromEntries(
     Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined && fieldValue !== null && fieldValue !== ""),
@@ -2071,6 +2465,18 @@ function getPaymentStatusDisplay(order: OrderRecord, labels: OrderLabels) {
   if (status === 30) return { label: labels.paymentRefunded, tone: "refunded" as const };
   if (status === 10) return { label: labels.paymentPending, tone: "pending" as const };
   return { label: label ?? labels.paymentPending, tone: "pending" as const };
+}
+
+function formatPaymentDeadline(order: OrderRecord) {
+  return stringValue(order.payment_deadline_formatted) ?? formatNullableUnixDate(order.payment_deadline ?? order.payment_expires_at);
+}
+
+function hasOrderPaymentDeadline(order: OrderRecord) {
+  return hasMeaningfulDeadlineValue(order.payment_deadline) || hasMeaningfulDeadlineValue(order.payment_expires_at);
+}
+
+function hasMeaningfulDeadlineValue(value: unknown) {
+  return value !== null && value !== undefined && value !== "";
 }
 
 function getYandexMapUrl(order: OrderRecord) {
@@ -2283,6 +2689,8 @@ function getFromMap<T>(map: Map<number, T>, id: unknown) {
 }
 
 function numberKey(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && !value.trim()) return undefined;
   const key = typeof value === "number" ? value : Number(value);
   return Number.isFinite(key) ? key : undefined;
 }
@@ -2309,7 +2717,6 @@ function normalizeComparable(value: string | undefined) {
 function createFiltersFromSearchParams(searchParams: Pick<URLSearchParams, "get"> | null): OrderFilters {
   return {
     status: normalizeOrderStatusFilter(searchParams?.get("status")),
-    payment_status: searchParams?.get("payment_status") ?? "",
     artist_id: searchParams?.get("artist_id") ?? "",
     date_from: searchParams?.get("date_from") ?? "",
     date_to: searchParams?.get("date_to") ?? "",
@@ -2326,6 +2733,7 @@ function getOrderLabels(locale: Locale) {
       actionFailed: "Не удалось выполнить действие",
       actionsColumn: "Действия",
       actionsModalTitle: (id: unknown) => `Заказ #${id} действия`,
+      advanceAmountLabel: "Аванс",
       addressLabel: "Адрес",
       artistEmail: "Email артиста",
       artistAdministratorName: "Администратор артиста",
@@ -2349,22 +2757,23 @@ function getOrderLabels(locale: Locale) {
       completedToast: "Заказ завершен",
       contactAction: "Контакты",
       confirmAction: "Подтвердить",
-      confirmActionDescription: "Ожидает → Подтвержден. Артист получает разрешение начать работу.",
-      confirmDialogMessage: "Подтвердить заказ?",
+      confirmActionDescription: "Ожидает → Ожидает оплаты. Клиенту открывается авансовая оплата.",
+      confirmDialogMessage: "Перевести заказ в ожидание оплаты?",
       confirmDialogTitle: "Подтверждение заказа",
-      confirmedToast: "Заказ подтвержден",
+      confirmedToast: "Заказ переведен в ожидание оплаты",
       conflictCheck: "Проверка конфликтов",
       conflictCheckFailed: "Не удалось выполнить проверку конфликтов",
       conflictsLoading: "Проверка конфликтов...",
       copyValue: (label: string) => `Скопировать значение: ${label}`,
       createdAtLabel: "Создан",
-      currency: "сум",
       custom: "Настроить",
       dateAll: "Дата: Все",
       dateFrom: "Дата с",
       dateLabel: "Дата",
       dateTo: "Дата до",
       dateTimeColumn: "Дата / время",
+      deadlineMinutesLabel: "Срок оплаты в минутах",
+      deadlineMinutesPlaceholder: "По умолчанию 30 минут",
       description: "Отслеживание, подтверждение, завершение и перенос заказов.",
       detailLoadFailed: "Не удалось загрузить детали заказа",
       districtLabel: "Район",
@@ -2390,21 +2799,37 @@ function getOrderLabels(locale: Locale) {
       newest: "Новые",
       noteLabel: "Комментарий",
       oldest: "Старые",
+      noPaymentReceipts: "Чеки пока не загружены",
+      openReceiptAction: "Открыть чек",
       openYandexMap: "Открыть в Яндекс Картах",
       orderColumn: "Заказ",
       orderStatusLabel: "Статус заказа",
       orderTitle: "Заказ",
       paymentAll: "Оплата: Все",
       paymentDeadlineLabel: "Срок оплаты",
+      paymentExpired: "Срок истек",
       paymentLabel: "Оплата",
       paymentPaid: "Оплачено",
       paymentPending: "Ожидает оплаты",
       paymentRefunded: "Возвращено",
+      paymentReceiptLabel: "Чек",
+      paymentRecordStatuses: {
+        pending: "На проверке",
+        verified: "Подтвержден",
+        rejected: "Отклонен",
+      },
+      paymentsDescription: "Аванс, срок оплаты и чеки клиента.",
+      paymentsTitle: "Платежи",
       paymentStatusLabel: "Статус оплаты",
+      paymentRejectedToast: "Платеж отклонен",
+      paymentVerifiedToast: "Платеж подтвержден",
+      pendingPaymentNotFound: "Ожидающий проверки чек не найден",
       priceLabel: "Цена",
       priceNotSet: "Цена не указана",
       processing: "Выполняется...",
       reasonLabel: "Причина",
+      rejectPaymentAction: "Отклонить платеж",
+      rejectPaymentDialogTitle: "Отклонить платеж",
       regionLabel: "Регион",
       requiredField: "Обязательное поле",
       rescheduleAction: "Изменить время",
@@ -2435,6 +2860,10 @@ function getOrderLabels(locale: Locale) {
       updatedAtLabel: "Обновлен",
       updatedToast: "Заказ обновлен",
       updateFailed: "Не удалось обновить",
+      verifiedAtLabel: "Проверен",
+      verifyPaymentAction: "Подтвердить платеж",
+      verifyPaymentDialogMessage: "Подтвердить чек клиента и перевести заказ в подтвержденные?",
+      verifyPaymentDialogTitle: "Подтверждение платежа",
       viewAction: "Просмотр",
       week: "7 дней",
     };
@@ -2445,6 +2874,7 @@ function getOrderLabels(locale: Locale) {
     actionFailed: "Amal bajarilmadi",
     actionsColumn: "Amallar",
     actionsModalTitle: (id: unknown) => `Buyurtma #${id} amallari`,
+    advanceAmountLabel: "Avans",
     addressLabel: "Manzil",
     artistEmail: "Sanatkor email",
     artistAdministratorName: "Sanatkor administratori",
@@ -2468,22 +2898,23 @@ function getOrderLabels(locale: Locale) {
     completedToast: "Buyurtma bajarildi",
     contactAction: "Aloqa",
     confirmAction: "Tasdiqlash",
-    confirmActionDescription: "Kutilmoqda → Tasdiqlangan. Sanatkor ishni boshlashi uchun ruxsat beriladi.",
-    confirmDialogMessage: "Buyurtmani tasdiqlashni tasdiqlaysizmi?",
+    confirmActionDescription: "Kutilmoqda → To'lov kutilmoqda. Mijozga avans to'lovi ochiladi.",
+    confirmDialogMessage: "Buyurtmani to'lov kutilmoqda holatiga o'tkazasizmi?",
     confirmDialogTitle: "Buyurtmani tasdiqlash",
-    confirmedToast: "Buyurtma tasdiqlandi",
+    confirmedToast: "Buyurtma to'lov kutilmoqda holatiga o'tkazildi",
     conflictCheck: "Konflikt tekshiruvi",
     conflictCheckFailed: "Konflikt tekshiruvi bajarilmadi",
     conflictsLoading: "Konfliktlar tekshirilmoqda...",
     copyValue: (label: string) => `${label} qiymatini nusxalash`,
     createdAtLabel: "Yaratilgan",
-    currency: "so'm",
     custom: "Sozlash",
     dateAll: "Sana: Barchasi",
     dateFrom: "Sanadan",
     dateLabel: "Sana",
     dateTo: "Sanagacha",
     dateTimeColumn: "Sana / vaqt",
+    deadlineMinutesLabel: "To'lov muddati, daqiqada",
+    deadlineMinutesPlaceholder: "Standart 30 daqiqa",
     description: "Buyurtmalar holatini kuzatish, tasdiqlash, yakunlash va qayta rejalash.",
     detailLoadFailed: "Buyurtma tafsilotlari yuklanmadi",
     districtLabel: "Tuman",
@@ -2492,16 +2923,16 @@ function getOrderLabels(locale: Locale) {
     editModalTitle: "Buyurtmani tahrirlash",
     endTime: "Tugash",
     eyebrow: "Buyurtmalar",
-    idNotFound: "Order ID topilmadi",
+    idNotFound: "Buyurtma ID topilmadi",
     infoTab: "Ma'lumot",
     historyTitle: "Tarix",
-    latitudeLabel: "Latitude",
+    latitudeLabel: "Kenglik",
     lifecycleCompleted: "Yakunlandi",
     lifecycleConfirmed: "Tasdiqlandi",
     lifecycleCreated: "Yaratildi",
     lifecyclePaid: "To'lov to'landi",
     loadFailed: "Buyurtmalar yuklanmadi",
-    longitudeLabel: "Longitude",
+    longitudeLabel: "Uzunlik",
     mainInfoTitle: "Asosiy ma'lumotlar",
     mapLabel: "Xarita",
     groupSizeLabel: "Mehmonlar soni",
@@ -2509,21 +2940,37 @@ function getOrderLabels(locale: Locale) {
     newest: "Yangilari",
     noteLabel: "Izoh",
     oldest: "Eng eskilari",
+    noPaymentReceipts: "Hali chek yuklanmagan",
+    openReceiptAction: "Chekni ochish",
     openYandexMap: "Yandex xaritada ochish",
     orderColumn: "Buyurtma",
     orderStatusLabel: "Buyurtma holati",
     orderTitle: "Buyurtma",
     paymentAll: "To'lov: Barchasi",
     paymentDeadlineLabel: "To'lov muddati",
+    paymentExpired: "Muddati o'tgan",
     paymentLabel: "To'lov",
     paymentPaid: "To'langan",
     paymentPending: "To'lov kutilmoqda",
     paymentRefunded: "Qaytarilgan",
+    paymentReceiptLabel: "Chek",
+    paymentRecordStatuses: {
+      pending: "Tekshiruvda",
+      verified: "Tasdiqlangan",
+      rejected: "Rad etilgan",
+    },
+    paymentsDescription: "Avans, to'lov muddati va mijoz yuklagan cheklar.",
+    paymentsTitle: "To'lovlar",
     paymentStatusLabel: "To'lov holati",
+    paymentRejectedToast: "To'lov rad etildi",
+    paymentVerifiedToast: "To'lov tasdiqlandi",
+    pendingPaymentNotFound: "Tekshiruvdagi chek topilmadi",
     priceLabel: "Narx",
     priceNotSet: "Narx belgilanmagan",
     processing: "Bajarilmoqda...",
     reasonLabel: "Sabab",
+    rejectPaymentAction: "To'lovni rad etish",
+    rejectPaymentDialogTitle: "To'lovni rad etish",
     regionLabel: "Hudud",
     requiredField: "Majburiy maydon",
     rescheduleAction: "Vaqtni o'zgartirish",
@@ -2554,6 +3001,10 @@ function getOrderLabels(locale: Locale) {
     updatedAtLabel: "Yangilangan",
     updatedToast: "Buyurtma yangilandi",
     updateFailed: "Yangilash bajarilmadi",
+    verifiedAtLabel: "Tekshirildi",
+    verifyPaymentAction: "To'lovni tasdiqlash",
+    verifyPaymentDialogMessage: "Mijoz chekini tasdiqlab, buyurtmani tasdiqlangan holatiga o'tkazasizmi?",
+    verifyPaymentDialogTitle: "To'lovni tasdiqlash",
     viewAction: "Ko'rish",
     week: "7 kun",
   };

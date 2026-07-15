@@ -52,14 +52,13 @@ const initialFilters: UserFilters = {
 
 function getUserDrawerInputClassName(error?: string) {
   return cn(
-    "!h-[38px] !rounded-[11px] !bg-[#fbfcff] !px-3.5 !py-2 !text-[13px] !font-medium !text-[#0f172a]",
-    "!shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.035)]",
-    "transition-[border-color,box-shadow,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
-    "placeholder:!text-[#94a3b8] hover:!border-[#d6dfeb] hover:!bg-white",
-    "dark:!bg-white/[0.035] dark:!text-white dark:!shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:placeholder:!text-slate-500 dark:hover:!bg-white/[0.045]",
+    "!h-10 !rounded-xl !bg-[#f8fafc] !px-3 !py-0 !text-[13px] !font-bold !text-[#475569]",
+    "!shadow-none transition-[border-color,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
+    "placeholder:!text-[#94a3b8] hover:!border-[#e6ebf2] hover:!bg-[#f8fafc]",
+    "dark:!bg-white/[0.035] dark:!text-slate-200 dark:placeholder:!text-slate-500 dark:hover:!bg-white/[0.035]",
     error
-      ? "!border-rose-300 focus:!border-rose-400 focus:!ring-[3px] focus:!ring-rose-500/10 focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_8px_18px_rgba(244,63,94,0.08)] dark:!border-rose-500/40 dark:focus:!border-rose-400/60 dark:focus:!ring-rose-400/10 dark:focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_8px_18px_rgba(244,63,94,0.12)]"
-      : "!border-[#e3e9f2] focus:!border-orange-500/45 focus:!ring-[3px] focus:!ring-orange-500/10 focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_8px_18px_rgba(249,115,22,0.07)] dark:!border-white/10 dark:focus:!border-orange-400/40 dark:focus:!ring-orange-400/10 dark:focus:!shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_8px_18px_rgba(251,146,60,0.11)]",
+      ? "!border-rose-300 focus:!border-rose-400 focus:!ring-0 dark:!border-rose-500/40 dark:focus:!border-rose-400/60"
+      : "!border-[#e6ebf2] focus:!border-orange-500/45 focus:!ring-0 dark:!border-white/10 dark:focus:!border-amber-300/50",
   );
 }
 
@@ -213,7 +212,7 @@ export default function UsersPage() {
           <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">
+          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
             {labels.title}
           </h1>
           <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
@@ -226,7 +225,7 @@ export default function UsersPage() {
         onSubmit={applyFilters}
         className="artistbor-table-filter-shell overflow-x-auto"
       >
-        <div className="artistbor-table-filter-panel flex min-h-[38px] min-w-[820px] items-center gap-2.5">
+        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -234,12 +233,12 @@ export default function UsersPage() {
             placeholder={labels.searchPlaceholder}
             onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
             className={cn(
-              "artistbor-filter-search !h-[38px] !rounded-[11px] !border-[#e6ebf2] !bg-white !text-[13px] !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+              "artistbor-table-filter-control artistbor-filter-search h-10",
               draftFilters.search && "artistbor-filter-search-active",
             )}
           />
           <Select
-            className="artistbor-compact-select !h-[38px] !w-[180px] shrink-0"
+            className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[180px] shrink-0 md:justify-self-start"
             value={draftFilters.status ?? ""}
             onChange={(status) => changeDraftFilter({ status })}
             options={[{ label: `${labels.status}: ${labels.all}`, value: "" }, ...userStatusOptions]}
@@ -262,7 +261,7 @@ export default function UsersPage() {
           />
           <Button
             htmlType="button"
-            className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-[11px] !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
+            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 w-28 shrink-0 md:col-start-5"
             icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
           >
@@ -369,7 +368,7 @@ function UsersTable({
   onUnblock: (row: User) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1156px] border-separate border-spacing-0">
           <colgroup>
@@ -393,22 +392,22 @@ function UsersTable({
           <tbody>
             {rows.map((row, index) => (
               <tr key={`${row.id ?? "user"}-${index}`} className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
-                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle text-[13px] font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
+                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
                   {row.id ?? "—"}
                 </td>
-                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <UserIdentityCell user={row} labels={labels} />
                 </td>
-                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <UserContactCell user={row} />
                 </td>
-                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <UserStatusPill user={row} labels={labels} />
                 </td>
-                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
+                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
                   {formatUserDate(row.created_at)}
                 </td>
-                <td className="border-b border-[#edf2f7] px-3.5 py-2.5 align-middle dark:border-white/10">
+                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <div className="flex items-center justify-end gap-1.5">
                     <UserTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
                       <Pencil className="size-4" />
@@ -470,7 +469,7 @@ function UserIdentityCell({ user, labels }: { user: User; labels: UserLabels }) 
 function UserContactCell({ user }: { user: User }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[13px] font-medium leading-[18px] text-[#334155] dark:text-slate-200">
+      <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
         {formatPhone(user.phone) || "—"}
       </p>
       <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
@@ -481,18 +480,20 @@ function UserContactCell({ user }: { user: User }) {
 }
 
 function UserStatusPill({ user, labels }: { user: User; labels: UserLabels }) {
-  const blocked = isBlockedUser(user);
+  const status = getUserStatusDisplay(user, labels);
 
   return (
     <span
       className={cn(
-        "inline-flex h-6 items-center rounded-full px-2.5 text-[11px] font-bold",
-        blocked
+        "inline-flex h-6 max-w-full items-center rounded-full px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]",
+        status.tone === "danger"
           ? "bg-[#ffe4e6] text-[#e11d48] dark:bg-rose-500/10 dark:text-rose-300"
-          : "bg-[#dcfce7] text-[#059669] dark:bg-emerald-500/10 dark:text-emerald-300",
+          : status.tone === "neutral"
+            ? "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300"
+            : "bg-[#dcfce7] text-[#059669] dark:bg-emerald-500/10 dark:text-emerald-300",
       )}
     >
-      {blocked ? labels.blockedStatus : labels.activeStatus}
+      {status.label}
     </span>
   );
 }
@@ -642,6 +643,16 @@ function validateRequired(values: Record<string, string>, keys: string[], messag
 function isBlockedUser(user: User) {
   const status = String(user.status ?? "").toLowerCase();
   return status.includes("block") || status === "20";
+}
+
+function getUserStatusDisplay(user: User, labels: UserLabels) {
+  const status = String(user.status ?? user.status_label ?? "10").trim().toLowerCase();
+  if (status === "20" || status.includes("block")) return { label: labels.blockedStatus, tone: "danger" as const };
+  if (status === "9" || status.includes("inactive") || status.includes("nofaol")) return { label: labels.inactiveStatus, tone: "neutral" as const };
+  if (status === "0" || status.includes("delete") || status.includes("deleted") || status.includes("o'chiril")) {
+    return { label: labels.deletedStatus, tone: "danger" as const };
+  }
+  return { label: labels.activeStatus, tone: "success" as const };
 }
 
 function getUserName(user: User, labels: UserLabels) {

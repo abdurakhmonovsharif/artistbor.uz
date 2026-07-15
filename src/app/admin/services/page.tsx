@@ -166,14 +166,14 @@ export default function ServicesPage() {
   };
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">{labels.title}</h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{labels.title}</h1>
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.pageDescription}
           </p>
         </div>
@@ -189,7 +189,7 @@ export default function ServicesPage() {
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
-        gridClassName="md:grid-cols-[auto_minmax(150px,0.75fr)_minmax(150px,0.75fr)_minmax(140px,0.65fr)_auto] md:items-center"
+        gridClassName="md:grid-cols-[auto_auto_auto_auto_minmax(0,1fr)_auto] md:items-center"
         mobileLabel={t("actions.search")}
       >
         <Input
@@ -231,7 +231,7 @@ export default function ServicesPage() {
         />
         <Button
           htmlType="button"
-          className={`${adminFilterActionClass} h-10`}
+          className={`${adminFilterActionClass} h-10 md:col-start-6`}
           icon={<RotateCcw className="size-4" />}
           onClick={resetFilters}
         >
@@ -339,11 +339,11 @@ function ServiceHierarchyTable({
   onExpand: (id: number) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111827]">
-      <div className="admin-table-scroll overflow-x-auto">
-        <table className="w-full min-w-[920px] border-collapse">
+    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px] border-separate border-spacing-0">
           <thead>
-            <tr className="h-11 border-b border-slate-200 bg-slate-50 text-left dark:border-white/10 dark:bg-white/[0.03]">
+            <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
               <TableHead className="w-12" />
               <TableHead>ID</TableHead>
               <TableHead>{labels.name}</TableHead>
@@ -413,10 +413,10 @@ function ServiceRowGroup({
         service={service}
       />
       {expanded ? (
-        <tr className="border-b border-slate-100 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.02]">
-          <td colSpan={7} className="px-3 py-2">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#111827]">
-              <table className="w-full border-collapse">
+        <tr className="bg-[#f8fafc]/70 dark:bg-white/[0.02]">
+          <td colSpan={7} className="border-b border-[#edf2f7] px-3.5 py-2.5 dark:border-white/10">
+            <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white dark:border-white/10 dark:bg-slate-950">
+              <table className="w-full border-separate border-spacing-0">
                 <tbody>
                   {childrenRows.map((child, index) => (
                     <ServiceTableRow
@@ -470,8 +470,8 @@ function ServiceTableRow({
   return (
     <tr
       className={cn(
-        "h-16 border-b border-slate-100 transition last:border-0 hover:bg-slate-50/80 dark:border-white/10 dark:hover:bg-white/[0.035]",
-        nested && "h-14 bg-slate-50/70 dark:bg-white/[0.02]",
+        "h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]",
+        nested && "h-[60px] bg-[#f8fafc]/60 dark:bg-white/[0.02]",
       )}
     >
       <TableCell className="w-12">
@@ -479,37 +479,37 @@ function ServiceTableRow({
           <button
             type="button"
             onClick={() => service.id && onExpand(service.id)}
-            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+            className="grid size-8 cursor-pointer place-items-center rounded-[10px] border border-[#e6ebf2] bg-white text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
             aria-label={expanded ? labels.collapseSubservices : labels.expandSubservices}
           >
             {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
         ) : nested ? (
-          <span className="ml-3 block h-px w-5 bg-slate-300 dark:bg-white/20" />
+          <span className="ml-3 block h-px w-5 bg-[#cbd5e1] dark:bg-white/20" />
         ) : null}
       </TableCell>
-      <TableCell>{toDisplay(service.id)}</TableCell>
+      <TableCell className="font-semibold text-[#64748b] dark:text-slate-400">{toDisplay(service.id)}</TableCell>
       <TableCell>
         <div className={cn("min-w-0", nested && "pl-5")}>
-          <p className="line-clamp-2 text-sm font-semibold text-slate-950 dark:text-white">
+          <p className="line-clamp-2 text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
             {localizedName(service, labels.locale)}
           </p>
           {nested ? (
-            <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
               {labels.subservice}
             </p>
           ) : childCount ? (
-            <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+            <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
               {labels.childrenCount(childCount)}
             </p>
           ) : null}
         </div>
       </TableCell>
-      <TableCell>{service.slug ?? "—"}</TableCell>
+      <TableCell className="font-medium text-[#334155] dark:text-slate-200">{service.slug ?? "—"}</TableCell>
       <TableCell>
-        <StatusBadge value={service.status} />
+        <StatusBadge value={service.status} fieldKey="status" />
       </TableCell>
-      <TableCell>{toDisplay(service.sort_order)}</TableCell>
+      <TableCell className="font-medium text-[#475569] dark:text-slate-300">{toDisplay(service.sort_order)}</TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-2">
           {root ? (
@@ -646,14 +646,14 @@ function ServiceFormDrawer({
 
 function TableHead({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={cn("px-3 text-left text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400", className)}>
+    <th className={cn("border-b border-[#e6ebf2] px-3.5 py-0 text-left text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400", className)}>
       {children}
     </th>
   );
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("max-w-[300px] px-3 py-2 align-middle text-sm text-slate-700 dark:text-slate-100", className)}>{children}</td>;
+  return <td className={cn("max-w-[300px] border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
 }
 
 function IconButton({
@@ -674,10 +674,10 @@ function IconButton({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "grid size-8 cursor-pointer place-items-center rounded-lg border transition",
+        "grid size-8 cursor-pointer place-items-center rounded-[10px] border bg-white transition dark:bg-white/[0.03]",
         danger
-          ? "border-rose-200 text-rose-500 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
-          : "border-slate-200 text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300",
+          ? "border-[#fecaca] text-[#f43f5e] hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
+          : "border-[#e6ebf2] text-[#475569] hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.06]",
       )}
     >
       {children}

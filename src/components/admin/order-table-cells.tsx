@@ -8,6 +8,7 @@ import {
   formatUnixDateTime,
 } from "@/lib/order-format";
 import type { OrderUiStatus } from "@/lib/order-status";
+import { formatMoneyWithCurrency } from "@/lib/money-format";
 
 export function StatusBadge({ status }: { status: OrderUiStatus }) {
   const toneClass: Record<OrderUiStatus["tone"], string> = {
@@ -23,7 +24,7 @@ export function StatusBadge({ status }: { status: OrderUiStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black leading-none",
+        "inline-flex h-6 max-w-full items-center rounded-full border px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]",
         toneClass[status.tone],
       )}
     >
@@ -43,11 +44,11 @@ export function EntityName({
 }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-sm font-black text-slate-900 dark:text-white">
+      <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
         {primary || fallback}
       </p>
       {secondary ? (
-        <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+        <p className="mt-1 truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
           {secondary}
         </p>
       ) : null}
@@ -58,27 +59,24 @@ export function EntityName({
 export function MoneyText({
   value,
   emptyLabel = "Narx belgilanmagan",
-  currencyLabel = "so'm",
   locale = "uz",
 }: {
   value: unknown;
   emptyLabel?: string;
-  currencyLabel?: string;
   locale?: "uz" | "ru";
 }) {
   if (value === null || value === undefined || value === "") {
-    return <span className="text-xs font-semibold text-slate-400">{emptyLabel}</span>;
+    return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{emptyLabel}</span>;
   }
 
-  const amount = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(amount)) {
-    return <span className="text-xs font-semibold text-slate-400">{emptyLabel}</span>;
+  const amount = formatMoneyWithCurrency(value, locale);
+  if (!amount) {
+    return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{emptyLabel}</span>;
   }
 
   return (
-    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-      {new Intl.NumberFormat(locale === "ru" ? "ru-RU" : "uz-UZ", { maximumFractionDigits: 0 }).format(amount)}{" "}
-      {currencyLabel}
+    <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
+      {amount}
     </span>
   );
 }
@@ -96,14 +94,14 @@ export function DateTimeCell({
 
   return (
     <div className="min-w-0">
-      <p className="whitespace-nowrap text-sm font-black text-slate-900 dark:text-white">
+      <p className="whitespace-nowrap text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
         {formatBookingDate(date)}
       </p>
-      <p className="mt-1 whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-slate-400">
+      <p className="mt-1 whitespace-nowrap text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
         {timeRange.primary}
       </p>
       {timeRange.secondary ? (
-        <p className="mt-1 text-[11px] font-semibold text-slate-400">{timeRange.secondary}</p>
+        <p className="mt-1 text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{timeRange.secondary}</p>
       ) : null}
     </div>
   );
@@ -128,19 +126,19 @@ export function LocationCell({
 
   return (
     <div className="min-w-0">
-      <p className="truncate text-sm font-black text-slate-900 dark:text-white">
+      <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
         {region || "Location not set"}
       </p>
       {district ? (
-        <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+        <p className="mt-1 truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
           {district}
         </p>
       ) : districtFallback ? (
-        <p className="mt-1 text-[11px] font-semibold text-slate-400">{districtFallback}</p>
+        <p className="mt-1 text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{districtFallback}</p>
       ) : null}
-      {note ? <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-400">{note}</p> : null}
+      {note ? <p className="mt-1 line-clamp-2 text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{note}</p> : null}
       {!region && regionFallback ? (
-        <p className="mt-1 text-[11px] font-semibold text-slate-400">{regionFallback}</p>
+        <p className="mt-1 text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{regionFallback}</p>
       ) : null}
     </div>
   );
@@ -155,10 +153,10 @@ export function BookingCell({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-sm font-black text-slate-950 dark:text-white">
+      <p className="text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
         #{formatBookingId(id)}
       </p>
-      <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+      <p className="mt-1 text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
         {formatUnixDateTime(createdAt)}
       </p>
     </div>

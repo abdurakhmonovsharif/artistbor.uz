@@ -6,6 +6,7 @@ import type { ArtistApplication } from "@/types/api";
 import { formatPhone } from "@/lib/phone-format";
 import { toDisplay } from "@/lib/utils";
 import { getApplicationLabels } from "@/components/admin/applications/application-labels";
+import { adminDrawerClassNames, adminDrawerSubtitleStyles } from "@/components/admin/admin-drawer";
 import {
   getApplicationTitle,
   getContactValue,
@@ -79,12 +80,7 @@ export function ApplicationContactDrawer({
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
       rootClassName="artistbor-application-drawer artistbor-contact-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
+      classNames={adminDrawerClassNames}
       title={
         <div className="min-w-0">
           <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">{labels.contactTitle}</p>
@@ -102,13 +98,7 @@ export function ApplicationContactDrawer({
           {labels.closeAction}
         </button>
       }
-      styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 82, padding: "12px 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      styles={adminDrawerSubtitleStyles}
     >
       <div className="p-4">
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#121a2a]">

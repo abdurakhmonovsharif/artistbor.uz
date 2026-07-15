@@ -174,7 +174,7 @@ export default function CategoriesPage() {
           <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">{labels.title}</h1>
+          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{labels.title}</h1>
           <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
@@ -193,7 +193,7 @@ export default function CategoriesPage() {
         onSubmit={(event) => event.preventDefault()}
         className="artistbor-table-filter-shell overflow-x-auto"
       >
-        <div className="artistbor-table-filter-panel flex min-h-[52px] min-w-[620px] items-center gap-2.5 py-2">
+        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -201,12 +201,12 @@ export default function CategoriesPage() {
             placeholder={labels.searchPlaceholder}
             onChange={(event) => setDraftFilters((current) => ({ ...current, name: event.target.value }))}
             className={cn(
-              "artistbor-filter-search !h-[38px] !rounded-[11px] !border-[#e6ebf2] !bg-white !text-[13px] !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+              "artistbor-table-filter-control artistbor-filter-search h-10",
               draftFilters.name && "artistbor-filter-search-active",
             )}
           />
           <Select
-            className="artistbor-compact-select !h-[38px] !w-[220px] shrink-0"
+            className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[220px] shrink-0 md:justify-self-start"
             value={draftFilters.status ?? ""}
             onChange={(status) => setDraftFilters((current) => ({ ...current, status }))}
             options={[
@@ -217,7 +217,7 @@ export default function CategoriesPage() {
           />
           <Button
             htmlType="button"
-            className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-[11px] !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
+            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 w-28 shrink-0 md:col-start-4"
             icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
           >
@@ -339,7 +339,7 @@ function CategoryHierarchyTable({
   onRestore: (category: Category) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1040px] border-separate border-spacing-0">
           <colgroup>
@@ -428,7 +428,7 @@ function CategoryRowGroup({
       {expanded ? (
         <tr className="bg-[#f8fafc]/70 dark:bg-white/[0.02]">
           <td colSpan={7} className="border-b border-[#edf2f7] px-3.5 py-2.5 dark:border-white/10">
-            <div className="overflow-hidden rounded-xl border border-[#e6ebf2] bg-white dark:border-white/10 dark:bg-slate-950">
+            <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white dark:border-white/10 dark:bg-slate-950">
               <table className="w-full min-w-[1040px] border-separate border-spacing-0">
                 <colgroup>
                   <col className="w-12" />
@@ -573,13 +573,12 @@ function CategoryStatusPill({
   return (
     <span
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-bold",
+        "inline-flex h-6 max-w-full items-center rounded-full px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]",
         active
           ? "bg-[#dcfce7] text-[#059669] dark:bg-emerald-500/10 dark:text-emerald-300"
           : "bg-[#ffe4e6] text-[#e11d48] dark:bg-rose-500/10 dark:text-rose-300",
       )}
     >
-      <span className="size-1.5 rounded-full bg-current" />
       {active ? labels.active : labels.inactive}
     </span>
   );
@@ -688,7 +687,7 @@ function TableHead({ children, className }: { children?: React.ReactNode; classN
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("max-w-[340px] border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
+  return <td className={cn("max-w-[340px] border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
 }
 
 function IconButton({

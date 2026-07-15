@@ -95,22 +95,22 @@ export default function ArtistVideosPage() {
   };
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
           Videolar
         </p>
-        <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
           Sanatkor videolari
         </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
           Sanatkorlarga biriktirilgan videolarni ko&apos;rish va sanatkor bo&apos;yicha filterlash.
         </p>
       </div>
 
       <AdminFilterForm
         onSubmit={applyFilters}
-        gridClassName="md:grid-cols-[minmax(180px,1fr)_auto] md:items-center"
+        gridClassName="md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center"
         mobileLabel="Qidirish"
       >
           <Select
@@ -125,7 +125,7 @@ export default function ArtistVideosPage() {
           />
           <Button
             htmlType="button"
-            className={`${adminFilterActionClass} h-10`}
+            className={`${adminFilterActionClass} h-10 md:col-start-3`}
             icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
           >
@@ -184,7 +184,7 @@ function getVideoColumns(artistNameById: Map<string, string>): DataTableColumn<A
       label: "YouTube",
       render: (row) => <VideoLink value={row.youtube_url ?? row.embed_url} />,
     },
-    { key: "is_active", label: "Faol", render: (row) => <StatusBadge value={row.is_active} /> },
+    { key: "is_active", label: "Faol", render: (row) => <StatusBadge value={row.is_active} fieldKey="is_active" /> },
     { key: "created_at", label: "Yaratilgan", render: (row) => normalizeDate(row.created_at) },
   ];
 }

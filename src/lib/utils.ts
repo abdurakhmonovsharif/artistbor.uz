@@ -37,6 +37,7 @@ export function normalizeDate(value: unknown): string {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
+      hourCycle: "h23",
       minute: "2-digit",
     }).format(new Date(milliseconds));
   }
@@ -48,4 +49,3 @@ export function extractId(row: UnknownRecord): number | string | undefined {
   if (typeof id === "number" || typeof id === "string") return id;
   return undefined;
 }
-

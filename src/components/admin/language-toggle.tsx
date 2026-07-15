@@ -39,7 +39,7 @@ export function LanguageToggle() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 shadow-sm transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200"
+        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 shadow-none transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t("language.label")}
@@ -52,7 +52,7 @@ export function LanguageToggle() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-12 z-50 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15 dark:border-white/10 dark:bg-[#111827]"
+          className="absolute right-0 top-12 z-50 w-40 overflow-hidden rounded-[18px] border border-slate-200 bg-white p-1.5 shadow-none dark:border-white/10 dark:bg-[#111827]"
         >
           {locales.map((item) => (
             <button

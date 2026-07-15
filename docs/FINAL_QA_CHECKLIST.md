@@ -29,13 +29,14 @@ production data.
 
 - Open `/login`.
 - Submit valid admin phone/password.
-- Confirm `localStorage.artistbor_admin_token` is created.
+- Confirm `artistbor_admin_session` is set as an httpOnly cookie.
+- Confirm browser JavaScript cannot read the admin token from localStorage.
 - Confirm `/admin` opens after login.
-- Refresh `/admin` and confirm session is restored through `GET /v1/admin/auth/me`.
+- Refresh `/admin` and confirm session is restored through `GET /api/admin-auth/me`.
 - Logout from the header/sidebar.
-- Confirm token is removed and user is redirected to `/login`.
-- Confirm direct opening of `/admin/*` without token redirects to `/login`.
-- Confirm expired/invalid token receives `401`, clears token, and redirects to
+- Confirm session cookie is removed and user is redirected to `/login`.
+- Confirm direct opening of `/admin/*` without session redirects to `/login`.
+- Confirm expired/invalid session receives `401`, clears cookie, and redirects to
   `/login`.
 
 ## Shared Page Checks
@@ -46,7 +47,7 @@ For every implemented admin route:
 - Initial loading state is shown.
 - Table, empty state, or error state renders cleanly.
 - API request uses documented Swagger endpoint.
-- Request includes Bearer token.
+- Browser request goes to `/api/admin-proxy/*`; server-side proxy attaches Bearer token.
 - Filters do not crash.
 - Reset filters does not crash.
 - Detail modal opens when a row exists.
@@ -261,4 +262,3 @@ See `docs/BACKEND_BLOCKERS.md` for the backend handoff details.
 9. Confirm filters, modals, and pagination behavior.
 10. On staging/test data only, submit mutating actions one resource at a time.
 11. Re-run `npm run lint` and `npm run build` after any fixes.
-

@@ -157,6 +157,7 @@ export function formatDateParts(value: unknown, locale: Locale = "uz") {
   }).format(date);
   const timeText = new Intl.DateTimeFormat(formatterLocale, {
     hour: "2-digit",
+    hourCycle: "h23",
     minute: "2-digit",
   }).format(date);
 

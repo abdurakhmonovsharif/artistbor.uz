@@ -43,7 +43,7 @@ function AntdThemeProvider({ children }: { children: React.ReactNode }) {
             itemMarginBlock: 2,
             itemMarginInline: 0,
             itemPaddingInline: 12,
-            itemBorderRadius: 8,
+            itemBorderRadius: 12,
             iconSize: 16,
             iconMarginInlineEnd: 10,
             groupTitleFontSize: 11,

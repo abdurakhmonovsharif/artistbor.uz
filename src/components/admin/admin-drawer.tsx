@@ -2,7 +2,31 @@
 
 import { Drawer } from "antd";
 import { X } from "lucide-react";
+import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
+
+type DrawerClassNames = NonNullable<ComponentProps<typeof Drawer>["classNames"]>;
+type DrawerStyles = NonNullable<ComponentProps<typeof Drawer>["styles"]>;
+
+export const adminDrawerClassNames: DrawerClassNames = {
+  body: "artistbor-application-drawer-body",
+  footer: "artistbor-application-drawer-footer",
+  header: "artistbor-application-drawer-header",
+  title: "artistbor-application-drawer-title",
+};
+
+export const adminDrawerStyles: DrawerStyles = {
+  body: { padding: 0, overflow: "auto" },
+  footer: { padding: "12px 16px" },
+  header: { minHeight: 64, padding: "0 16px" },
+  mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
+  section: { boxShadow: "none" },
+};
+
+export const adminDrawerSubtitleStyles: DrawerStyles = {
+  ...adminDrawerStyles,
+  header: { minHeight: 96, padding: "18px 16px 16px" },
+};
 
 export function AdminDrawer({
   children,
@@ -30,21 +54,10 @@ export function AdminDrawer({
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
       rootClassName={cn("artistbor-application-drawer", className)}
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
+      classNames={adminDrawerClassNames}
       title={<span className="truncate text-lg font-bold text-slate-950 dark:text-white">{title}</span>}
       footer={footer}
-      styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 64, padding: "0 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      styles={adminDrawerStyles}
     >
       {children}
     </Drawer>

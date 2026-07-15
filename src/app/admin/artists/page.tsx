@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, Drawer, Input, Modal, Select, Tabs } from "antd";
 import {
@@ -8,7 +8,6 @@ import {
   CalendarDays,
   CalendarPlus,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -22,6 +21,7 @@ import {
   KeyRound,
   Languages,
   ListChecks,
+  Loader2,
   Mail,
   MoreHorizontal,
   Pencil,
@@ -41,7 +41,7 @@ import {
   adminActionButtonLargeClass,
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
-import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminDrawer, adminDrawerClassNames, adminDrawerStyles, adminDrawerSubtitleStyles } from "@/components/admin/admin-drawer";
 import {
   DateFilterSelect,
   getDateFilterPatch,
@@ -67,19 +67,41 @@ import {
   regionsApi,
   servicesApi,
   staffApi,
+  usersApi,
   type CreateArtistPayload,
   type ArtistFilters,
   type ArtistBusySlotPayload,
+  type ArtistRegionPriceRecord,
+  type ArtistServiceAssignmentPayload,
+  type ArtistServiceRegionPricePayload,
+  type ArtistServiceUpdatePayload,
   type UpdateCommentPayload,
   type UpdateArtistPayload,
+  type UpdateUserPayload,
   type UploadedFileRecord,
 } from "@/lib/api/admin-content";
 import { API_BASE_URL } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import {
+  formatMoneyInput,
+  formatMoneyWithCurrency,
+  MONEY_CURRENCY_LABEL,
+  parseMoneyInput,
+} from "@/lib/money-format";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
-import type { ArtistProfile, Category, District, ListResult, Region, UnknownRecord } from "@/types/api";
+import type {
+  ArtistBalanceRecord,
+  ArtistProfile,
+  ArtistTransactionRecord,
+  Category,
+  District,
+  ListResult,
+  Region,
+  Service,
+  UnknownRecord,
+} from "@/types/api";
 
 type DialogState =
   | { type: "create" }
@@ -87,7 +109,7 @@ type DialogState =
   | { type: "edit"; artist: ArtistProfile }
   | null;
 
-type DetailTab = "profile" | "services" | "availability" | "gallery" | "videos" | "comments" | "ratings";
+type DetailTab = "profile" | "services" | "finance" | "availability" | "gallery" | "videos" | "comments" | "ratings";
 type ResourceTab = Exclude<DetailTab, "profile">;
 type DetailResourceState = {
   loading: boolean;
@@ -124,7 +146,7 @@ const initialFilters: ArtistFilters = {
   limit,
 };
 
-const resourceTabs: ResourceTab[] = ["services", "availability", "gallery", "videos", "comments", "ratings"];
+const resourceTabs: ResourceTab[] = ["services", "finance", "availability", "gallery", "videos", "comments", "ratings"];
 
 type ArtistsLabels = ReturnType<typeof getArtistsLabels>;
 
@@ -132,6 +154,7 @@ function getDetailTabs(labels: ArtistsLabels): { key: DetailTab; label: string }
   return [
     { key: "profile", label: labels.profile },
     { key: "services", label: labels.services },
+    { key: "finance", label: labels.finance },
     { key: "availability", label: labels.availability },
     { key: "gallery", label: labels.gallery },
     { key: "videos", label: labels.videos },
@@ -288,13 +311,13 @@ export default function ArtistsPage() {
     <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[1.8px] text-[#f97316]">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-[28px] font-bold leading-tight tracking-[-0.02em] text-[#0f172a] dark:text-white">
+          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
             {labels.title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-[#64748b] dark:text-slate-400">
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
         </div>
@@ -312,65 +335,63 @@ export default function ArtistsPage() {
         onSubmit={applyFilters}
         className="artistbor-table-filter-shell overflow-x-auto"
       >
-        <div className="artistbor-table-filter-panel overflow-x-auto">
-          <div className="flex min-h-[38px] min-w-[900px] items-center gap-2.5">
-            <Input
-              allowClear
-              prefix={<Search className="size-4 text-[#94a3b8]" />}
-              placeholder={labels.searchPlaceholder}
-              value={draftFilters.search ?? ""}
-              onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
-              className={cn(
-                "artistbor-filter-search !h-[38px] !rounded-xl !border-[#e6ebf2] !bg-white !text-sm !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
-                draftFilters.search && "artistbor-filter-search-active",
-              )}
-            />
-            <Select
-              className="artistbor-compact-select !h-[38px] !w-[170px] shrink-0"
-              value={draftFilters.status ?? ""}
-              onChange={(status) => changeDraftFilter({ status })}
-              options={[
-                { label: `${labels.status}: ${labels.all}`, value: "" },
-                ...artistStatusOptions(labels),
-              ]}
-            />
+        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
+          <Input
+            allowClear
+            prefix={<Search className="size-4 text-[#94a3b8]" />}
+            placeholder={labels.searchPlaceholder}
+            value={draftFilters.search ?? ""}
+            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+            className={cn(
+              "artistbor-table-filter-control artistbor-filter-search h-10",
+              draftFilters.search && "artistbor-filter-search-active",
+            )}
+          />
+          <Select
+            className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[170px] shrink-0 md:justify-self-start"
+            value={draftFilters.status ?? ""}
+            onChange={(status) => changeDraftFilter({ status })}
+            options={[
+              { label: `${labels.status}: ${labels.all}`, value: "" },
+              ...artistStatusOptions(labels),
+            ]}
+          />
 
-            <Select
-              className="artistbor-compact-select !h-[38px] !w-[210px] shrink-0"
-              value={draftFilters.is_verified ?? ""}
-              onChange={(is_verified) => changeDraftFilter({ is_verified })}
-              options={[
-                { label: `${labels.verified}: ${labels.all}`, value: "" },
-                { label: labels.yes, value: 1 },
-                { label: labels.no, value: 0 },
-              ]}
-            />
-            <DateFilterSelect
-              value={{
-                mode: dateFilterMode,
-                date_from: draftFilters.date_from ?? "",
-                date_to: draftFilters.date_to ?? "",
-              }}
-              labels={{
-                label: labels.dateFilter,
-                newest: labels.newest,
-                oldest: labels.oldest,
-                custom: labels.custom,
-                from: labels.dateFrom,
-                to: labels.dateTo,
-              }}
-              inputClassName="!rounded-xl !text-sm"
-              onChange={changeDateFilter}
-            />
-            <Button
-              htmlType="button"
-              className="artistbor-filter-reset !h-[38px] !w-28 shrink-0 !rounded-xl !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
-              icon={<RotateCcw className="size-4" />}
-              onClick={resetFilters}
-            >
-              {labels.reset}
-            </Button>
-          </div>
+          <Select
+            className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[210px] shrink-0 md:justify-self-start"
+            value={draftFilters.is_verified ?? ""}
+            onChange={(is_verified) => changeDraftFilter({ is_verified })}
+            options={[
+              { label: `${labels.verified}: ${labels.all}`, value: "" },
+              { label: labels.yes, value: 1 },
+              { label: labels.no, value: 0 },
+            ]}
+          />
+          <DateFilterSelect
+            value={{
+              mode: dateFilterMode,
+              date_from: draftFilters.date_from ?? "",
+              date_to: draftFilters.date_to ?? "",
+            }}
+            labels={{
+              label: labels.dateFilter,
+              newest: labels.newest,
+              oldest: labels.oldest,
+              custom: labels.custom,
+              from: labels.dateFrom,
+              to: labels.dateTo,
+            }}
+            inputClassName="!rounded-xl !text-[13px]"
+            onChange={changeDateFilter}
+          />
+          <Button
+            htmlType="button"
+            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 w-28 shrink-0 md:col-start-6"
+            icon={<RotateCcw className="size-4" />}
+            onClick={resetFilters}
+          >
+            {labels.reset}
+          </Button>
         </div>
       </form>
 
@@ -411,7 +432,13 @@ export default function ArtistsPage() {
           if (!artistId) return;
           setSubmitting(true);
           try {
-            await artistsApi.update(artistId, payload);
+            const updatePayloads = splitArtistUpdatePayload(payload, dialog.artist);
+            if (updatePayloads.userPayload) {
+              await usersApi.update(artistId, updatePayloads.userPayload);
+            }
+            if (Object.keys(updatePayloads.artistPayload).length) {
+              await artistsApi.update(artistId, updatePayloads.artistPayload);
+            }
             toast.success(labels.updated);
             setDialog(null);
             await fetchArtists();
@@ -460,10 +487,9 @@ function ArtistsTable({
   onEdit: (row: ArtistProfile) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[30px] bg-white/55 p-1.5 shadow-[0_24px_64px_rgba(15,23,42,0.07)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
-      <div className="overflow-hidden rounded-[calc(30px-0.375rem)] bg-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1012px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1012px] border-separate border-spacing-0">
             <colgroup>
               <col className="w-12" />
               <col className="w-[280px]" />
@@ -487,25 +513,25 @@ function ArtistsTable({
             <tbody>
               {rows.map((row, index) => (
                 <tr key={`${getArtistId(row) ?? "artist"}-${index}`} className="group h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
-                  <td className="border-b border-[#edf2f7] px-3 py-2 align-middle text-xs font-bold text-[#64748b] dark:border-white/10 dark:text-slate-400">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-semibold text-[#64748b] dark:border-white/10 dark:text-slate-400">
                     {toDisplay(getArtistId(row))}
                   </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                     <ArtistIdentityCell artist={row} labels={labels} />
                   </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                     <ArtistContactCell artist={row} />
                   </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                     <ArtistStatusPill artist={row} labels={labels} />
                   </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                     <ArtistRatingCell artist={row} />
                   </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle text-xs font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
                     {formatArtistActivityDate(getArtistActivityDate(row), labels.locale)}
                   </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-2 align-middle dark:border-white/10">
+                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                     <div className="flex items-center justify-end gap-1.5">
                       <ArtistTableActionButton label={labels.detailTitle} onClick={() => onView(row)}>
                         <Eye className="size-4" />
@@ -518,8 +544,7 @@ function ArtistsTable({
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </table>
       </div>
     </div>
   );
@@ -537,7 +562,7 @@ function ArtistTableHead({
   return (
     <th
       className={cn(
-        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-none tracking-[0.16em] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
         align === "right" ? "text-right" : "text-left",
       )}
     >
@@ -599,16 +624,22 @@ function ArtistContactCell({ artist }: { artist: ArtistProfile }) {
 }
 
 function ArtistStatusPill({ artist, labels }: { artist: ArtistProfile; labels: ArtistsLabels }) {
-  const deleted = isDeletedArtist(artist);
-  const label = deleted ? labels.deletedStatus : labels.statusValueLabels.active;
+  const rawStatus = artist.status_label ?? artist.status ?? (isDeletedArtist(artist) ? "0" : "10");
+  const normalized = normalizeEnumToken(String(rawStatus));
+  const label = formatEnumValue("status", rawStatus, labels);
+  const tone = statusTone("status", normalized, label, String(rawStatus), labels);
 
   return (
     <span
       className={cn(
-        "inline-flex h-7 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-[0.13em]",
-        deleted
+        "inline-flex h-6 max-w-full items-center rounded-full px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]",
+        tone === "danger"
           ? "bg-rose-50 text-rose-600 ring-1 ring-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20"
-          : "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+          : tone === "neutral"
+            ? "bg-slate-100 text-slate-600 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-300 dark:ring-white/10"
+            : tone === "warning"
+              ? "bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20"
+              : "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
       )}
     >
       {label}
@@ -648,7 +679,7 @@ function ArtistTableActionButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-lg border border-[#e6ebf2] bg-white text-[#64748b] transition hover:border-[#fdba74] hover:bg-[#fff7ed] hover:text-[#f97316] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:border-amber-400/40 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+      className="grid size-8 place-items-center rounded-[10px] border border-[#e6ebf2] bg-white text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
     >
       {children}
     </button>
@@ -862,6 +893,7 @@ function formatArtistActivityDate(value: unknown, locale: Locale) {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
+        hourCycle: "h23",
         minute: "2-digit",
       }).format(new Date(timestamp));
     }
@@ -910,6 +942,7 @@ function ArtistDrawer({
     }
 
     let ignore = false;
+    const currentArtistId = artistId;
 
     async function loadResource<T extends object>(
       key: ResourceTab,
@@ -941,17 +974,83 @@ function ArtistDrawer({
       }
     }
 
-    void loadResource("services", artistServicesApi.list({ artist_id: artistId }));
-    void loadResource("availability", artistAvailabilityApi.list(artistId));
-    void loadResource("gallery", artistGalleryApi.list({ artist_id: artistId }));
-    void loadResource("videos", artistVideosApi.list({ artist_id: artistId }));
-    void loadResource("comments", commentsApi.byArtist(artistId));
-    void loadResource("ratings", ratingsApi.byArtist(artistId, 1, limit));
+    async function loadFinance() {
+      try {
+        const [balance, transactions] = await Promise.all([
+          artistsApi.balance(currentArtistId),
+          artistsApi.transactions(currentArtistId),
+        ]);
+        if (ignore) return;
+        setResources((current) => ({
+          ...current,
+          finance: {
+            loading: false,
+            error: null,
+            rows: Array.isArray(transactions) ? (transactions as UnknownRecord[]) : [],
+            raw: balance,
+          },
+        }));
+      } catch (caught) {
+        if (ignore) return;
+        setResources((current) => ({
+          ...current,
+          finance: {
+            ...current.finance,
+            loading: false,
+            error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          },
+        }));
+      }
+    }
+
+    void loadResource("services", artistServicesApi.list({ artist_id: currentArtistId }));
+    void loadFinance();
+    void loadResource("availability", artistAvailabilityApi.list(currentArtistId));
+    void loadResource("gallery", artistGalleryApi.list({ artist_id: currentArtistId }));
+    void loadResource("videos", artistVideosApi.list({ artist_id: currentArtistId }));
+    void loadResource("comments", commentsApi.byArtist(currentArtistId));
+    void loadResource("ratings", ratingsApi.byArtist(currentArtistId, 1, limit));
 
     return () => {
       ignore = true;
     };
   }, [artist, artistId, labels.artistIdMissing, labels.resourceLoadFailed]);
+
+  const reloadServices = useCallback(async () => {
+    if (!artistId) return;
+
+    setResources((current) => ({
+      ...current,
+      services: {
+        ...current.services,
+        loading: true,
+        error: null,
+      },
+    }));
+
+    try {
+      const result = await artistServicesApi.list({ artist_id: artistId });
+      setResources((current) => ({
+        ...current,
+        services: {
+          loading: false,
+          error: null,
+          rows: result.items as UnknownRecord[],
+          meta: result.meta,
+          raw: result.raw,
+        },
+      }));
+    } catch (caught) {
+      setResources((current) => ({
+        ...current,
+        services: {
+          ...current.services,
+          loading: false,
+          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+        },
+      }));
+    }
+  }, [artistId, labels.resourceLoadFailed]);
 
   const reloadAvailability = useCallback(async () => {
     if (!artistId) return;
@@ -1073,12 +1172,7 @@ function ArtistDrawer({
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
       rootClassName="artistbor-application-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
+      classNames={adminDrawerClassNames}
       title={
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
@@ -1101,15 +1195,9 @@ function ArtistDrawer({
           onResetPassword={() => setPasswordResetOpen(true)}
         />
       }
-      styles={{
-        body: { padding: "20px 20px 88px", overflow: "auto", overflowX: "hidden", scrollbarGutter: "stable" },
-        footer: { padding: "12px 20px" },
-        header: { minHeight: 64, padding: "0 20px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      styles={adminDrawerStyles}
     >
-      <div className="space-y-3.5">
+      <div className="space-y-3.5 p-4">
         <ArtistDrawerProfile artist={artist} labels={labels} />
 
         {mode === "edit" ? (
@@ -1135,7 +1223,17 @@ function ArtistDrawer({
                 tab.key === "profile" ? (
                   <ArtistProfileTab artist={artist} labels={labels} />
                 ) : tab.key === "services" ? (
-                  <ArtistServicesTab state={resources.services} labels={labels} />
+                  <ArtistServicesTab
+                    artistId={artistId}
+                    state={resources.services}
+                    labels={labels}
+                    onChanged={reloadServices}
+                  />
+                ) : tab.key === "finance" ? (
+                  <ArtistFinanceTab
+                    labels={labels}
+                    state={resources.finance}
+                  />
                 ) : tab.key === "availability" ? (
                   <ArtistScheduleSummaryTab
                     artist={artist}
@@ -1214,6 +1312,7 @@ function CreateArtistDrawer({
   const [regions, setRegions] = useState<Region[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const toast = useToast();
   const selectedRegionId = values.region_id;
   const profilePhotoId = values.profile_photo_id;
@@ -1224,20 +1323,23 @@ function CreateArtistDrawer({
 
     async function loadOptions() {
       try {
-        const [regionsResult, districtsResult, categoriesResult] = await Promise.all([
+        const [regionsResult, districtsResult, categoriesResult, servicesResult] = await Promise.all([
           regionsApi.list({ page: 1, limit: 1000 }),
           districtsApi.list({ page: 1, limit: 1000 }),
           categoriesApi.list({ page: 1, limit: 1000 }),
+          servicesApi.list({ page: 1, limit: 1000 }),
         ]);
         if (ignore) return;
         setRegions(regionsResult.items);
         setDistricts(districtsResult.items);
         setCategories(categoriesResult.items);
+        setServices(servicesResult.items);
       } catch {
         if (ignore) return;
         setRegions([]);
         setDistricts([]);
         setCategories([]);
+        setServices([]);
       }
     }
 
@@ -1285,6 +1387,8 @@ function CreateArtistDrawer({
     if (!values.phone.trim()) nextErrors.phone = labels.requiredField(labels.phone);
     if (!values.password.trim()) nextErrors.password = labels.requiredField(labels.password);
     if (!values.category_ids) nextErrors.category_ids = labels.requiredField(labels.category);
+    const servicesError = validateArtistServiceDrafts(values.services, labels);
+    if (servicesError) nextErrors.services = servicesError;
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -1374,6 +1478,17 @@ function CreateArtistDrawer({
               onFile={uploadProfilePhoto}
             />
           </div>
+        </ArtistFormSection>
+
+        <ArtistFormSection title={labels.services}>
+          <ArtistServiceDraftEditor
+            labels={labels}
+            regions={regions}
+            services={services}
+            value={values.services}
+            error={errors.services}
+            onChange={(servicesValue) => setValues((current) => ({ ...current, services: servicesValue }))}
+          />
         </ArtistFormSection>
 
         <ArtistFormSection title={labels.adminInfo}>
@@ -1522,25 +1637,20 @@ function ArtistHeaderBadge({
   const toneClass = {
     danger: {
       className: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300",
-      dotClassName: "bg-rose-500",
     },
     neutral: {
       className: "border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300",
-      dotClassName: "bg-slate-400",
     },
     success: {
       className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300",
-      dotClassName: "bg-emerald-500",
     },
     warning: {
       className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300",
-      dotClassName: "bg-amber-500",
     },
   }[tone];
 
   return (
-    <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold", toneClass.className)}>
-      <span className={cn("size-1.5 rounded-full", toneClass.dotClassName)} />
+    <span className={cn("inline-flex h-6 max-w-full items-center rounded-full border px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]", toneClass.className)}>
       {label}
     </span>
   );
@@ -1567,8 +1677,7 @@ function LocalizedStatusBadge({
   }[tone];
 
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em]", toneClass)}>
-      <span className="size-1.5 rounded-full bg-current" />
+    <span className={cn("inline-flex h-6 max-w-full items-center rounded-full border px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]", toneClass)}>
       {label}
     </span>
   );
@@ -1890,15 +1999,9 @@ function ArtistProfileTab({
         </ArtistSection>
       ) : null}
       {additionalEntries.length ? (
-        <details className="group rounded-lg border border-slate-200 bg-slate-50 p-3.5 dark:border-white/10 dark:bg-[#121a2a]">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-bold text-slate-950 dark:text-white">
-            {labels.additionalInfo}
-            <ChevronDown className="size-4 text-slate-500 transition group-open:rotate-180" />
-          </summary>
-          <div className="mt-3">
-            <ProfileData entries={additionalEntries} labels={labels} />
-          </div>
-        </details>
+        <ArtistSection title={labels.additionalInfo}>
+          <ProfileData entries={additionalEntries} labels={labels} />
+        </ArtistSection>
       ) : null}
     </div>
   );
@@ -2146,6 +2249,8 @@ function EditArtistForm({
       <ArtistFormSection hideTitle title={labels.accountStatus}>
         <div className="grid gap-4 md:grid-cols-2">
           <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
+          <FormField compact label={labels.cardLastFour} value={values.card_last_four} placeholder="0000" onChange={(card_last_four) => setValues((current) => ({ ...current, card_last_four }))} />
+          <FormField compact className="md:col-span-2" label={labels.cardToken} value={values.card_token} placeholder={labels.cardToken} onChange={(card_token) => setValues((current) => ({ ...current, card_token }))} />
           <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
           <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
         </div>
@@ -2330,6 +2435,20 @@ function categoryOptions(categories: Category[], labels: ArtistsLabels): FormFie
   }));
 }
 
+function serviceOptions(services: Service[], labels: ArtistsLabels): FormFieldOption[] {
+  return services.map((service) => ({
+    label: getLocalizedEntityName(service, labels.locale),
+    value: String(service.id ?? ""),
+  }));
+}
+
+function artistServiceStatusOptions(labels: ArtistsLabels): FormFieldOption[] {
+  return [
+    { label: labels.statusValueLabels.inactive, value: "0" },
+    { label: labels.statusValueLabels.active, value: "1" },
+  ];
+}
+
 function initialArtistFormValues(artist: ArtistProfile) {
   const profile = nestedArtistRecord(artist, "profile");
   const artistProfile = nestedArtistRecord(artist, "artistProfile") ?? nestedArtistRecord(artist, "artist_profile");
@@ -2350,6 +2469,8 @@ function initialArtistFormValues(artist: ArtistProfile) {
     extra_phone: formatPhoneInput(stringRecordValue(artistProfile, "extra_phone") ?? artist.extra_phone),
     administrator_name: stringRecordValue(artistProfile, "administrator_name") ?? artist.administrator_name ?? "",
     administrator_phone: formatPhoneInput(stringRecordValue(artistProfile, "administrator_phone") ?? artist.administrator_phone),
+    card_last_four: stringRecordValue(artistProfile, "card_last_four") ?? artist.card_last_four ?? "",
+    card_token: stringRecordValue(artistProfile, "card_token") ?? artist.card_token ?? "",
     profile_photo_id: profilePhotoId === undefined ? "" : String(profilePhotoId),
     profile_photo_url: getArtistPhotoUrl(artist) ?? "",
     is_verified: booleanRecordValue(artistProfile, "is_verified") ?? Boolean(artist.is_verified),
@@ -3316,31 +3437,159 @@ function GalleryPreviewImage({ title, urls }: { title: string; urls: string[] })
 }
 
 function ArtistServicesTab({
+  artistId,
   state,
   labels,
+  onChanged,
 }: {
+  artistId?: number;
   state: DetailResourceState;
   labels: ArtistsLabels;
+  onChanged: () => Promise<void>;
 }) {
+  const toast = useToast();
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(true);
+  const [formMode, setFormMode] = useState<ArtistServiceFormMode | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UnknownRecord | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+
+    Promise.all([
+      regionsApi.list({ page: 1, limit: 1000 }),
+      servicesApi.list({ page: 1, limit: 1000 }),
+    ])
+      .then(([regionsResult, servicesResult]) => {
+        if (!ignore) {
+          setRegions(regionsResult.items);
+          setServices(servicesResult.items);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setRegions([]);
+          setServices([]);
+        }
+      })
+      .finally(() => {
+        if (!ignore) setRegionsLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   if (state.loading) return <LoadingState label={labels.loadingTitle(labels.services)} />;
   if (state.error) return <ErrorState message={state.error} />;
 
   const rows = state.rows.length ? state.rows : rowsFromRawResource(state.raw);
 
-  if (!rows.length) return <EmptyState title={labels.notFoundTitle(labels.services)} />;
+  const submitServiceForm = async (values: ArtistServiceFormValues) => {
+    if (!artistId) {
+      toast.error(labels.artistIdMissing);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      if (formMode?.type === "edit") {
+        const serviceId = getArtistServiceRecordId(formMode.service);
+        if (!serviceId) throw new Error(labels.regionPriceServiceMissing);
+        await artistServicesApi.update(serviceId, buildArtistServiceUpdatePayload(values));
+      } else {
+        await artistServicesApi.assign(buildArtistServiceAssignmentPayload(artistId, values));
+      }
+      toast.success(labels.artistServiceSaved);
+      setFormMode(null);
+      await onChanged();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.artistServiceSaveFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteService = async () => {
+    if (!deleteTarget) return;
+    const serviceId = getArtistServiceRecordId(deleteTarget);
+    if (!serviceId) {
+      toast.error(labels.regionPriceServiceMissing);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await artistServicesApi.delete(serviceId);
+      toast.success(labels.artistServiceDeleted);
+      setDeleteTarget(null);
+      await onChanged();
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.artistServiceDeleteFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.services}</h4>
-      <div className="space-y-3">
-        {rows.map((service, index) => (
-          <ArtistServiceCard
-            key={String(resourceRowKey(service, index))}
-            labels={labels}
-            service={service}
-          />
-        ))}
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.services}</h4>
+        <button
+          type="button"
+          onClick={() => setFormMode({ type: "assign" })}
+          className={adminPrimaryActionButtonClass}
+        >
+          <Plus className="size-4" />
+          {labels.assignService}
+        </button>
       </div>
+
+      {formMode ? (
+        <ArtistServiceForm
+          key={formMode.type === "edit" ? `edit-${getArtistServiceRecordId(formMode.service) ?? "new"}` : "assign"}
+          labels={labels}
+          mode={formMode}
+          regions={regions}
+          services={services}
+          submitting={submitting}
+          onCancel={() => setFormMode(null)}
+          onSubmit={submitServiceForm}
+        />
+      ) : null}
+
+      {rows.length ? (
+        <div className="space-y-3">
+          {rows.map((service, index) => (
+            <ArtistServiceCard
+              key={String(resourceRowKey(service, index))}
+              labels={labels}
+              regions={regions}
+              regionsLoading={regionsLoading}
+              service={service}
+              onDelete={() => setDeleteTarget(service)}
+              onEdit={() => setFormMode({ type: "edit", service })}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState title={labels.notFoundTitle(labels.services)} />
+      )}
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        title={labels.deleteArtistServiceTitle}
+        okText={labels.deleteArtistService}
+        cancelText={labels.cancel}
+        okButtonProps={{ danger: true, loading: submitting }}
+        onCancel={() => setDeleteTarget(null)}
+        onOk={() => void deleteService()}
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {labels.deleteArtistServiceConfirm}
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -3348,9 +3597,17 @@ function ArtistServicesTab({
 function ArtistServiceCard({
   service,
   labels,
+  regions,
+  regionsLoading,
+  onEdit,
+  onDelete,
 }: {
   service: UnknownRecord;
   labels: ArtistsLabels;
+  regions: Region[];
+  regionsLoading: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const title = getArtistServiceTitle(service, labels);
   const description = getArtistServiceDescription(service);
@@ -3373,6 +3630,24 @@ function ArtistServiceCard({
           <LocalizedStatusBadge fieldKey="status" labels={labels} value={service.status} />
         ) : null}
       </div>
+      <div className="mt-3 flex flex-wrap justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+        >
+          <Pencil className="size-3.5" />
+          {labels.editArtistService}
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#fecaca] bg-white px-2.5 text-xs font-bold text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
+        >
+          <Trash2 className="size-3.5" />
+          {labels.deleteArtistService}
+        </button>
+      </div>
       {chips.length ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {chips.map((chip) => (
@@ -3385,7 +3660,719 @@ function ArtistServiceCard({
           ))}
         </div>
       ) : null}
+      <ArtistServiceRegionPrices
+        labels={labels}
+        regions={regions}
+        regionsLoading={regionsLoading}
+        service={service}
+      />
     </article>
+  );
+}
+
+type ArtistServiceFormMode =
+  | { type: "assign" }
+  | { type: "edit"; service: UnknownRecord };
+
+type ArtistServiceFormValues = {
+  service_id: string;
+  price: string;
+  note: string;
+  status: string;
+  region_prices: RegionPriceRow[];
+};
+
+type ArtistServiceDraft = ArtistServiceFormValues & {
+  localId: string;
+};
+
+function ArtistServiceForm({
+  labels,
+  mode,
+  regions,
+  services,
+  submitting,
+  onCancel,
+  onSubmit,
+}: {
+  labels: ArtistsLabels;
+  mode: ArtistServiceFormMode;
+  regions: Region[];
+  services: Service[];
+  submitting: boolean;
+  onCancel: () => void;
+  onSubmit: (values: ArtistServiceFormValues) => Promise<void>;
+}) {
+  const [values, setValues] = useState<ArtistServiceFormValues>(() => artistServiceFormValuesFromMode(mode));
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const validationError = validateArtistServiceForm(values, labels);
+    setError(validationError);
+    if (validationError) return;
+    await onSubmit(values);
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="rounded-lg border border-[#e6ebf2] bg-[#f8fafc] p-3 dark:border-white/10 dark:bg-white/[0.03]"
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-bold text-slate-950 dark:text-white">
+          {mode.type === "edit" ? labels.editArtistService : labels.assignService}
+        </p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="grid size-8 cursor-pointer place-items-center rounded-[10px] text-[#64748b] transition hover:bg-white hover:text-[#0f172a] dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white"
+          aria-label={labels.cancel}
+          title={labels.cancel}
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FormField
+          compact
+          disabled={mode.type === "edit"}
+          label={labels.services}
+          type="select"
+          required
+          value={values.service_id}
+          placeholder={labels.services}
+          options={serviceOptions(services, labels)}
+          onChange={(service_id) => setValues((current) => ({ ...current, service_id }))}
+        />
+        <FormField
+          compact
+          label={labels.price}
+          required
+          value={formatMoneyInput(values.price, labels.locale)}
+          suffix={MONEY_CURRENCY_LABEL}
+          onChange={(price) => setValues((current) => ({ ...current, price: parseMoneyInput(price) }))}
+        />
+        {mode.type === "edit" ? (
+          <FormField
+            compact
+            label={labels.status}
+            type="select"
+            value={values.status}
+            options={artistServiceStatusOptions(labels)}
+            onChange={(status) => setValues((current) => ({ ...current, status }))}
+          />
+        ) : null}
+        <FormField
+          compact
+          className="md:col-span-2"
+          label={labels.reason}
+          type="textarea"
+          rows={3}
+          value={values.note}
+          onChange={(note) => setValues((current) => ({ ...current, note }))}
+        />
+      </div>
+      <ArtistServiceRegionPriceDraftFields
+        labels={labels}
+        regions={regions}
+        value={values.region_prices}
+        onChange={(region_prices) => setValues((current) => ({ ...current, region_prices }))}
+      />
+      {error ? <p className="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{error}</p> : null}
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-3 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+        >
+          {labels.cancel}
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-[10px] border border-emerald-300 bg-white px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:text-emerald-200"
+        >
+          {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+          {submitting ? labels.saving : labels.saveBusySlot}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ArtistServiceDraftEditor({
+  labels,
+  regions,
+  services,
+  value,
+  error,
+  onChange,
+}: {
+  labels: ArtistsLabels;
+  regions: Region[];
+  services: Service[];
+  value: ArtistServiceDraft[];
+  error?: string;
+  onChange: (value: ArtistServiceDraft[]) => void;
+}) {
+  const addDraft = () => onChange([...value, createArtistServiceDraft()]);
+  const updateDraft = (localId: string, patch: Partial<ArtistServiceDraft>) => {
+    onChange(value.map((draft) => (draft.localId === localId ? { ...draft, ...patch } : draft)));
+  };
+  const removeDraft = (localId: string) => onChange(value.filter((draft) => draft.localId !== localId));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={addDraft}
+          className={adminPrimaryActionButtonClass}
+        >
+          <Plus className="size-4" />
+          {labels.assignService}
+        </button>
+      </div>
+      {value.length ? (
+        <div className="space-y-3">
+          {value.map((draft) => (
+            <div key={draft.localId} className="rounded-lg border border-[#e6ebf2] bg-white p-3 dark:border-white/10 dark:bg-slate-950">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-sm font-bold text-slate-950 dark:text-white">{labels.services}</p>
+                <button
+                  type="button"
+                  onClick={() => removeDraft(draft.localId)}
+                  className="grid size-8 cursor-pointer place-items-center rounded-[10px] border border-[#fecaca] text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  aria-label={labels.deleteArtistService}
+                  title={labels.deleteArtistService}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <FormField
+                  compact
+                  label={labels.services}
+                  type="select"
+                  value={draft.service_id}
+                  placeholder={labels.services}
+                  options={serviceOptions(services, labels)}
+                  onChange={(service_id) => updateDraft(draft.localId, { service_id })}
+                />
+                <FormField
+                  compact
+                  label={labels.price}
+                  value={formatMoneyInput(draft.price, labels.locale)}
+                  suffix={MONEY_CURRENCY_LABEL}
+                  onChange={(price) => updateDraft(draft.localId, { price: parseMoneyInput(price) })}
+                />
+              </div>
+              <ArtistServiceRegionPriceDraftFields
+                labels={labels}
+                regions={regions}
+                value={draft.region_prices}
+                onChange={(region_prices) => updateDraft(draft.localId, { region_prices })}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-[10px] mt-3 border border-dashed border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
+          {labels.regionPricesEmpty}
+        </p>
+      )}
+      {error ? <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">{error}</p> : null}
+    </div>
+  );
+}
+
+function ArtistServiceRegionPriceDraftFields({
+  labels,
+  regions,
+  value,
+  onChange,
+}: {
+  labels: ArtistsLabels;
+  regions: Region[];
+  value: RegionPriceRow[];
+  onChange: (value: RegionPriceRow[]) => void;
+}) {
+  const addRow = () => onChange([...value, createRegionPriceRow()]);
+  const updateRow = (localId: string, patch: Partial<RegionPriceRow>) => {
+    onChange(value.map((row) => (row.localId === localId ? { ...row, ...patch } : row)));
+  };
+  const removeRow = (localId: string) => onChange(value.filter((row) => row.localId !== localId));
+
+  return (
+    <div className="mt-3 rounded-[10px] border border-[#e6ebf2] bg-[#f8fafc] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4">
+        <p className="min-w-0 text-[13px] font-bold text-[#0f172a] dark:text-white">{labels.regionPrices}</p>
+        <button
+          type="button"
+          onClick={addRow}
+          className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+        >
+          <Plus className="size-3.5" />
+          {labels.add}
+        </button>
+      </div>
+      {value.length ? (
+        <div className="mt-3 space-y-2">
+          {value.map((row) => (
+            <div key={row.localId} className="grid gap-2 rounded-[10px] border border-[#e6ebf2] bg-white p-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_auto] dark:border-white/10 dark:bg-slate-950">
+              <FormField
+                compact
+                hideLabel
+                label={labels.region}
+                type="select"
+                value={row.region_id}
+                placeholder={labels.region}
+                options={regionPriceOptions(regions, row, labels)}
+                onChange={(region_id) => updateRow(row.localId, { region_id })}
+              />
+              <FormField
+                compact
+                hideLabel
+                label={labels.price}
+                value={formatMoneyInput(row.price, labels.locale)}
+                placeholder={labels.price}
+                suffix={MONEY_CURRENCY_LABEL}
+                onChange={(price) => updateRow(row.localId, { price: parseMoneyInput(price) })}
+              />
+              <button
+                type="button"
+                onClick={() => removeRow(row.localId)}
+                className="grid size-10 cursor-pointer place-items-center rounded-[10px] border border-[#fecaca] bg-white text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
+                aria-label={labels.deleteRegionPrice}
+                title={labels.deleteRegionPrice}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-[10px] border border-dashed border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
+          {labels.regionPricesEmpty}
+        </p>
+      )}
+    </div>
+  );
+}
+
+type RegionPriceRow = {
+  localId: string;
+  id?: number;
+  region_id: string;
+  region_name?: string;
+  price: string;
+  editing?: boolean;
+};
+
+function ArtistServiceRegionPrices({
+  labels,
+  regions,
+  regionsLoading,
+  service,
+}: {
+  labels: ArtistsLabels;
+  regions: Region[];
+  regionsLoading: boolean;
+  service: UnknownRecord;
+}) {
+  const toast = useToast();
+  const serviceId = getArtistServiceRecordId(service);
+  const [rows, setRows] = useState<RegionPriceRow[]>(() => regionPriceRowsFromService(service));
+  const [savingRow, setSavingRow] = useState("");
+  const [deletingRow, setDeletingRow] = useState("");
+  const [savedRow, setSavedRow] = useState("");
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const savedRowTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (savedRowTimeout.current) clearTimeout(savedRowTimeout.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!serviceId) return () => {
+      ignore = true;
+    };
+
+    artistServicesApi
+      .regionPrices(serviceId)
+      .then((items) => {
+        if (!ignore) setRows(regionPriceRowsFromRecords(items));
+      })
+      .catch(() => {
+        // The list response may already include region_prices; keep that data if the detail endpoint is unavailable.
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [serviceId]);
+
+  const addRow = () => {
+    setRows((current) => [
+      ...current,
+      {
+        localId: `new-${Date.now()}`,
+        editing: true,
+        price: "",
+        region_id: "",
+      },
+    ]);
+  };
+
+  const updateRow = (localId: string, patch: Partial<RegionPriceRow>) => {
+    setRows((current) => current.map((row) => (row.localId === localId ? { ...row, ...patch } : row)));
+    setRowErrors((current) => ({ ...current, [localId]: "" }));
+    setSavedRow((current) => (current === localId ? "" : current));
+  };
+
+  const editRow = (localId: string) => {
+    setRows((current) => current.map((row) => (row.localId === localId ? { ...row, editing: true } : row)));
+    setRowErrors((current) => ({ ...current, [localId]: "" }));
+    setSavedRow((current) => (current === localId ? "" : current));
+  };
+
+  const saveRow = async (row: RegionPriceRow) => {
+    if (!serviceId) {
+      setRowErrors((current) => ({ ...current, [row.localId]: labels.regionPriceServiceMissing }));
+      return;
+    }
+    const regionId = Number(row.region_id);
+    const price = Number(row.price);
+    if (!Number.isFinite(regionId) || regionId <= 0) {
+      setRowErrors((current) => ({ ...current, [row.localId]: labels.regionPriceRegionRequired }));
+      return;
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      setRowErrors((current) => ({ ...current, [row.localId]: labels.regionPricePriceRequired }));
+      return;
+    }
+
+    setSavingRow(row.localId);
+    try {
+      const savedRecord = await artistServicesApi.upsertRegionPrice(serviceId, {
+        price,
+        region_id: regionId,
+      });
+      const nextRows = await artistServicesApi.regionPrices(serviceId);
+      const normalizedRows = regionPriceRowsFromRecords(nextRows);
+      const savedId = isRecord(savedRecord) ? numberFromUnknown(savedRecord.id) : undefined;
+      const savedRegionId = isRecord(savedRecord) ? numberFromUnknown(savedRecord.region_id) : undefined;
+      const savedLocalId =
+        normalizedRows.find((item) => item.id === savedId)?.localId ??
+        normalizedRows.find((item) => Number(item.region_id) === (savedRegionId ?? regionId))?.localId ??
+        row.localId;
+
+      setRows(normalizedRows);
+      setSavedRow(savedLocalId);
+      if (savedRowTimeout.current) clearTimeout(savedRowTimeout.current);
+      savedRowTimeout.current = setTimeout(() => setSavedRow(""), 1200);
+      toast.success(labels.regionPriceSaved);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.regionPriceSaveFailed);
+    } finally {
+      setSavingRow("");
+    }
+  };
+
+  const deleteRow = async (row: RegionPriceRow) => {
+    if (!row.id) {
+      setRows((current) => current.filter((item) => item.localId !== row.localId));
+      return;
+    }
+
+    setDeletingRow(row.localId);
+    try {
+      await artistServicesApi.deleteRegionPrice(row.id);
+      setRows((current) => current.filter((item) => item.localId !== row.localId));
+      toast.success(labels.regionPriceDeleted);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.regionPriceDeleteFailed);
+    } finally {
+      setDeletingRow("");
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-[10px] border border-[#e6ebf2] bg-[#f8fafc] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+      <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-[13px] font-bold text-[#0f172a] dark:text-white">{labels.regionPrices}</p>
+        </div>
+        <button
+          type="button"
+          onClick={addRow}
+          className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+        >
+          <Plus className="size-3.5" />
+          {labels.add}
+        </button>
+      </div>
+
+      {rows.length ? (
+        <div className="mt-3 space-y-2">
+          {rows.map((row) => {
+            const saved = savedRow === row.localId;
+            const saving = savingRow === row.localId;
+            const deleting = deletingRow === row.localId;
+            const editing = row.editing || !row.id;
+            const disabled = saving || deleting || saved;
+            const options = regionPriceOptions(regions, row, labels);
+            return (
+              <div key={row.localId} className="rounded-[10px] border border-[#e6ebf2] bg-white p-2 dark:border-white/10 dark:bg-slate-950">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_auto]">
+                  <label className="block">
+                    <span className="sr-only">{labels.region}</span>
+                    <select
+                      disabled={disabled || regionsLoading || !editing}
+                      value={row.region_id}
+                      onChange={(event) => updateRow(row.localId, { region_id: event.target.value })}
+                      className="artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200"
+                    >
+                      <option value="">{labels.region}</option>
+                      {options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="relative block">
+                    <span className="sr-only">{labels.price}</span>
+                    <input
+                      disabled={disabled || !editing}
+                      type="text"
+                      inputMode="numeric"
+                      value={formatMoneyInput(row.price, labels.locale)}
+                      placeholder={labels.price}
+                      onChange={(event) => updateRow(row.localId, { price: parseMoneyInput(event.target.value) })}
+                      className="artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 pr-14 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#94a3b8] dark:text-slate-500">
+                      {MONEY_CURRENCY_LABEL}
+                    </span>
+                  </label>
+                  <div className="flex justify-end gap-1.5">
+                    {editing || saving || saved ? (
+                      <button
+                        type="button"
+                        onClick={() => void saveRow(row)}
+                        disabled={disabled}
+                        className="grid size-9 cursor-pointer place-items-center rounded-[10px] border border-emerald-300 bg-white text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-80 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:text-emerald-200"
+                        aria-label={labels.saveRegionPrice}
+                        title={labels.saveRegionPrice}
+                      >
+                        {saving ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : saved ? (
+                          <CheckCircle2 className="size-4" />
+                        ) : (
+                          <Save className="size-4" />
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => editRow(row.localId)}
+                        disabled={disabled}
+                        className="grid size-9 cursor-pointer place-items-center rounded-[10px] border border-[#e6ebf2] bg-white text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+                        aria-label={labels.editRegionPrice}
+                        title={labels.editRegionPrice}
+                      >
+                        <Pencil className="size-4" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void deleteRow(row)}
+                      disabled={disabled}
+                      className="grid size-9 cursor-pointer place-items-center rounded-[10px] border border-[#fecaca] bg-white text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
+                      aria-label={labels.deleteRegionPrice}
+                      title={labels.deleteRegionPrice}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                </div>
+                {rowErrors[row.localId] ? (
+                  <p className="mt-1.5 text-xs font-semibold text-rose-600 dark:text-rose-300">{rowErrors[row.localId]}</p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-[10px] border border-dashed border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
+          {labels.regionPricesEmpty}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ArtistFinanceTab({
+  labels,
+  state,
+}: {
+  labels: ArtistsLabels;
+  state: DetailResourceState;
+}) {
+  const { locale } = useI18n();
+
+  if (state.loading) return <LoadingState label={labels.loadingTitle(labels.finance)} />;
+  if (state.error) return <ErrorState message={state.error} />;
+
+  const balance = isRecord(state.raw) ? (state.raw as ArtistBalanceRecord) : {};
+  const transactions = (state.rows as ArtistTransactionRecord[]).filter(isRenderableArtistTransaction);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-2">
+        <ArtistFinanceMetric
+          label={labels.balance}
+          value={formatMoneyWithCurrency(balance.balance ?? balance.current_balance ?? 0, labels.locale) || "—"}
+        />
+        <ArtistFinanceMetric
+          label={labels.debt}
+          value={formatMoneyWithCurrency(balance.debt ?? balance.current_debt ?? 0, labels.locale) || "—"}
+          tone="danger"
+        />
+      </div>
+      {transactions.length ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.transactions}</h4>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
+              {labels.recordCount(transactions.length)}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {transactions.map((transaction, index) => (
+              <ArtistTransactionCard
+                key={String(transaction.id ?? resourceRowKey(transaction as UnknownRecord, index))}
+                index={index}
+                labels={labels}
+                locale={locale}
+                transaction={transaction}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ArtistTransactionCard({
+  index,
+  labels,
+  locale,
+  transaction,
+}: {
+  index: number;
+  labels: ArtistsLabels;
+  locale: Locale;
+  transaction: ArtistTransactionRecord;
+}) {
+  const type = firstMeaningfulValue(transaction, ["type", "transaction_type"]);
+  const amount = firstMeaningfulValue(transaction, ["amount"]);
+  const createdAt = firstMeaningfulValue(transaction, ["created_at", "createdAt"]);
+  const balanceBefore = firstMeaningfulValue(transaction, ["balance_before"]);
+  const balanceAfter = firstMeaningfulValue(transaction, ["balance_after"]);
+  const orderId = firstMeaningfulValue(transaction, ["order_id", "orderId"]);
+  const description = firstMeaningfulValue(transaction, ["description", "note"]);
+  const metaItems = [
+    balanceBefore !== undefined
+      ? `${labels.balanceBefore}: ${formatMoneyWithCurrency(balanceBefore, labels.locale) || toDisplay(balanceBefore)}`
+      : "",
+    balanceAfter !== undefined
+      ? `${labels.balanceAfter}: ${formatMoneyWithCurrency(balanceAfter, labels.locale) || toDisplay(balanceAfter)}`
+      : "",
+    orderId !== undefined ? `${labels.orderId}: ${toDisplay(orderId)}` : "",
+  ].filter(Boolean);
+
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-transparent">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-slate-950 dark:text-white">
+            {type ? formatEnumValue("type", type, labels) : labels.recordNumber(index + 1)}
+          </p>
+          {createdAt !== undefined ? (
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {formatArtistActivityDate(createdAt, locale)}
+            </p>
+          ) : null}
+        </div>
+        {amount !== undefined ? (
+          <p className="shrink-0 text-sm font-black text-slate-950 dark:text-white">
+            {formatMoneyWithCurrency(amount, labels.locale) || toDisplay(amount)}
+          </p>
+        ) : null}
+      </div>
+      {metaItems.length ? (
+        <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-600 md:grid-cols-3 dark:text-slate-300">
+          {metaItems.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      ) : null}
+      {description ? (
+        <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+          {toDisplay(description)}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+function isRenderableArtistTransaction(transaction: ArtistTransactionRecord) {
+  return [
+    "type",
+    "transaction_type",
+    "amount",
+    "balance_before",
+    "balance_after",
+    "order_id",
+    "orderId",
+    "description",
+    "note",
+    "created_at",
+    "createdAt",
+  ].some((key) => hasMeaningfulValue((transaction as UnknownRecord)[key]));
+}
+
+function ArtistFinanceMetric({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "danger";
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-transparent">
+      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-1 text-lg font-black",
+          tone === "danger" ? "text-rose-600 dark:text-rose-300" : "text-slate-950 dark:text-white",
+        )}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -3604,12 +4591,7 @@ function ScheduleManagementDrawer({
         size="min(100vw, 1180px)"
         closeIcon={<X className="size-5" />}
         rootClassName="artistbor-application-drawer"
-        classNames={{
-          body: "artistbor-application-drawer-body",
-          footer: "artistbor-application-drawer-footer",
-          header: "artistbor-application-drawer-header",
-          title: "artistbor-application-drawer-title",
-        }}
+        classNames={adminDrawerClassNames}
         title={
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -3643,14 +4625,9 @@ function ScheduleManagementDrawer({
             </button>
           </div>
         }
-        styles={{
-          body: { padding: 0, overflow: "auto", overflowX: "hidden" },
-          footer: { padding: "12px 16px" },
-          header: { minHeight: 72, padding: "12px 16px" },
-          mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        }}
+        styles={adminDrawerSubtitleStyles}
       >
-        <div className="bg-slate-50/60 p-4 dark:bg-[#0f172a] md:p-6">
+        <div className="bg-slate-50/60 p-4 dark:bg-[#0f172a]">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-4">
               <ScheduleDetailsCard labels={labels} locale={locale} schedule={selectedSchedule} />
@@ -4124,12 +5101,15 @@ function ProfileData({
   if (!entries.length) return <EmptyState title={labels.emptyArtistDetails} />;
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-3 dark:border-white/10 dark:bg-slate-950">
-      <div className="grid gap-2 md:grid-cols-2">
-        {entries.map(([key, value]) => (
-          <DetailValue key={key} fieldKey={key} value={value} />
-        ))}
-      </div>
+    <div
+      className={cn(
+        "grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10",
+        entries.length > 1 && "md:grid-cols-2",
+      )}
+    >
+      {entries.map(([key, value]) => (
+        <DetailValue key={key} fieldKey={key} value={value} />
+      ))}
     </div>
   );
 }
@@ -4290,12 +5270,63 @@ function getArtistServiceChips(service: UnknownRecord, labels: ArtistsLabels) {
   const serviceId = firstMeaningfulValue(service, ["service_id"]);
   const price = firstMeaningfulValue(service, ["price", "amount"]);
   const duration = firstMeaningfulValue(service, ["duration_minutes", "duration"]);
+  const priceText = formatMoneyWithCurrency(price, labels.locale);
 
   if (serviceId) chips.push(`ID ${toDisplay(serviceId)}`);
-  if (price) chips.push(`${labels.price}: ${toDisplay(price)}`);
+  if (priceText) chips.push(`${labels.price}: ${priceText}`);
   if (duration) chips.push(`${labels.duration}: ${toDisplay(duration)} ${labels.minutesShort}`);
 
   return chips;
+}
+
+function getArtistServiceRecordId(service: UnknownRecord) {
+  const id = firstMeaningfulValue(service, ["id", "artist_service_id"]);
+  const numberId = Number(id);
+  return Number.isFinite(numberId) && numberId > 0 ? numberId : undefined;
+}
+
+function getAttachedServiceId(service: UnknownRecord) {
+  const nestedService = firstRecordValue(service, ["service", "service_data", "service_info"]);
+  const id = firstMeaningfulValue(nestedService ?? service, ["service_id", "id"]);
+  const numberId = Number(id);
+  return Number.isFinite(numberId) && numberId > 0 ? numberId : undefined;
+}
+
+function regionPriceRowsFromService(service: UnknownRecord): RegionPriceRow[] {
+  const value = service.region_prices ?? service.regionPrices;
+  if (!Array.isArray(value)) return [];
+  return regionPriceRowsFromRecords(value.filter(isRecord) as ArtistRegionPriceRecord[]);
+}
+
+function regionPriceRowsFromRecords(records: ArtistRegionPriceRecord[]): RegionPriceRow[] {
+  return records.map((record, index) => {
+    const id = numberFromUnknown(record.id);
+    const regionId = numberFromUnknown(record.region_id);
+    const price = record.price === undefined || record.price === null ? "" : String(record.price);
+    return {
+      id,
+      localId: id ? `saved-${id}` : `loaded-${index}-${regionId ?? "unknown"}`,
+      price,
+      region_id: regionId ? String(regionId) : "",
+      region_name: typeof record.region_name === "string" ? record.region_name : undefined,
+    };
+  });
+}
+
+function regionPriceOptions(regions: Region[], row: RegionPriceRow, labels: ArtistsLabels): FormFieldOption[] {
+  const options = regionOptions(regions, labels);
+  if (row.region_id && !options.some((option) => String(option.value) === row.region_id)) {
+    options.push({
+      label: row.region_name || `${labels.region} #${row.region_id}`,
+      value: row.region_id,
+    });
+  }
+  return options;
+}
+
+function numberFromUnknown(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
 function firstMeaningfulValue(record: UnknownRecord, keys: string[]) {
@@ -4909,14 +5940,14 @@ function TabStateBadge({ state }: { state: DetailResourceState }) {
 
   if (state.error) {
     return (
-      <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] text-rose-600 dark:bg-rose-500/15 dark:text-rose-300">
+      <span className="ml-2 inline-flex h-5 items-center rounded-full bg-rose-100 px-1.5 text-[10px] font-bold leading-none text-rose-600 dark:bg-rose-500/15 dark:text-rose-300">
         !
       </span>
     );
   }
 
   return (
-    <span className="ml-2 rounded-full bg-current/10 px-2 py-0.5 text-[11px]">
+    <span className="ml-2 inline-flex h-5 items-center rounded-full bg-current/10 px-1.5 text-[10px] font-bold leading-none">
       {count}
     </span>
   );
@@ -4961,11 +5992,11 @@ function DetailValue({
   const labels = getArtistsLabels(locale);
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/[0.03]">
-      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+    <div className="min-w-0 bg-slate-50 p-3 dark:bg-[#121a2a]">
+      <p className="text-[10px] font-bold uppercase leading-4 tracking-[0.08em] text-slate-500 dark:text-slate-400">
         {humanizeKey(fieldKey, labels)}
       </p>
-      <div className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+      <div className="mt-1 break-words text-sm font-semibold leading-5 text-slate-950 dark:text-white">
         <ValueBlock fieldKey={fieldKey} value={value} />
       </div>
     </div>
@@ -4982,11 +6013,11 @@ function ValueBlock({
   if (Array.isArray(value)) {
     if (!value.length) return <span>—</span>;
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {value.map((item, index) => (
           <div
             key={index}
-            className="rounded-lg border border-slate-200 bg-white p-2.5 dark:border-white/10 dark:bg-slate-950"
+            className="overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10"
           >
             {isRecord(item) ? <ObjectDetails record={item} /> : <PrimitiveValue fieldKey={fieldKey} value={item} />}
           </div>
@@ -5005,21 +6036,27 @@ function ValueBlock({
 function ObjectDetails({ record }: { record: UnknownRecord }) {
   const { locale } = useI18n();
   const labels = getArtistsLabels(locale);
-  const entries = Object.entries(record).filter(([, value]) => value !== undefined);
+  const isArtistProfileFinance = isArtistProfileFinanceRecord(record);
+  const entries = Object.entries(record)
+    .filter(([, value]) => value !== undefined)
+    .sort(([leftKey], [rightKey]) => objectDetailSortWeight(leftKey, isArtistProfileFinance) - objectDetailSortWeight(rightKey, isArtistProfileFinance));
 
   if (!entries.length) return <span>—</span>;
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-2">
       {entries.map(([key, value]) => (
         <div
           key={key}
-          className="rounded-lg border border-slate-200 bg-white p-2.5 dark:border-white/10 dark:bg-slate-950"
+          className={cn(
+            "min-w-0 bg-slate-50 p-3 dark:bg-[#121a2a]",
+            isArtistProfileFinance && key === "balance" && "sm:col-span-2",
+          )}
         >
-          <span className="block text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+          <span className="block text-[10px] font-bold uppercase leading-4 tracking-[0.08em] text-slate-500 dark:text-slate-400">
             {humanizeKey(key, labels)}
           </span>
-          <div className="mt-1 break-words text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <div className="mt-1 break-words text-sm font-semibold leading-5 text-slate-950 dark:text-white">
             {Array.isArray(value) || isRecord(value) ? (
               <ValueBlock fieldKey={key} value={value} />
             ) : (
@@ -5030,6 +6067,18 @@ function ObjectDetails({ record }: { record: UnknownRecord }) {
       ))}
     </div>
   );
+}
+
+function isArtistProfileFinanceRecord(record: UnknownRecord) {
+  return "card_last_four" in record && "balance" in record && "debt" in record;
+}
+
+function objectDetailSortWeight(key: string, isArtistProfileFinance: boolean) {
+  if (!isArtistProfileFinance) return 100;
+  if (key === "card_last_four") return 10;
+  if (key === "debt") return 20;
+  if (key === "balance") return 30;
+  return 100;
 }
 
 function PrimitiveValue({
@@ -5196,6 +6245,9 @@ function formatEnumValue(fieldKey: string, value: unknown, labels: ArtistsLabels
 
   if (fieldKey === "status" || fieldKey === "status_label" || fieldKey.endsWith("_status")) {
     if (normalized === "0") return labels.deletedStatus;
+    if (normalized === "9") return labels.statusValueLabels.inactive;
+    if (normalized === "10") return labels.statusValueLabels.active;
+    if (normalized === "20") return labels.statusValueLabels.blocked;
     if (normalized === "1") return labels.statusValueLabels.active;
   }
 
@@ -5334,6 +6386,8 @@ function buildArtistPayload(values: {
   extra_phone: string;
   administrator_name: string;
   administrator_phone: string;
+  card_last_four: string;
+  card_token: string;
   profile_photo_id: string;
   is_verified: boolean;
   is_top: boolean;
@@ -5344,23 +6398,50 @@ function buildArtistPayload(values: {
   assignUpdatePhone(payload, "phone", values.phone);
   assignUpdateString(payload, "email", values.email);
   assignUpdateNumber(payload, "status", values.status);
-  assignUpdateNumber(payload, "region_id", values.region_id);
-  assignUpdateNumber(payload, "district_id", values.district_id);
-  assignUpdateString(payload, "birth_date", values.birth_date);
-  if (values.gender === "male" || values.gender === "female") {
-    payload.gender = values.gender;
-  }
   const categoryIds = parseIdList(values.category_ids);
   if (categoryIds.length) payload.category_ids = categoryIds;
   assignUpdateString(payload, "bio", values.bio);
-  assignUpdateString(payload, "artist_bio", values.bio);
   assignUpdatePhone(payload, "extra_phone", values.extra_phone);
   assignUpdateString(payload, "administrator_name", values.administrator_name);
   assignUpdatePhone(payload, "administrator_phone", values.administrator_phone);
+  assignUpdateString(payload, "card_last_four", values.card_last_four);
+  assignUpdateString(payload, "card_token", values.card_token);
   assignUpdateNumber(payload, "profile_photo_id", values.profile_photo_id);
-  payload.is_verified = Boolean(values.is_verified);
   payload.is_top = Boolean(values.is_top);
   return payload;
+}
+
+function splitArtistUpdatePayload(payload: UpdateArtistPayload, artist: ArtistProfile) {
+  const artistPayload: UpdateArtistPayload = { ...payload };
+  const userFields: Array<keyof UpdateArtistPayload> = [
+    "first_name",
+    "last_name",
+    "phone",
+    "email",
+    "status",
+  ];
+  const hasUserPayload = userFields.some((field) => (payload as Record<string, unknown>)[field] !== undefined);
+
+  for (const field of userFields) {
+    delete artistPayload[field];
+  }
+
+  if (!hasUserPayload) {
+    return { artistPayload };
+  }
+
+  const userPayload: UpdateUserPayload = {
+    first_name: String(payload.first_name ?? artist.first_name ?? getFirstNameFromArtist(artist) ?? "").trim(),
+    phone: normalizePhoneForApi(payload.phone ?? artist.phone),
+    status: Number(payload.status ?? artist.status ?? 10),
+  };
+  const lastName = String(payload.last_name ?? artist.last_name ?? getLastNameFromArtist(artist) ?? "").trim();
+  const email = String(payload.email ?? artist.email ?? "").trim();
+
+  if (lastName) userPayload.last_name = lastName;
+  if (email) userPayload.email = email;
+
+  return { userPayload, artistPayload };
 }
 
 function assignUpdateString(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: unknown) {
@@ -5405,11 +6486,12 @@ function initialCreateArtistValues() {
     fans_count: "",
     profile_photo_id: "",
     profile_photo_url: "",
-    is_verified: true,
-    is_top: false,
-    category_ids: "",
-  };
-}
+	    is_verified: true,
+	    is_top: false,
+	    category_ids: "",
+	    services: [] as ArtistServiceDraft[],
+	  };
+	}
 
 function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistValues>): CreateArtistPayload {
   const payload: CreateArtistPayload = {
@@ -5438,10 +6520,137 @@ function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistV
   assignBoolean(payload, "is_verified", values.is_verified);
   assignBoolean(payload, "is_top", values.is_top);
 
-  const categoryIds = parseIdList(values.category_ids);
-  if (categoryIds.length) payload.category_ids = categoryIds;
+	  const categoryIds = parseIdList(values.category_ids);
+	  if (categoryIds.length) payload.category_ids = categoryIds;
+
+	  const services = buildCreateArtistServices(values.services);
+	  if (services.length) payload.services = services;
 
   return payload;
+}
+
+function createArtistServiceDraft(): ArtistServiceDraft {
+  return {
+    localId: `service-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    service_id: "",
+    price: "",
+    note: "",
+    status: "1",
+    region_prices: [],
+  };
+}
+
+function createRegionPriceRow(): RegionPriceRow {
+  return {
+    localId: `region-price-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    region_id: "",
+    price: "",
+    editing: true,
+  };
+}
+
+function artistServiceFormValuesFromMode(mode: ArtistServiceFormMode): ArtistServiceFormValues {
+  if (mode.type === "assign") {
+    return {
+      service_id: "",
+      price: "",
+      note: "",
+      status: "1",
+      region_prices: [],
+    };
+  }
+
+  const attachedServiceId = getAttachedServiceId(mode.service);
+  return {
+    service_id: attachedServiceId ? String(attachedServiceId) : "",
+    price: firstMeaningfulValue(mode.service, ["price", "amount"])?.toString() ?? "",
+    note: firstMeaningfulValue(mode.service, ["note", "comment", "description"])?.toString() ?? "",
+    status: firstMeaningfulValue(mode.service, ["status"])?.toString() ?? "1",
+    region_prices: regionPriceRowsFromService(mode.service).map((row) => ({
+      ...row,
+      localId: `form-${row.localId}`,
+      editing: true,
+    })),
+  };
+}
+
+function buildArtistServiceAssignmentPayload(
+  artistId: number,
+  values: ArtistServiceFormValues,
+): ArtistServiceAssignmentPayload {
+  const payload: ArtistServiceAssignmentPayload = {
+    artist_id: artistId,
+    service_id: Number(values.service_id),
+    price: Number(values.price),
+  };
+  const note = values.note.trim();
+  if (note) payload.note = note;
+  const regionPrices = buildArtistServiceRegionPricePayload(values.region_prices);
+  if (regionPrices.length) payload.region_prices = regionPrices;
+  return payload;
+}
+
+function buildArtistServiceUpdatePayload(values: ArtistServiceFormValues): ArtistServiceUpdatePayload {
+  const payload: ArtistServiceUpdatePayload = {
+    price: Number(values.price),
+    region_prices: buildArtistServiceRegionPricePayload(values.region_prices),
+  };
+  const note = values.note.trim();
+  if (note) payload.note = note;
+  const status = Number(values.status);
+  if (Number.isFinite(status)) payload.status = status;
+  return payload;
+}
+
+function buildCreateArtistServices(values: ArtistServiceDraft[]): NonNullable<CreateArtistPayload["services"]> {
+  return values
+    .filter((item) => item.service_id || item.price || item.region_prices.length)
+    .map((item) => {
+      const service: NonNullable<CreateArtistPayload["services"]>[number] = {
+        service_id: Number(item.service_id),
+        price: Number(item.price),
+      };
+      const note = item.note.trim();
+      if (note) service.note = note;
+      const regionPrices = buildArtistServiceRegionPricePayload(item.region_prices);
+      if (regionPrices.length) service.region_prices = regionPrices;
+      return service;
+    });
+}
+
+function buildArtistServiceRegionPricePayload(rows: RegionPriceRow[]): ArtistServiceRegionPricePayload[] {
+  return rows
+    .map((row) => ({
+      region_id: Number(row.region_id),
+      price: Number(row.price),
+    }))
+    .filter((row) => Number.isFinite(row.region_id) && row.region_id > 0 && Number.isFinite(row.price) && row.price > 0);
+}
+
+function validateArtistServiceForm(values: ArtistServiceFormValues, labels: ArtistsLabels) {
+  if (!Number.isFinite(Number(values.service_id)) || Number(values.service_id) <= 0) return labels.requiredField(labels.services);
+  if (!Number.isFinite(Number(values.price)) || Number(values.price) <= 0) return labels.requiredField(labels.price);
+  return validateRegionPriceRows(values.region_prices, labels);
+}
+
+function validateArtistServiceDrafts(values: ArtistServiceDraft[], labels: ArtistsLabels) {
+  for (const item of values) {
+    const hasAnyValue = item.service_id || item.price || item.region_prices.length;
+    if (!hasAnyValue) continue;
+    const error = validateArtistServiceForm(item, labels);
+    if (error) return error;
+  }
+  return "";
+}
+
+function validateRegionPriceRows(rows: RegionPriceRow[], labels: ArtistsLabels) {
+  for (const row of rows) {
+    const hasAnyValue = row.region_id || row.price;
+    if (!hasAnyValue) continue;
+    if (!Number.isFinite(Number(row.region_id)) || Number(row.region_id) <= 0) return labels.regionPriceRegionRequired;
+    if (!Number.isFinite(Number(row.price)) || Number(row.price) <= 0) return labels.regionPricePriceRequired;
+  }
+  return "";
 }
 
 function assignString(payload: CreateArtistPayload, key: keyof CreateArtistPayload, value: unknown) {
@@ -5529,8 +6738,9 @@ function getArtistsLabels(locale: string) {
       artistId: "ID артиста",
       artistStats: "Статистика артиста",
       artistIdMissing: "ID артиста не найден",
-      averageRating: "Средняя оценка",
-      artistVideos: "Видео артиста",
+	      averageRating: "Средняя оценка",
+	      assignService: "Привязать услугу",
+	      artistVideos: "Видео артиста",
       artistVideosCountHint: "Количество видео, привязанных к этому артисту",
       videoItem: "Видео",
       videoItemCount: (count: number) => `${count} ${count === 1 ? "видео" : "видео"}`,
@@ -5556,9 +6766,14 @@ function getArtistsLabels(locale: string) {
       busySlotDeleteFailed: "Не удалось удалить занятое время",
       busySlotIdMissing: "ID занятого времени не найден",
       busySlotSaveFailed: "Не удалось сохранить занятое время",
-      busySlotUpdated: "Занятое время обновлено",
-      calendarPreview: "Календарь",
-      artistBio: "Bio артиста",
+	      busySlotUpdated: "Занятое время обновлено",
+	      balance: "Баланс",
+	      balanceAfter: "Баланс после",
+	      balanceBefore: "Баланс до",
+	      calendarPreview: "Календарь",
+	      cardLastFour: "Последние 4 цифры карты",
+	      cardToken: "Токен карты",
+	      artistBio: "Bio артиста",
       birthDate: "Дата рождения",
       cancel: "Закрыть",
       category: "Категории",
@@ -5606,12 +6821,17 @@ function getArtistsLabels(locale: string) {
       deleteComment: "Удалить",
       deleteCommentConfirm: "Комментарий будет удален из профиля артиста.",
       deleteCommentTitle: "Удалить комментарий?",
-      deleteRating: "Удалить",
-      deleteRatingConfirm: "Рейтинг будет удален из профиля артиста.",
-      deleteRatingTitle: "Удалить рейтинг?",
-      editBusySlot: "Изменить занятое время",
-      editComment: "Редактировать комментарий",
-      editTitle: "Редактировать артиста",
+	      deleteRating: "Удалить",
+	      deleteRatingConfirm: "Рейтинг будет удален из профиля артиста.",
+	      deleteRatingTitle: "Удалить рейтинг?",
+	      deleteArtistService: "Удалить услугу",
+	      deleteArtistServiceConfirm: "Услуга будет отвязана от профиля артиста.",
+	      deleteArtistServiceTitle: "Удалить услугу артиста?",
+	      debt: "Долг",
+	      editBusySlot: "Изменить занятое время",
+	      editComment: "Редактировать комментарий",
+	      editArtistService: "Изменить услугу",
+	      editTitle: "Редактировать артиста",
       emptyType: "Пусто",
       emptyArtistDetails: "Детали артиста пустые",
       email: "Email",
@@ -5620,39 +6840,54 @@ function getArtistsLabels(locale: string) {
       fansCount: "Количество поклонников",
       firstName: "Имя",
       fieldLabels: {
-        administrator_name: "Имя администратора",
-        administrator_phone: "Телефон администратора",
-        albums_count: "Количество альбомов",
-        artist_id: "ID артиста",
-        bio: "Bio",
-        category_ids: "ID категорий",
-        client_id: "ID клиента",
-        created_at: "Создано",
-        deleted_at: "Удалено",
-        district_id: "Район",
-        email: "Email",
-        extra_phone: "Дополнительный телефон",
+	        administrator_name: "Имя администратора",
+	        administrator_phone: "Телефон администратора",
+	        albums_count: "Количество альбомов",
+	        artist_id: "ID артиста",
+	        artistProfile: "Профиль артиста",
+	        artist_profile: "Профиль артиста",
+	        bio: "Bio",
+	        balance: "Баланс",
+	        balance_after: "Баланс после",
+	        balance_before: "Баланс до",
+	        card_last_four: "Последние 4 цифры карты",
+	        card_token: "Токен карты",
+	        category_ids: "ID категорий",
+	        client_id: "ID клиента",
+	        created_at: "Создано",
+	        current_balance: "Текущий баланс",
+	        current_debt: "Текущий долг",
+	        deleted_at: "Удалено",
+	        debt: "Долг",
+	        description: "Описание",
+	        district_id: "Район",
+	        email: "Email",
+	        extra_phone: "Дополнительный телефон",
         first_name: "Имя",
         full_name: "Полное имя",
         id: "ID",
         is_top: "Top",
         is_verified: "Подтвержден",
         last_name: "Фамилия",
-        message: "Сообщение",
-        phone: "Телефон",
-        rating: "Рейтинг",
-        region_id: "Регион",
-        role: "Роль",
-        role_label: "Роль",
-        status: "Статус",
-        status_label: "Статус",
-        title: "Заголовок",
-        type: "Тип",
-        updated_at: "Обновлено",
-        user_id: "ID пользователя",
+	        message: "Сообщение",
+	        note: "Примечание",
+	        order_id: "ID заказа",
+	        phone: "Телефон",
+	        rating: "Рейтинг",
+	        region_id: "Регион",
+	        role: "Роль",
+	        role_label: "Роль",
+	        status: "Статус",
+	        status_label: "Статус",
+	        title: "Заголовок",
+	        transaction_type: "Тип транзакции",
+	        type: "Тип",
+	        updated_at: "Обновлено",
+	        user_id: "ID пользователя",
       } as Record<string, string>,
-      fans: "Поклонники",
-      gallery: "Галерея",
+	      fans: "Поклонники",
+	      finance: "Финансы",
+	      gallery: "Галерея",
       galleryEmptyDescription: "Для этого артиста пока нет загруженных изображений.",
       galleryEmptyTitle: "Галерея пуста",
       galleryItem: "Изображение",
@@ -5679,10 +6914,11 @@ function getArtistsLabels(locale: string) {
       noVideoPreview: "Превью нет",
       noVideoHint: "Видео не найдено. Можно повторно проверить на странице видео с фильтром по артисту.",
       notFoundTitle: (title: string) => `${title} не найдено`,
-      objectType: "Объект",
-      oldest: "Старые",
-      oneObject: "1 объект",
-      openVideo: "Открыть",
+	      objectType: "Объект",
+	      oldest: "Старые",
+	      oneObject: "1 объект",
+	      openVideo: "Открыть",
+	      orderId: "ID заказа",
       page: "Страница",
       password: "Пароль",
       newPassword: "Новый пароль",
@@ -5698,6 +6934,15 @@ function getArtistsLabels(locale: string) {
       pendingStatus: "Ожидает",
       price: "Цена",
       profile: "Профиль",
+      regionPriceDeleted: "Региональная цена удалена",
+      regionPriceDeleteFailed: "Не удалось удалить региональную цену",
+      regionPricePriceRequired: "Укажите цену",
+      regionPrices: "Цены по регионам",
+      regionPricesEmpty: "Для этого сервиса региональные цены не указаны.",
+      regionPriceSaved: "Региональная цена сохранена",
+      regionPriceSaveFailed: "Не удалось сохранить региональную цену",
+      regionPriceRegionRequired: "Выберите регион",
+      regionPriceServiceMissing: "ID сервиса артиста не найден",
       publicationStatus: "Статус публикации",
       publishedRatings: "Опубликовано",
       publishComment: "Опубликовать",
@@ -5732,10 +6977,14 @@ function getArtistsLabels(locale: string) {
       scheduleManagementTitle: "Управление расписанием",
       scheduleRecordCount: (count: number) => `${count} ${count === 1 ? "запись" : "записей"}`,
       scheduleStatusActive: "Активно",
-      scheduleStatusDraft: "Черновик",
-      search: "Поиск",
-      searchPlaceholder: "Имя, фамилия или телефон",
-      services: "Услуги",
+	      scheduleStatusDraft: "Черновик",
+	      search: "Поиск",
+	      searchPlaceholder: "Имя, фамилия или телефон",
+	      artistServiceDeleted: "Услуга артиста удалена",
+	      artistServiceDeleteFailed: "Не удалось удалить услугу артиста",
+	      artistServiceSaved: "Услуга артиста сохранена",
+	      artistServiceSaveFailed: "Не удалось сохранить услугу артиста",
+	      services: "Услуги",
       sortOrder: "Порядок",
       status: "Статус",
       statusValueLabels: {
@@ -5769,9 +7018,11 @@ function getArtistsLabels(locale: string) {
       } as Record<string, string>,
       time: "Время",
       timeRangeInvalid: "Время окончания должно быть позже времени начала",
-      timezone: "Часовой пояс",
-      title: "Артисты",
-      top: "Топ",
+	      timezone: "Часовой пояс",
+	      title: "Артисты",
+	      transactions: "Транзакции",
+	      transactionsEmpty: "Транзакции не найдены",
+	      top: "Топ",
       topArtist: "Топ артист",
       uploadFailed: "Не удалось загрузить фото",
       uploadProfilePhoto: "Загрузить фото",
@@ -5792,6 +7043,9 @@ function getArtistsLabels(locale: string) {
       reason: "Примечание",
       saveBusySlot: "Сохранить",
       saveComment: "Сохранить",
+      saveRegionPrice: "Сохранить цену региона",
+      editRegionPrice: "Изменить цену региона",
+      deleteRegionPrice: "Удалить цену региона",
       saving: "Сохраняется...",
       startTime: "Время начала",
       verified: "Подтвержден",
@@ -5823,8 +7077,9 @@ function getArtistsLabels(locale: string) {
     artistId: "Sanatkor ID",
     artistStats: "Sanatkor statistikasi",
     artistIdMissing: "Sanatkor ID topilmadi",
-    averageRating: "O'rtacha reyting",
-    artistVideos: "Sanatkor videolari",
+	    averageRating: "O'rtacha reyting",
+	    assignService: "Xizmat biriktirish",
+	    artistVideos: "Sanatkor videolari",
     artistVideosCountHint: "Bu sanatkorga biriktirilgan video soni",
     videoItem: "Video",
     videoItemCount: (count: number) => `${count} ta video`,
@@ -5850,9 +7105,14 @@ function getArtistsLabels(locale: string) {
       busySlotDeleteFailed: "Band vaqtni o'chirish bajarilmadi",
       busySlotIdMissing: "Band vaqt ID topilmadi",
       busySlotSaveFailed: "Band vaqtni saqlash bajarilmadi",
-      busySlotUpdated: "Band vaqt yangilandi",
-    calendarPreview: "Kalendar",
-    artistBio: "Sanatkor bio",
+	    busySlotUpdated: "Band vaqt yangilandi",
+	    balance: "Balans",
+	    balanceAfter: "Keyingi balans",
+	    balanceBefore: "Oldingi balans",
+	    calendarPreview: "Kalendar",
+	    cardLastFour: "Kartaning oxirgi 4 raqami",
+	    cardToken: "Karta tokeni",
+	    artistBio: "Sanatkor bio",
     birthDate: "Tug'ilgan sana",
     cancel: "Yopish",
     category: "Kategoriya",
@@ -5900,12 +7160,17 @@ function getArtistsLabels(locale: string) {
     deleteComment: "O'chirish",
     deleteCommentConfirm: "Izoh sanatkor profilidan o'chiriladi.",
     deleteCommentTitle: "Izoh o'chirilsinmi?",
-    deleteRating: "O'chirish",
-    deleteRatingConfirm: "Reyting sanatkor profilidan o'chiriladi.",
-    deleteRatingTitle: "Reyting o'chirilsinmi?",
-    editBusySlot: "Band vaqtni tahrirlash",
-    editComment: "Izohni tahrirlash",
-    editTitle: "Sanatkorni tahrirlash",
+	    deleteRating: "O'chirish",
+	    deleteRatingConfirm: "Reyting sanatkor profilidan o'chiriladi.",
+	    deleteRatingTitle: "Reyting o'chirilsinmi?",
+	    deleteArtistService: "Xizmatni o'chirish",
+	    deleteArtistServiceConfirm: "Xizmat sanatkor profilidan ajratiladi.",
+	    deleteArtistServiceTitle: "Sanatkor xizmati o'chirilsinmi?",
+	    debt: "Qarz",
+	    editBusySlot: "Band vaqtni tahrirlash",
+	    editComment: "Izohni tahrirlash",
+	    editArtistService: "Xizmatni tahrirlash",
+	    editTitle: "Sanatkorni tahrirlash",
     emptyType: "Bo'sh",
     emptyArtistDetails: "Sanatkor tafsilotlari bo'sh qaytdi",
     email: "Email",
@@ -5914,39 +7179,54 @@ function getArtistsLabels(locale: string) {
     fansCount: "Muxlislar soni",
     firstName: "Ism",
     fieldLabels: {
-      administrator_name: "Administrator ismi",
-      administrator_phone: "Administrator telefoni",
-      albums_count: "Albomlar soni",
-      artist_id: "Sanatkor ID",
-      bio: "Bio",
-      category_ids: "Kategoriya IDlari",
-      client_id: "Mijoz ID",
-      created_at: "Yaratilgan",
-      deleted_at: "O'chirilgan",
-      district_id: "Tuman",
-      email: "Email",
-      extra_phone: "Qo'shimcha telefon",
+	      administrator_name: "Administrator ismi",
+	      administrator_phone: "Administrator telefoni",
+	      albums_count: "Albomlar soni",
+	      artist_id: "Sanatkor ID",
+	      artistProfile: "Sanatkor profili",
+	      artist_profile: "Sanatkor profili",
+	      bio: "Bio",
+	      balance: "Balans",
+	      balance_after: "Keyingi balans",
+	      balance_before: "Oldingi balans",
+	      card_last_four: "Kartaning oxirgi 4 raqami",
+	      card_token: "Karta tokeni",
+	      category_ids: "Kategoriya IDlari",
+	      client_id: "Mijoz ID",
+	      created_at: "Yaratilgan",
+	      current_balance: "Joriy balans",
+	      current_debt: "Joriy qarz",
+	      deleted_at: "O'chirilgan",
+	      debt: "Qarz",
+	      description: "Tavsif",
+	      district_id: "Tuman",
+	      email: "Email",
+	      extra_phone: "Qo'shimcha telefon",
       first_name: "Ism",
       full_name: "To'liq ism",
       id: "ID",
       is_top: "Top",
       is_verified: "Tasdiqlangan",
       last_name: "Familiya",
-      message: "Xabar",
-      phone: "Telefon",
-      rating: "Reyting",
-      region_id: "Viloyat",
-      role: "Rol",
-      role_label: "Rol",
-      status: "Holat",
-      status_label: "Holat",
-      title: "Sarlavha",
-      type: "Turi",
-      updated_at: "Yangilangan",
-      user_id: "Foydalanuvchi ID",
+	      message: "Xabar",
+	      note: "Izoh",
+	      order_id: "Buyurtma ID",
+	      phone: "Telefon",
+	      rating: "Reyting",
+	      region_id: "Viloyat",
+	      role: "Rol",
+	      role_label: "Rol",
+	      status: "Holat",
+	      status_label: "Holat",
+	      title: "Sarlavha",
+	      transaction_type: "Tranzaksiya turi",
+	      type: "Turi",
+	      updated_at: "Yangilangan",
+	      user_id: "Foydalanuvchi ID",
     } as Record<string, string>,
-    fans: "Muxlislar",
-    gallery: "Galereya",
+	    fans: "Muxlislar",
+	    finance: "Moliya",
+	    gallery: "Galereya",
     galleryEmptyDescription: "Bu sanatkor uchun hali rasm yuklanmagan.",
     galleryEmptyTitle: "Galereya bo'sh",
     galleryItem: "Rasm",
@@ -5975,9 +7255,10 @@ function getArtistsLabels(locale: string) {
     notFoundTitle: (title: string) => `${title} topilmadi`,
     objectType: "Obyekt",
     oldest: "Eng eskilari",
-    oneObject: "1 ta obyekt",
-    openVideo: "Ochish",
-    page: "Sahifa",
+	    oneObject: "1 ta obyekt",
+	    openVideo: "Ochish",
+	    orderId: "Buyurtma ID",
+	    page: "Sahifa",
     password: "Parol",
     newPassword: "Yangi parol",
     confirmPassword: "Parolni tasdiqlash",
@@ -5992,6 +7273,15 @@ function getArtistsLabels(locale: string) {
     pendingStatus: "Kutilmoqda",
     price: "Narx",
     profile: "Profil",
+    regionPriceDeleted: "Viloyat narxi o'chirildi",
+    regionPriceDeleteFailed: "Viloyat narxini o'chirish bajarilmadi",
+    regionPricePriceRequired: "Narx kiriting",
+    regionPrices: "Viloyat narxlari",
+    regionPricesEmpty: "Bu xizmat uchun viloyat narxlari kiritilmagan.",
+    regionPriceSaved: "Viloyat narxi saqlandi",
+    regionPriceSaveFailed: "Viloyat narxini saqlash bajarilmadi",
+    regionPriceRegionRequired: "Viloyat tanlang",
+    regionPriceServiceMissing: "Sanatkor xizmati ID topilmadi",
     publicationStatus: "Ko'rsatish holati",
     publishedRatings: "Ko'rsatilgan",
     publishComment: "Ko'rsatish",
@@ -6001,7 +7291,7 @@ function getArtistsLabels(locale: string) {
     districtId: "Tuman ID",
     lastName: "Familiya",
     noProfilePhoto: "Rasm tanlanmagan",
-    profilePhotoId: "Profile photo ID",
+    profilePhotoId: "Profil rasmi ID",
     profilePhoto: "Profil rasmi",
     profilePhotoHint: "JPG yoki PNG format, 5 MB gacha.",
     rating: "Reyting",
@@ -6027,9 +7317,13 @@ function getArtistsLabels(locale: string) {
     scheduleRecordCount: (count: number) => `${count} ta yozuv`,
     scheduleStatusActive: "Faol",
     scheduleStatusDraft: "Qoralama",
-    search: "Qidiruv",
-    searchPlaceholder: "Ism, familiya yoki telefon",
-    services: "Xizmatlar",
+	    search: "Qidiruv",
+	    searchPlaceholder: "Ism, familiya yoki telefon",
+	    artistServiceDeleted: "Sanatkor xizmati o'chirildi",
+	    artistServiceDeleteFailed: "Sanatkor xizmatini o'chirish bajarilmadi",
+	    artistServiceSaved: "Sanatkor xizmati saqlandi",
+	    artistServiceSaveFailed: "Sanatkor xizmatini saqlash bajarilmadi",
+	    services: "Xizmatlar",
     sortOrder: "Tartib",
     status: "Holat",
     statusValueLabels: {
@@ -6063,9 +7357,11 @@ function getArtistsLabels(locale: string) {
     } as Record<string, string>,
     time: "Vaqt",
     timeRangeInvalid: "Tugash vaqti boshlanish vaqtidan keyin bo'lishi kerak",
-    timezone: "Vaqt zonasi",
-    title: "Sanatkorlar",
-    top: "Top",
+	    timezone: "Vaqt zonasi",
+	    title: "Sanatkorlar",
+	    transactions: "Tranzaksiyalar",
+	    transactionsEmpty: "Tranzaksiyalar topilmadi",
+	    top: "Top",
     topArtist: "Top sanatkor",
     uploadFailed: "Rasm yuklanmadi",
     uploadProfilePhoto: "Rasm yuklash",
@@ -6086,6 +7382,9 @@ function getArtistsLabels(locale: string) {
     reason: "Izoh",
     saveBusySlot: "Saqlash",
     saveComment: "Saqlash",
+    saveRegionPrice: "Viloyat narxini saqlash",
+    editRegionPrice: "Viloyat narxini tahrirlash",
+    deleteRegionPrice: "Viloyat narxini o'chirish",
     saving: "Saqlanmoqda...",
     startTime: "Boshlanish vaqti",
     verified: "Tasdiqlangan",

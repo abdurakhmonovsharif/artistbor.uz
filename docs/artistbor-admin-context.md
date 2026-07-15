@@ -2,12 +2,8 @@
 
 ## Auth
 
-- Admin panel login:
-  - phone: `998000000000`
-  - password: `admin12345`
-- Swagger/docs auth:
-  - username: `admin`
-  - password: `swagger123`
+- Admin panel login credentials are stored outside the repository.
+- Swagger/docs credentials are stored outside the repository.
 - API docs:
   - `https://api.artistbor.uz/docs`
   - OpenAPI payload is served from `https://api.artistbor.uz/docs/api`

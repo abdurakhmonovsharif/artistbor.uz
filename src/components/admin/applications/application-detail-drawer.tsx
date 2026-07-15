@@ -9,6 +9,7 @@ import { getApplicationLabels } from "@/components/admin/applications/applicatio
 import { ApplicationStatusBadge } from "@/components/admin/applications/application-status-badge";
 import { ExpandableBio } from "@/components/admin/applications/expandable-bio";
 import { ServiceListTab } from "@/components/admin/applications/service-list-tab";
+import { adminDrawerClassNames, adminDrawerStyles } from "@/components/admin/admin-drawer";
 import {
   formatDateParts,
   canApproveApplication,
@@ -52,12 +53,7 @@ export function ApplicationDetailDrawer({
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
       rootClassName="artistbor-application-drawer"
-      classNames={{
-        body: "artistbor-application-drawer-body",
-        footer: "artistbor-application-drawer-footer",
-        header: "artistbor-application-drawer-header",
-        title: "artistbor-application-drawer-title",
-      }}
+      classNames={adminDrawerClassNames}
       title={
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
@@ -75,13 +71,7 @@ export function ApplicationDetailDrawer({
           />
         ) : null
       }
-      styles={{
-        body: { padding: 0, overflow: "auto" },
-        footer: { padding: "12px 16px" },
-        header: { minHeight: 64, padding: "0 16px" },
-        mask: { backgroundColor: "rgba(15, 23, 42, 0.28)" },
-        section: { boxShadow: "none" },
-      }}
+      styles={adminDrawerStyles}
     >
       <div className="space-y-3.5 p-4">
         <ApplicationProfile application={application} categoryMap={categoryMap} />

@@ -35,6 +35,7 @@ export type User = {
   region_id?: number;
   district_id?: number;
   status?: number;
+  status_label?: string | number;
   created_at?: number;
 };
 
@@ -68,6 +69,10 @@ export type ArtistProfile = {
   administrator_phone?: string;
   profile_photo_id?: number | null;
   profile_photo_url?: string | null;
+  card_last_four?: string | null;
+  card_token?: string | null;
+  balance?: string | number | null;
+  debt?: string | number | null;
   badges?: string[];
   categories?: UnknownRecord[];
   category?: UnknownRecord | null;
@@ -112,9 +117,14 @@ export type OrderRecord = UnknownRecord & {
   status?: string | number;
   status_label?: string;
   status_code?: number;
+  advance_amount?: string | number | null;
+  payment_deadline?: number | null;
+  payment_deadline_formatted?: string | null;
   payment_status?: string | number;
   payment_status_label?: string;
   payment_expires_at?: number;
+  orderPayments?: OrderPaymentRecord[];
+  order_payments?: OrderPaymentRecord[];
   region_id?: number;
   district_id?: number;
   address?: string | null;
@@ -125,6 +135,22 @@ export type OrderRecord = UnknownRecord & {
   lon?: string | number | null;
   lng?: string | number | null;
   long?: string | number | null;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type OrderPaymentRecord = UnknownRecord & {
+  id?: number;
+  order_id?: number;
+  type?: "advance" | "full" | string;
+  amount?: string | number | null;
+  status?: "pending" | "verified" | "rejected" | string;
+  receipt_file_id?: number | null;
+  receipt_file_url?: string | null;
+  paid_amount?: string | number | null;
+  notes?: string | null;
+  verified_by?: number | null;
+  verified_at?: number | null;
   created_at?: number;
   updated_at?: number;
 };
@@ -148,6 +174,34 @@ export type ArtistServiceRecord = UnknownRecord & {
   price?: number;
   duration_minutes?: number;
   description?: string;
+  note?: string;
+  status?: string | number;
+  service?: UnknownRecord | null;
+  service_name?: string;
+  name?: string;
+  region_prices?: Array<UnknownRecord & {
+    id?: number;
+    artist_service_id?: number;
+    region_id?: number;
+    region_name?: string;
+    price?: number | string;
+  }>;
+};
+
+export type ArtistBalanceRecord = UnknownRecord & {
+  balance?: string | number | null;
+  debt?: string | number | null;
+};
+
+export type ArtistTransactionRecord = UnknownRecord & {
+  id?: number;
+  type?: string;
+  amount?: string | number | null;
+  balance_before?: string | number | null;
+  balance_after?: string | number | null;
+  order_id?: number | null;
+  description?: string | null;
+  created_at?: number;
 };
 
 export type ArtistAvailabilityRecord = UnknownRecord & {

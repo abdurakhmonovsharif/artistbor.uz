@@ -82,24 +82,28 @@ input[type="time"] {
 .artistbor-table-filter-shell,
 .dashboard-filter-shell {
   align-items: center;
-  background: rgba(248, 250, 252, 0.55);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 28px;
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.055);
+  background: #ffffff;
+  border: 1px solid #e6ebf2;
+  border-radius: 18px !important;
+  box-shadow: none;
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 6px;
+  scrollbar-width: none;
+}
+
+.artistbor-table-filter-shell::-webkit-scrollbar,
+.dashboard-filter-shell::-webkit-scrollbar {
+  display: none;
 }
 
 .artistbor-table-filter-panel {
   align-items: center;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(15, 23, 42, 0.05);
-  border-radius: calc(28px - 0.375rem);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.035);
+  background: transparent;
+  border: 0;
+  border-radius: calc(18px - 0.375rem);
+  box-shadow: none;
   box-sizing: border-box;
-  display: flex;
   justify-content: flex-start;
   min-width: 100%;
   padding: 8px;
@@ -118,21 +122,18 @@ input[type="time"] {
 .artistbor-table-filter-shell .ant-picker,
 .artistbor-table-filter-shell .ant-btn {
   align-items: center !important;
-  background: rgba(255, 255, 255, 0.96) !important;
+  background: #f8fafc !important;
   border-color: rgba(230, 235, 242, 0.95) !important;
   border-radius: 12px !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.86),
-    0 1px 2px rgba(15, 23, 42, 0.035) !important;
+  box-shadow: none !important;
   color: #475569 !important;
   display: inline-flex !important;
-  height: 38px !important;
+  height: 40px !important;
   line-height: 1 !important;
-  min-height: 38px !important;
+  min-height: 40px !important;
   transform: translateY(0) !important;
   transition:
     border-color 500ms cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 500ms cubic-bezier(0.32, 0.72, 0, 1),
     background-color 500ms cubic-bezier(0.32, 0.72, 0, 1);
   vertical-align: middle !important;
 }
@@ -148,9 +149,7 @@ input[type="time"] {
 .artistbor-table-filter-shell .artistbor-filter-search.artistbor-filter-search-active,
 .artistbor-table-filter-shell .artistbor-table-filter-control:focus-within {
   border-color: rgba(249, 115, 22, 0.45) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.86),
-    0 0 0 3px rgba(249, 115, 22, 0.1) !important;
+  box-shadow: none !important;
 }
 
 .artistbor-table-filter-shell .artistbor-compact-select .ant-select-selector,
@@ -160,8 +159,8 @@ input[type="time"] {
   border: 0 !important;
   border-radius: 12px !important;
   box-shadow: none !important;
-  height: 38px !important;
-  min-height: 38px !important;
+  height: 40px !important;
+  min-height: 40px !important;
   padding-bottom: 0 !important;
   padding-top: 0 !important;
 }
@@ -205,6 +204,7 @@ input[type="time"] {
 .artistbor-table-filter-shell .artistbor-table-filter-control.ant-input-outlined .ant-input,
 .artistbor-table-filter-shell .ant-picker-input > input {
   font-size: 13px !important;
+  color: #475569 !important;
   font-weight: 700 !important;
   line-height: 1 !important;
 }
@@ -224,15 +224,15 @@ input[type="time"] {
 
 .dark .artistbor-table-filter-shell,
 .dark .dashboard-filter-shell {
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(15, 23, 42, 0.92);
   border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 18px 46px rgba(2, 6, 23, 0.4);
+  box-shadow: none;
 }
 
 .dark .artistbor-table-filter-panel {
-  background: rgba(15, 23, 42, 0.92);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .dark .artistbor-table-filter-shell .artistbor-table-filter-control,
@@ -243,9 +243,7 @@ input[type="time"] {
 .dark .artistbor-table-filter-shell .ant-btn {
   background: rgba(255, 255, 255, 0.035) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 1px 2px rgba(2, 6, 23, 0.15) !important;
+  box-shadow: none !important;
   color: rgb(226 232 240) !important;
 }
 
@@ -260,9 +258,7 @@ input[type="time"] {
 .dark .artistbor-table-filter-shell .artistbor-filter-search.artistbor-filter-search-active,
 .dark .artistbor-table-filter-shell .artistbor-table-filter-control:focus-within {
   border-color: rgba(251, 191, 36, 0.5) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 3px rgba(251, 191, 36, 0.1) !important;
+  box-shadow: none !important;
 }
 
 ::selection {
@@ -278,12 +274,55 @@ input[type="time"] {
   text-rendering: geometricPrecision;
 }
 
+.artistbor-admin-shell {
+  --artistbor-radius-surface: 18px;
+  --artistbor-radius-control: 12px;
+}
+
+.artistbor-admin-shell
+  :is(
+    .rounded-2xl,
+    .rounded-3xl,
+    [class*="rounded-[22px]"],
+    [class*="rounded-[24px]"],
+    [class*="rounded-[26px]"],
+    [class*="rounded-[28px]"],
+    [class*="rounded-[30px]"]
+  ):not([class*="rounded-full"]) {
+  border-radius: var(--artistbor-radius-surface) !important;
+}
+
+.artistbor-admin-shell [class*="rounded-[calc("] {
+  border-radius: calc(var(--artistbor-radius-surface) - 0.375rem) !important;
+}
+
+.artistbor-admin-shell
+  :is(
+    .shadow-sm,
+    .shadow-md,
+    .shadow-lg,
+    .shadow-xl,
+    .shadow-2xl,
+    [class*="shadow-sm"],
+    [class*="shadow-md"],
+    [class*="shadow-lg"],
+    [class*="shadow-xl"],
+    [class*="shadow-2xl"],
+    [class*="shadow-[0_"],
+    [class*="shadow-slate"],
+    [class*="shadow-black"]
+  ) {
+  box-shadow: none !important;
+}
+
+.artistbor-admin-shell svg,
 .artistbor-admin-header svg,
 .artistbor-admin-page svg,
 .dashboard-page svg {
   stroke-width: 1.35;
 }
 
+.artistbor-admin-shell *,
 .artistbor-admin-header *,
 .artistbor-admin-page *,
 .dashboard-page * {
@@ -292,8 +331,8 @@ input[type="time"] {
 
 .dashboard-filter-shell {
   align-items: center;
-  height: 44px;
-  min-height: 44px;
+  height: 48px;
+  min-height: 48px;
 }
 
 .dashboard-filter-shell > * {
@@ -307,9 +346,9 @@ input[type="time"] {
 .dashboard-filter-shell .ant-picker,
 .dashboard-filter-shell .ant-btn {
   display: inline-flex !important;
-  height: 36px !important;
+  height: 40px !important;
   line-height: 1 !important;
-  min-height: 36px !important;
+  min-height: 40px !important;
   transform: translateY(0) !important;
   vertical-align: middle !important;
 }
@@ -318,16 +357,17 @@ input[type="time"] {
 .dashboard-filter-shell .ant-picker,
 .dashboard-filter-shell .ant-btn {
   align-items: center !important;
-  border-color: rgba(226, 232, 240, 0.95) !important;
-  border-radius: 999px !important;
+  background: #f8fafc !important;
+  border-color: rgba(230, 235, 242, 0.95) !important;
+  border-radius: var(--artistbor-radius-control, 12px) !important;
   box-shadow: none !important;
   display: flex !important;
 }
 
 .dashboard-filter-shell .ant-select-selector {
-  height: 36px !important;
+  height: 40px !important;
   line-height: 1 !important;
-  min-height: 36px !important;
+  min-height: 40px !important;
   padding-bottom: 0 !important;
   padding-top: 0 !important;
 }
@@ -377,9 +417,56 @@ input[type="time"] {
 .dark .dashboard-filter-shell .ant-select-selector,
 .dark .dashboard-filter-shell .ant-picker,
 .dark .dashboard-filter-shell .ant-btn {
-  background: rgba(15, 23, 42, 0.9) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: rgb(248 250 252) !important;
+}
+
+@media (max-width: 639px) {
+  .dashboard-page {
+    position: relative;
+  }
+
+  .dashboard-page::before {
+    background:
+      radial-gradient(circle at 12% 0%, rgba(245, 158, 11, 0.1), transparent 30%),
+      radial-gradient(circle at 100% 14%, rgba(15, 23, 42, 0.06), transparent 34%);
+    content: "";
+    inset: -96px -16px auto -16px;
+    height: 280px;
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+  }
+
+  .dashboard-filter-shell {
+    border-radius: 18px;
+    height: 48px;
+    min-height: 48px;
+    padding: 4px;
+    scrollbar-width: none;
+  }
+
+  .dashboard-filter-shell::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-filter-shell .ant-select-selector,
+  .dashboard-filter-shell .ant-picker,
+  .dashboard-filter-shell .ant-btn {
+    border-radius: 14px !important;
+  }
+
+  .dashboard-filter-shell .ant-select-selection-item,
+  .dashboard-filter-shell .ant-select-selection-placeholder,
+  .dashboard-filter-shell .ant-picker-input > input,
+  .dashboard-filter-shell .ant-btn {
+    font-size: 13px !important;
+  }
+
+  .dashboard-page .ant-picker-range {
+    max-width: 236px;
+  }
 }
 
 .admin-sidebar-nav {
@@ -410,6 +497,12 @@ input[type="time"] {
 
 .admin-sidebar-nav:hover::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.44);
+}
+
+@media (min-width: 1024px) {
+  .artistbor-sidebar-fixed {
+    left: max(0px, calc((100vw - 2600px) / 2));
+  }
 }
 
 .artistbor-sidebar-menu,
@@ -451,7 +544,7 @@ input[type="time"] {
   margin: 2px 0 !important;
   overflow: hidden;
   width: 100% !important;
-  border-radius: 8px !important;
+  border-radius: 12px !important;
   color: var(--artistbor-sidebar-item) !important;
   font-size: 14px;
   font-weight: 500;
@@ -767,6 +860,18 @@ input[type="time"] {
   color: rgb(248 250 252) !important;
 }
 
+.artistbor-confirm-modal input,
+.artistbor-confirm-modal select {
+  min-height: 40px !important;
+  line-height: 40px !important;
+  padding-bottom: 0 !important;
+  padding-top: 0 !important;
+}
+
+.artistbor-confirm-modal textarea {
+  line-height: 1.5 !important;
+}
+
 .artistbor-confirm-modal input::placeholder,
 .artistbor-confirm-modal textarea::placeholder {
   color: rgb(100 116 139) !important;
@@ -976,18 +1081,16 @@ input[type="time"] {
 
 .artistbor-busy-slot-modal .artistbor-busy-slot-input {
   appearance: none;
-  background: #101a2c !important;
-  background-color: #101a2c !important;
-  border-color: rgba(148, 163, 184, 0.24) !important;
-  border-radius: 16px !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(15, 23, 42, 0.12) !important;
-  color: rgb(248 250 252) !important;
-  height: 52px !important;
-  min-height: 52px !important;
-  padding-top: 0.8rem !important;
-  padding-bottom: 0.8rem !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  background-color: rgba(255, 255, 255, 0.035) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  color: rgb(226 232 240) !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 .artistbor-busy-slot-modal .artistbor-busy-slot-input::placeholder {
@@ -995,10 +1098,8 @@ input[type="time"] {
 }
 
 .artistbor-busy-slot-modal .artistbor-busy-slot-input:focus {
-  border-color: rgba(52, 211, 153, 0.48) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 3px rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  box-shadow: none !important;
 }
 
 .artistbor-busy-slot-modal .artistbor-busy-slot-textarea {
@@ -1267,21 +1368,44 @@ input[type="time"] {
 .artistbor-drawer-form .ant-input-number,
 .artistbor-drawer-form .ant-picker,
 .artistbor-drawer-form .ant-select-selector {
-  background: #ffffff !important;
-  border-color: rgb(226 232 240) !important;
-  border-radius: 0.75rem !important;
-  color: rgb(15 23 42) !important;
-  min-height: 44px;
+  align-items: center !important;
+  background: #f8fafc !important;
+  border-color: rgb(230 235 242) !important;
+  border-radius: 12px !important;
   box-shadow: none !important;
+  color: rgb(15 23 42) !important;
+  display: flex !important;
+  min-height: 40px;
   width: 100%;
+}
+
+.artistbor-drawer-form .ant-input:not(textarea),
+.artistbor-drawer-form .ant-input-password,
+.artistbor-drawer-form .ant-input-number,
+.artistbor-drawer-form .ant-picker,
+.artistbor-drawer-form .ant-select-selector {
+  height: 40px !important;
+}
+
+.artistbor-drawer-form .ant-input-number-input,
+.artistbor-drawer-form .ant-picker-input,
+.artistbor-drawer-form .ant-select-selection-wrap {
+  align-items: center !important;
+  display: flex !important;
+  height: 100% !important;
 }
 
 .artistbor-drawer-form .ant-input-password input,
 .artistbor-drawer-form .ant-input-number-input,
 .artistbor-drawer-form .ant-picker-input > input,
-.artistbor-drawer-form .ant-select-selection-item {
+.artistbor-drawer-form .ant-select-selection-item,
+.artistbor-drawer-form .ant-select-selection-placeholder {
+  align-items: center !important;
   color: rgb(15 23 42) !important;
-  font-weight: 600;
+  display: flex !important;
+  font-size: 13px !important;
+  font-weight: 700;
+  line-height: 1 !important;
 }
 
 .artistbor-drawer-form textarea.ant-input {
@@ -1304,7 +1428,7 @@ input[type="time"] {
 .artistbor-drawer-form .ant-picker-focused,
 .artistbor-drawer-form .ant-select-focused .ant-select-selector {
   border-color: rgb(251 191 36) !important;
-  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1) !important;
+  box-shadow: none !important;
 }
 
 .artistbor-drawer-form .ant-input::placeholder,
@@ -1316,12 +1440,15 @@ input[type="time"] {
 }
 
 .artistbor-drawer-select .ant-select-selector {
-  background: #ffffff !important;
-  border: 1px solid rgb(226 232 240) !important;
-  border-radius: 0.75rem !important;
+  align-items: center !important;
+  background: #f8fafc !important;
+  border: 1px solid rgb(230 235 242) !important;
+  border-radius: 12px !important;
   box-shadow: none !important;
-  min-height: 44px;
-  padding: 4px 12px !important;
+  display: flex !important;
+  height: 40px !important;
+  min-height: 40px;
+  padding: 0 12px !important;
 }
 
 .artistbor-drawer-select.ant-select-focused .ant-select-selector {
@@ -1331,9 +1458,18 @@ input[type="time"] {
 
 .artistbor-drawer-select .ant-select-selection-placeholder,
 .artistbor-drawer-select .ant-select-selection-item {
+  align-items: center !important;
   color: rgb(15 23 42);
+  display: flex !important;
   font-size: 14px;
   font-weight: 600;
+  line-height: 20px !important;
+}
+
+.artistbor-drawer-select .ant-select-selection-wrap {
+  align-items: center !important;
+  display: flex !important;
+  height: 100% !important;
 }
 
 .artistbor-drawer-select .ant-select-selection-placeholder {
@@ -1426,7 +1562,7 @@ input[type="time"] {
 .dark .artistbor-drawer-form .ant-input-number,
 .dark .artistbor-drawer-form .ant-picker,
 .dark .artistbor-drawer-form .ant-select-selector {
-  background: #121a2a !important;
+  background: rgba(255, 255, 255, 0.035) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
 }
@@ -1454,7 +1590,7 @@ input[type="time"] {
 .dark .artistbor-drawer-form .ant-picker-focused,
 .dark .artistbor-drawer-form .ant-select-focused .ant-select-selector {
   border-color: rgba(251, 191, 36, 0.6) !important;
-  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.1) !important;
+  box-shadow: none !important;
 }
 
 .dark .artistbor-drawer-form .ant-input::placeholder,
@@ -1492,11 +1628,6 @@ input[type="time"] {
 .admin-table-scroll {
   scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
   scrollbar-width: thin;
-}
-
-.admin-table-scroll tbody,
-.admin-table-scroll tbody :where(a, button, div, p, span, td) {
-  font-weight: 400 !important;
 }
 
 .admin-table-scroll::-webkit-scrollbar {

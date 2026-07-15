@@ -136,16 +136,16 @@ export default function NotificationsPage() {
     meta?.pageCount ?? (meta?.total && meta?.limit ? Math.ceil(meta.total / meta.limit) : undefined);
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {labels.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">
+          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
             {labels.title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {labels.description}
           </p>
         </div>
@@ -163,7 +163,7 @@ export default function NotificationsPage() {
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
-        gridClassName="md:grid-cols-[minmax(150px,0.7fr)_minmax(260px,1.4fr)_auto] md:items-center"
+        gridClassName="md:grid-cols-[auto_auto_minmax(0,1fr)_auto] md:items-center"
         mobileLabel={labels.filter}
       >
           <FormField
@@ -196,7 +196,7 @@ export default function NotificationsPage() {
           <button
             type="button"
             onClick={resetFilters}
-            className={`${adminFilterActionClass} h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:border-slate-300 dark:border-white/10 dark:text-slate-300`}
+            className={`${adminFilterActionClass} h-10 px-4 md:col-start-4`}
           >
             {labels.clear}
           </button>
@@ -529,7 +529,7 @@ function getNotificationLabels(locale: string) {
     custom: "Sozlash",
     dataJson: "Data JSON",
     dataJsonInvalid: "Data JSON noto'g'ri formatda",
-    dataJsonObject: "Data JSON object bo'lishi kerak",
+    dataJsonObject: "Data JSON obyekt bo'lishi kerak",
     dateFrom: "Sanadan",
     dateFilter: "Sana",
     dateTo: "Sanagacha",
@@ -538,8 +538,8 @@ function getNotificationLabels(locale: string) {
     detailTitle: "Xabarnoma tafsilotlari",
     empty: "Xabarnomalar topilmadi",
     eyebrow: "Xabarnomalar",
-    filter: "Filter",
-    idNotFound: "Notification ID topilmadi",
+    filter: "Filtr",
+    idNotFound: "Xabarnoma ID topilmadi",
     loadFailed: "Xabarnomalar yuklanmadi",
     loading: "Xabarnomalar yuklanmoqda...",
     messageField: "Xabar",

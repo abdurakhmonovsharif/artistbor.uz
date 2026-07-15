@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Header } from "@/components/admin/header";
 import { Sidebar } from "@/components/admin/sidebar";
 import { LoadingState } from "@/components/ui/states";
 import { useAuth } from "@/lib/auth/auth-provider";
+import { canAccessAdminRoute } from "@/lib/auth/permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { useToast } from "@/components/ui/toast";
 import { dashboardApi, ordersApi, type DashboardQuickStats } from "@/lib/api/admin-content";
@@ -17,6 +19,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const { t } = useI18n();
   const toast = useToast();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading || !user) return;
+    if (!canAccessAdminRoute(user.role, pathname)) {
+      router.replace("/admin");
+    }
+  }, [loading, pathname, router, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -84,12 +95,12 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return null;
+  if (!user || !canAccessAdminRoute(user.role, pathname)) return null;
 
   return (
     <div
       className={cn(
-        "mx-auto min-h-screen min-w-[1280px] max-w-[2600px] bg-[#f7f9fc] text-slate-950 transition-[grid-template-columns] duration-200 dark:bg-[#0f172a] dark:text-slate-100 lg:grid [--artistbor-main-padding:20px] [--artistbor-sidebar-width:220px] min-[1366px]:[--artistbor-main-padding:22px] min-[1366px]:[--artistbor-sidebar-width:228px] min-[1440px]:[--artistbor-main-padding:24px] min-[1440px]:[--artistbor-sidebar-width:240px] min-[1536px]:[--artistbor-main-padding:32px] min-[1536px]:[--artistbor-sidebar-width:248px] min-[1920px]:[--artistbor-main-padding:40px] min-[1920px]:[--artistbor-sidebar-width:264px] min-[2400px]:[--artistbor-main-padding:48px] min-[2400px]:[--artistbor-sidebar-width:280px]",
+        "artistbor-admin-shell mx-auto min-h-screen w-full max-w-[2600px] overflow-x-hidden bg-[#f7f9fc] text-slate-950 transition-[grid-template-columns] duration-200 dark:bg-[#0f172a] dark:text-slate-100 lg:grid lg:min-w-[1280px] [--artistbor-main-padding:14px] [--artistbor-sidebar-width:220px] sm:[--artistbor-main-padding:18px] min-[1366px]:[--artistbor-main-padding:22px] min-[1366px]:[--artistbor-sidebar-width:228px] min-[1440px]:[--artistbor-main-padding:24px] min-[1440px]:[--artistbor-sidebar-width:240px] min-[1536px]:[--artistbor-main-padding:32px] min-[1536px]:[--artistbor-sidebar-width:248px] min-[1920px]:[--artistbor-main-padding:40px] min-[1920px]:[--artistbor-sidebar-width:264px] min-[2400px]:[--artistbor-main-padding:48px] min-[2400px]:[--artistbor-sidebar-width:280px]",
         sidebarCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[var(--artistbor-sidebar-width)_1fr]",
       )}
     >
@@ -99,8 +110,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         onClose={() => setSidebarOpen(false)}
         onLogout={handleLogout}
         quickStats={quickStats}
+        userRole={user.role}
       />
-      <div className="min-w-0">
+      <div className="min-w-0 lg:col-start-2 lg:row-start-1">
         <Header
           user={user}
           navigationExpanded={sidebarOpen || !sidebarCollapsed}
@@ -108,7 +120,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           onToggleNavigation={handleToggleNavigation}
           onLogout={handleLogout}
         />
-        <main className="px-[var(--artistbor-main-padding)] py-[var(--artistbor-main-padding)]">{children}</main>
+        <main className="px-[var(--artistbor-main-padding)] pb-[calc(var(--artistbor-main-padding)+24px)] pt-2 sm:py-[var(--artistbor-main-padding)]">{children}</main>
       </div>
     </div>
   );

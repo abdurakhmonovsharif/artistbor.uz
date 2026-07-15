@@ -5,7 +5,6 @@ import { isRecord } from "@/lib/utils";
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://api.artistbor.uz";
 
-export const TOKEN_KEY = "artistbor_admin_token";
 export const ADMIN_AUTH_PREVIEW_ENABLED =
   process.env.NODE_ENV !== "production" &&
   process.env.NEXT_PUBLIC_ADMIN_AUTH_PREVIEW === "true";
@@ -16,38 +15,42 @@ export type ApiError = Error & {
 };
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: typeof window === "undefined" ? API_BASE_URL : "/api/admin-proxy",
   headers: {
     Accept: "application/json",
   },
 });
 
-apiClient.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = window.localStorage.getItem(TOKEN_KEY);
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+export const authClient = axios.create({
+  baseURL: "/api/admin-auth",
+  headers: {
+    Accept: "application/json",
+  },
 });
+
+const responseErrorInterceptor = (error: AxiosError<ApiEnvelope<unknown>>) => {
+  const apiError = new Error(resolveErrorMessage(error)) as ApiError;
+  apiError.status = error.response?.status;
+  apiError.errors = error.response?.data?.errors;
+  if (
+    apiError.status === 401 &&
+    typeof window !== "undefined" &&
+    !ADMIN_AUTH_PREVIEW_ENABLED &&
+    !window.location.pathname.startsWith("/login")
+  ) {
+    window.location.href = "/login";
+  }
+  return Promise.reject(apiError);
+};
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ApiEnvelope<unknown>>) => {
-    const apiError = new Error(resolveErrorMessage(error)) as ApiError;
-    apiError.status = error.response?.status;
-    apiError.errors = error.response?.data?.errors;
-    if (
-      apiError.status === 401 &&
-      typeof window !== "undefined" &&
-      !ADMIN_AUTH_PREVIEW_ENABLED
-    ) {
-      window.localStorage.removeItem(TOKEN_KEY);
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login";
-      }
-    }
-    return Promise.reject(apiError);
-  },
+  responseErrorInterceptor,
+);
+
+authClient.interceptors.response.use(
+  (response) => response,
+  responseErrorInterceptor,
 );
 
 function resolveErrorMessage(error: AxiosError<ApiEnvelope<unknown>>) {
@@ -66,17 +69,4 @@ export function unwrapData<T>(payload: unknown): T {
     return payload.data as T;
   }
   return payload as T;
-}
-
-export function getToken() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string) {
-  window.localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearToken() {
-  window.localStorage.removeItem(TOKEN_KEY);
 }

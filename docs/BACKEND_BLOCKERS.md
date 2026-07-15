@@ -23,7 +23,8 @@ backend CORS / OPTIONS behavior or backend runtime errors.
 ## Auth Status
 
 - `POST /v1/admin/auth/login` returns `200` with corrected credentials.
-- `localStorage.artistbor_admin_token` is stored after successful login.
+- Frontend stores the backend token in an httpOnly admin session cookie through
+  `/api/admin-auth/login`; the token is not available to browser JavaScript.
 - `GET /v1/admin/auth/me` returns `200`.
 - Frontend auth flow is working.
 
@@ -36,7 +37,8 @@ backend CORS / OPTIONS behavior or backend runtime errors.
 
 ## Browser CORS / OPTIONS Failures
 
-The following endpoints are blocked in the browser by CORS/preflight:
+The following endpoints were previously blocked in the browser by
+CORS/preflight when the frontend called the backend directly:
 
 - `/v1/admin/categories`
 - `/v1/admin/regions`
@@ -52,8 +54,9 @@ Backend should allow `OPTIONS` preflight for `/v1/admin/*` and allow:
 - `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS` methods
 - Frontend origin used by local and production dashboard environments
 
-This is required because browser requests with the `Authorization` header trigger
-preflight before the real authenticated request is sent.
+The frontend now calls same-origin `/api/admin-proxy/*`; the Next.js route
+handler attaches `Authorization` server-side. Backend CORS should still be fixed
+for any non-BFF clients that call the API directly.
 
 ## Backend 500 Errors
 

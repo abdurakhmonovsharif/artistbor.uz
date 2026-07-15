@@ -246,14 +246,14 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
   );
 
   return (
-    <section className="space-y-6">
+    <section className="artistbor-admin-page w-full space-y-4">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-500">
+          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
             {eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white">{title}</h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium text-slate-500 dark:text-slate-400">
+          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{title}</h1>
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
             {description}
           </p>
         </div>
@@ -273,7 +273,7 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
       >
         <div
           className={cn(
-            "artistbor-table-filter-panel grid gap-3 md:grid-cols-3",
+            "artistbor-table-filter-panel grid gap-3 md:grid-cols-3 md:items-center",
             filterGridClassName,
           )}
         >

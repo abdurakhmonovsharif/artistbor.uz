@@ -6,17 +6,21 @@ Date: 2026-05-02
 
 - `src/lib/api/client.ts`
   - `NEXT_PUBLIC_API_BASE_URL`, default `https://api.artistbor.uz`
-  - Axios instance with `Accept: application/json`
-  - Bearer token from localStorage key `artistbor_admin_token`
-  - 401 clears token and redirects to `/login` unless development auth preview is enabled
-  - `unwrapData`, token helpers, normalized error message handling
+  - Browser Axios instance calls local `/api/admin-proxy/*`
+  - Next.js route handlers attach the admin Bearer token from an httpOnly cookie
+  - 401 redirects to `/login` unless development auth preview is enabled
+  - `unwrapData` and normalized error message handling
 
 ## Auth API
 
 - `src/lib/api/auth.ts`
-  - `POST /v1/admin/auth/login`
-  - `GET /v1/admin/auth/me`
-  - `POST /v1/admin/auth/logout`
+  - `POST /api/admin-auth/login`
+  - `GET /api/admin-auth/me`
+  - `POST /api/admin-auth/logout`
+- `src/app/api/admin-auth/*`
+  - Calls backend `/v1/admin/auth/*`
+  - Stores the backend token in an httpOnly, sameSite cookie
+  - Does not expose the token to browser JavaScript
 
 ## Admin Content API
 

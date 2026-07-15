@@ -301,7 +301,7 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     <section className="artistbor-admin-page w-full space-y-4">
       <div>
         <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">{labels.pageEyebrow}</p>
-        <h1 className="mt-2 text-[30px] font-bold leading-9 tracking-[-0.02em] text-[#0f172a] dark:text-white">{labels.pageTitle}</h1>
+        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{labels.pageTitle}</h1>
         <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
           {labels.pageDescription}
         </p>

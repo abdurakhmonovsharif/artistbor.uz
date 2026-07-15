@@ -26,6 +26,7 @@ export function FormField({
   className,
   inputClassName,
   selectIconClassName,
+  suffix,
   autoComplete,
   disabled,
   onFocus,
@@ -47,6 +48,7 @@ export function FormField({
   className?: string;
   inputClassName?: string;
   selectIconClassName?: string;
+  suffix?: ReactNode;
   autoComplete?: string;
   disabled?: boolean;
   onFocus?: () => void;
@@ -57,18 +59,20 @@ export function FormField({
   const [showPassword, setShowPassword] = useState(false);
   const hasPrefixIcon = Boolean(prefixIcon) && type !== "select" && type !== "textarea";
   const isPassword = type === "password";
+  const hasSuffix = Boolean(suffix) && type !== "select" && type !== "textarea" && !isPassword;
   const isCompactTextarea = compact && type === "textarea";
   const textLength = typeof value === "string" ? value.length : String(value).length;
   const baseClass = cn(
-    "w-full border bg-white px-4 text-sm font-medium text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/50 dark:bg-slate-900 dark:text-white dark:focus:border-white/20 dark:focus:ring-white/10",
-    compact && !isCompactTextarea ? "artistbor-table-filter-control h-10 rounded-xl py-2.5" : null,
+    "w-full border bg-[#f8fafc] px-3 text-[13px] font-bold text-[#475569] shadow-none outline-none transition placeholder:text-[#94a3b8] focus:border-orange-500/45 focus:ring-0 dark:bg-white/[0.035] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-amber-300/50",
+    !isCompactTextarea ? "artistbor-table-filter-control h-10 rounded-xl py-0 leading-[40px]" : null,
     isCompactTextarea
       ? cn("min-h-[112px] rounded-xl py-3", showCount && maxLength ? "pb-10 pr-16" : null)
       : compact
-        ? "rounded-xl py-3"
-        : "rounded-2xl py-3",
+        ? "rounded-xl"
+        : "rounded-xl",
     hasPrefixIcon && "pl-10",
     isPassword && "pr-11",
+    hasSuffix && "pr-16",
     error ? "border-rose-300" : "border-slate-200/90 dark:border-white/10",
     "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-70 dark:disabled:bg-white/[0.04] dark:disabled:text-slate-500",
     inputClassName,
@@ -108,7 +112,7 @@ export function FormField({
             onFocus={onFocus}
           />
         ) : type === "select" ? (
-          <select className={baseClass} value={value} onChange={handleChange} required={required} disabled={disabled} onFocus={onFocus}>
+          <select className={cn(baseClass, "pr-9")} value={value} onChange={handleChange} required={required} disabled={disabled} onFocus={onFocus}>
             <option value="">{placeholder ?? t("common.select")}</option>
             {options?.map((option) => (
               <option key={String(option.value)} value={option.value}>
@@ -132,6 +136,11 @@ export function FormField({
         {type === "select" && selectIconClassName ? (
           <span className={cn("pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2", selectIconClassName)}>
             <ChevronDown className="size-4" />
+          </span>
+        ) : null}
+        {hasSuffix ? (
+          <span className="pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2 text-xs font-bold text-slate-400 dark:text-slate-500">
+            {suffix}
           </span>
         ) : null}
         {type === "textarea" && showCount && maxLength ? (

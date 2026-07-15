@@ -40,7 +40,7 @@ export function ApplicationsTable({
   const labels = getApplicationLabels(locale);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
+    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1080px] border-separate border-spacing-0">
           <colgroup>
@@ -86,7 +86,7 @@ export function ApplicationsTable({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <p className="truncate text-[13px] font-semibold leading-[18px] text-[#334155] dark:text-slate-100">
+                    <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
                       {getPrimaryCategoryLabel(application, categoryMap, locale)}
                     </p>
                     <p className="truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
@@ -97,7 +97,7 @@ export function ApplicationsTable({
                     <ApplicationStatusBadge application={application} />
                   </TableCell>
                   <TableCell>
-                    <p className="text-[13px] font-semibold leading-[18px] text-[#334155] dark:text-slate-100">{date.date}</p>
+                    <p className="text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">{date.date}</p>
                     <p className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{date.time}</p>
                   </TableCell>
                   <TableCell>
@@ -174,5 +174,5 @@ function TableHead({ children, className }: { children: ReactNode; className?: s
 }
 
 function TableCell({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn("border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] dark:border-white/10", className)}>{children}</td>;
+  return <td className={cn("border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
 }

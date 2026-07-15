@@ -34,6 +34,7 @@ import { cn, toDisplay } from "@/lib/utils";
 import { useTheme } from "@/lib/theme/theme-provider";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { Locale } from "@/lib/i18n/translations";
+import { formatMoneyWithCurrency } from "@/lib/money-format";
 
 const AntColumn = dynamic(
   () => import("@ant-design/charts").then((mod) => mod.Column),
@@ -59,6 +60,7 @@ export default function AdminHome() {
   const periodOptions = useMemo(() => getDashboardPeriodOptions(labels), [labels]);
   const [filters, setFilters] = useState<DashboardStatsFilters>(defaultFilters);
   const [customOpen, setCustomOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,25 +91,26 @@ export default function AdminHome() {
 
   const counters = stats?.counters;
   const charts = stats?.charts;
+  const selectedPeriod = stats?.period;
   const topArtists = useMemo(() => arrayOrEmpty(stats?.top_artists), [stats]);
   const topCategories = useMemo(() => arrayOrEmpty(stats?.top_categories), [stats]);
   const orderChartRows = useMemo(
     () =>
-      arrayOrEmpty(charts?.orders_per_day).map((row) => ({
+      filterRowsByPeriod(arrayOrEmpty(charts?.orders_per_day), selectedPeriod).map((row) => ({
         label: formatDateLabel(row.date),
         value: numberValue(row.count),
         display: formatNumber(numberValue(row.count), locale),
       })),
-    [charts, locale],
+    [charts, locale, selectedPeriod],
   );
   const revenueChartRows = useMemo(
     () =>
-      arrayOrEmpty(charts?.revenue_per_day).map((row) => ({
+      filterRowsByPeriod(arrayOrEmpty(charts?.revenue_per_day), selectedPeriod).map((row) => ({
         label: formatDateLabel(row.date),
         value: numberValue(row.amount),
         display: formatCurrency(numberValue(row.amount), locale),
       })),
-    [charts, locale],
+    [charts, locale, selectedPeriod],
   );
   const statusChartRows = useMemo(
     () =>
@@ -137,10 +140,17 @@ export default function AdminHome() {
   const handlePeriodSelect = (period: DashboardPeriod) => {
     if (period === "custom") {
       setCustomOpen(true);
+      setRangeOpen(true);
       return;
     }
     setCustomOpen(false);
+    setRangeOpen(false);
     setFilters({ period });
+  };
+
+  const handleDatePillClick = () => {
+    setCustomOpen(true);
+    setRangeOpen(true);
   };
 
   const handleRangeChange = (dates: unknown) => {
@@ -149,31 +159,39 @@ export default function AdminHome() {
     const toValue = pickerDateToApi(to);
 
     if (!fromValue || !toValue) return;
+    setRangeOpen(false);
     setFilters({ period: "custom", from: fromValue, to: toValue });
   };
 
   return (
-    <section className="dashboard-page min-w-0 space-y-4 pb-2">
-      <header className="rounded-[30px] bg-white/55 p-1.5 shadow-[0_26px_70px_rgba(15,23,42,0.08)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
-        <div className="flex min-h-[96px] flex-col justify-between gap-4 rounded-[calc(30px-0.375rem)] bg-white/95 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] min-[1320px]:flex-row min-[1320px]:items-center">
+    <section className="dashboard-page artistbor-admin-page w-full min-w-0 space-y-4 pb-2">
+      <header className="relative overflow-hidden rounded-[26px] bg-white/55 p-1 shadow-[0_18px_46px_rgba(15,23,42,0.07)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10 sm:rounded-[30px] sm:p-1.5 sm:shadow-[0_26px_70px_rgba(15,23,42,0.08)]">
+        <div className="absolute -right-16 -top-20 h-44 w-44 rounded-full bg-amber-300/20 blur-3xl dark:bg-amber-400/10" />
+        <div className="relative flex min-h-[112px] flex-col justify-between gap-4 rounded-[calc(26px-0.25rem)] bg-white/95 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[96px] sm:rounded-[calc(30px-0.375rem)] sm:px-5 min-[1320px]:flex-row min-[1320px]:items-center">
           <div className="max-w-3xl">
             <p className="inline-flex rounded-full bg-[#fff4e5] px-3 py-1 text-[10px] font-black uppercase leading-none tracking-[0.2em] text-[#c26a00] ring-1 ring-[#ffcf73]/50 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-300/15">
               Artistbor
             </p>
-            <h1 className="mt-3 text-[clamp(25px,2vw,32px)] font-black leading-[1.08] tracking-[-0.035em] text-[#0f172a] dark:text-white">
+            <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
               {labels.title}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-[21px] text-[#64748b] dark:text-slate-400">
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
               {labels.description}
             </p>
           </div>
 
-          <div className="dashboard-filter-shell artistbor-table-filter-shell flex h-11 w-full shrink-0 items-center gap-1.5 overflow-x-auto rounded-full bg-[#f8fafc] p-1 ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10 min-[1320px]:w-auto min-[1320px]:overflow-visible">
+          <div className="dashboard-filter-shell artistbor-table-filter-shell flex w-full shrink-0 items-center gap-1.5 overflow-x-auto bg-[#f8fafc] p-1 dark:bg-white/[0.035] sm:h-11 min-[1320px]:w-auto min-[1320px]:overflow-visible">
             {stats?.period ? (
-              <p className="dashboard-date-pill inline-flex h-9 w-[210px] shrink-0 items-center gap-2 rounded-full bg-white px-3 text-[13px] font-bold leading-none text-[#0f172a] ring-1 ring-[#e6ebf2] dark:bg-slate-950 dark:text-slate-100 dark:ring-white/10 min-[1440px]:w-[238px]">
-                <CalendarDays className="size-3.5 text-[#475569]" />
-                <span className="truncate">{toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}</span>
-              </p>
+              <button
+                type="button"
+                onClick={handleDatePillClick}
+                className="dashboard-date-pill artistbor-table-filter-control inline-flex h-10 w-[248px] shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[#f8fafc] px-3 text-left text-[13px] font-bold leading-none text-[#475569] ring-1 ring-[#e6ebf2] transition hover:border-[#e6ebf2] hover:bg-[#f8fafc] focus:outline-none focus:ring-0 dark:bg-white/[0.035] dark:text-slate-200 dark:ring-white/10 sm:w-[260px] min-[1440px]:w-[292px]"
+                aria-label={labels.customRange}
+                title={`${toDisplay(stats.period.from)} - ${toDisplay(stats.period.to)}`}
+              >
+                <CalendarDays className="size-3.5 shrink-0 text-[#475569]" />
+                <span className="min-w-0 whitespace-nowrap">{toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}</span>
+              </button>
             ) : null}
             <Select
               value={customOpen ? "custom" : filters.period}
@@ -185,14 +203,16 @@ export default function AdminHome() {
                 })),
                 { label: labels.customRange, value: "custom" },
               ]}
-              className="dashboard-period-select !h-9 !w-[124px] shrink-0 min-[1440px]:!w-[148px]"
+              className="dashboard-period-select artistbor-table-filter-control !h-10 !w-[118px] shrink-0 min-[1440px]:!w-[148px]"
               aria-label={labels.periodAria}
             />
             {customOpen ? (
               <RangePicker
                 format="DD.MM.YYYY"
                 onChange={handleRangeChange}
-                className="!h-9 !w-[246px] shrink-0 !rounded-full"
+                open={rangeOpen}
+                onOpenChange={setRangeOpen}
+                className="artistbor-table-filter-control !h-10 !w-[236px] shrink-0 !rounded-xl"
                 placeholder={[labels.rangeStart, labels.rangeEnd]}
                 aria-label={labels.customRange}
               />
@@ -202,7 +222,7 @@ export default function AdminHome() {
               onClick={() => void fetchStats(filters)}
               disabled={loading}
               icon={<RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />}
-              className="!h-9 !w-[112px] shrink-0 !rounded-full !border-[#e6ebf2] !bg-white !px-3 !font-extrabold !text-[#0f172a] dark:!border-white/10 dark:!bg-slate-950 dark:!text-white min-[1440px]:!w-32 min-[1440px]:!px-4"
+              className="artistbor-table-filter-control !h-10 !w-[104px] shrink-0 !rounded-xl !border-[#e6ebf2] !bg-[#f8fafc] !px-3 !text-[13px] !font-bold !text-[#475569] dark:!border-white/10 dark:!bg-white/[0.035] dark:!text-slate-200 min-[1440px]:!w-32 min-[1440px]:!px-4"
               aria-label={labels.refreshAria}
             >
               {labels.refresh}
@@ -234,7 +254,7 @@ export default function AdminHome() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1600px]:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1600px]:grid-cols-6">
             <MetricCard
               label={labels.totalOrders}
               value={formatNumber(numberValue(counters?.total_orders), locale)}
@@ -261,14 +281,14 @@ export default function AdminHome() {
               value={formatNumber(numberValue(counters?.pending_orders), locale)}
               icon={Clock3}
               tone="amber"
-              href="/admin/orders?status=pending"
+              href="/admin/orders?status=10"
             />
             <CompactMetric
               label={labels.paymentPending}
               value={formatNumber(numberValue(counters?.payment_pending), locale)}
               icon={CreditCard}
               tone="rose"
-              href="/admin/orders?payment_status=10"
+              href="/admin/orders?status=20"
             />
             <CompactMetric
               label={labels.completed}
@@ -370,15 +390,15 @@ function MetricCard({
       href={href}
       className={dashboardMetricCardClass}
     >
-      <div className="flex min-h-[88px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-full ring-1 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-105", toneClass)}>
+      <div className="flex min-h-[82px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[88px]">
+        <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl ring-1 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-105 sm:size-9", toneClass)}>
           <Icon className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold leading-4 text-[#475569] dark:text-slate-300">
+          <p className="text-[12px] font-semibold leading-4 text-[#475569] dark:text-slate-300">
             {label}
           </p>
-          <p className="mt-2 break-words text-[clamp(19px,1.35vw,25px)] font-black leading-[1.15] tracking-[-0.035em] text-[#0f172a] dark:text-white">
+          <p className="mt-2 break-words text-[clamp(22px,6vw,28px)] font-black leading-[1.08] tracking-[-0.04em] text-[#0f172a] dark:text-white sm:text-[clamp(19px,1.35vw,25px)]">
             {value}
           </p>
         </div>
@@ -413,15 +433,15 @@ function CompactMetric({
       href={href}
       className={dashboardMetricCardClass}
     >
-      <div className="flex min-h-[88px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-50 ring-1 ring-[#e6ebf2] dark:bg-white/[0.04] dark:ring-white/10">
+      <div className="flex min-h-[82px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[88px]">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-50 ring-1 ring-[#e6ebf2] dark:bg-white/[0.04] dark:ring-white/10 sm:size-9">
           <Icon className={cn("size-4 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-110", toneClass)} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold leading-4 text-[#475569] dark:text-slate-300">
+          <p className="text-[12px] font-semibold leading-4 text-[#475569] dark:text-slate-300">
             {label}
           </p>
-          <p className="mt-2 text-[clamp(19px,1.35vw,25px)] font-black leading-[1.15] tracking-[-0.035em] text-[#0f172a] dark:text-white">{value}</p>
+          <p className="mt-2 text-[clamp(22px,6vw,28px)] font-black leading-[1.08] tracking-[-0.04em] text-[#0f172a] dark:text-white sm:text-[clamp(19px,1.35vw,25px)]">{value}</p>
         </div>
       </div>
     </Link>
@@ -429,7 +449,7 @@ function CompactMetric({
 }
 
 const dashboardMetricCardClass =
-  "group block rounded-[26px] bg-white/55 p-1 shadow-[0_18px_42px_rgba(15,23,42,0.055)] ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[2px] hover:bg-white/80 hover:shadow-[0_24px_54px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:bg-white/[0.035] dark:ring-white/10 dark:hover:bg-white/[0.055]";
+  "group block rounded-[26px] bg-white/55 p-1 shadow-[0_14px_34px_rgba(15,23,42,0.05)] ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[2px] hover:bg-white/80 hover:shadow-[0_24px_54px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:bg-white/[0.035] dark:ring-white/10 dark:hover:bg-white/[0.055] sm:shadow-[0_18px_42px_rgba(15,23,42,0.055)]";
 
 function Panel({
   title,
@@ -447,22 +467,22 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className={cn("rounded-[28px] bg-white/55 p-1.5 shadow-[0_22px_58px_rgba(15,23,42,0.06)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10", className)}>
-      <div className="h-full rounded-[calc(28px-0.375rem)] bg-white/95 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <div className="mb-3 flex items-start justify-between gap-3">
+    <section className={cn("rounded-[26px] bg-white/55 p-1 shadow-[0_16px_42px_rgba(15,23,42,0.055)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10 sm:rounded-[28px] sm:p-1.5 sm:shadow-[0_22px_58px_rgba(15,23,42,0.06)]", className)}>
+      <div className="flex h-full flex-col rounded-[calc(26px-0.25rem)] bg-white/95 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:rounded-[calc(28px-0.375rem)] sm:p-4">
+        <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
           <div>
-            <h2 className="text-[15px] font-black leading-5 tracking-[-0.015em] text-[#0f172a] dark:text-white">{title}</h2>
-            <p className="mt-1 text-xs leading-[17px] text-[#64748b] dark:text-slate-400">
+            <h2 className="text-[14px] font-black leading-5 tracking-[-0.015em] text-[#0f172a] dark:text-white sm:text-[15px]">{title}</h2>
+            <p className="mt-1 text-[11px] leading-4 text-[#64748b] dark:text-slate-400 sm:text-xs sm:leading-[17px]">
               {description}
             </p>
           </div>
           {action ?? (
-            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#fff4e5] text-[#d97706] ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#fff4e5] text-[#d97706] ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
               <Icon className="size-3.5" />
             </span>
           )}
         </div>
-        {children}
+        <div className="min-h-0 flex-1">{children}</div>
       </div>
     </section>
   );
@@ -507,15 +527,6 @@ function OrdersColumnChart({
       stroke: "#f97316",
       lineWidth: 2,
     },
-    point: {
-      sizeField: 4,
-      shapeField: "circle",
-      style: {
-        fill: "#ffffff",
-        stroke: "#f97316",
-        lineWidth: 2,
-      },
-    },
     axis: {
       x: getChartAxis(chartTokens, { labelAutoHide: true, labelAutoRotate: false }),
       y: getChartAxis(chartTokens, {
@@ -536,7 +547,7 @@ function OrdersColumnChart({
 
   return (
     <div className="space-y-2.5">
-      <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} locale={locale} />
+      <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} />
       <ChartBox empty={!hasData}>
         <AntLine {...config} />
       </ChartBox>
@@ -573,15 +584,6 @@ function RevenueLineChart({
       stroke: "#10b981",
       lineWidth: 2,
     },
-    point: {
-      sizeField: 3,
-      shapeField: "circle",
-      style: {
-        fill: chartTokens.chartSurface,
-        stroke: "#10b981",
-        lineWidth: 2,
-      },
-    },
     axis: {
       x: getChartAxis(chartTokens, { labelAutoHide: true, labelAutoRotate: false }),
       y: getChartAxis(chartTokens, {
@@ -602,7 +604,7 @@ function RevenueLineChart({
 
   return (
     <div className="space-y-2.5">
-      <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} locale={locale} />
+      <ChartSummary rows={rows} totalDisplay={totalDisplay} labels={labels} />
       <ChartBox empty={!hasData}>
         <AntLine {...config} />
       </ChartBox>
@@ -630,7 +632,7 @@ function OrderStatusDonut({
     data: rows,
     angleField: "value",
     colorField: "label",
-    height: 156,
+    height: 148,
     innerRadius: 0.68,
     theme: getDashboardChartTheme(chartTokens),
     scale: {
@@ -651,48 +653,50 @@ function OrderStatusDonut({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="grid items-center gap-4 min-[1440px]:grid-cols-[150px_1fr] min-[1920px]:grid-cols-[168px_1fr]">
-        <div className="relative mx-auto w-full max-w-[168px]">
+    <div className="flex h-full min-h-[236px] flex-col justify-between gap-3">
+      <div className="grid flex-1 items-center gap-3 min-[1440px]:grid-cols-[140px_1fr] min-[1920px]:grid-cols-[156px_1fr]">
+        <div className="relative mx-auto w-full max-w-[156px]">
           <ChartBox empty={!hasData} compact>
             <AntPie {...config} />
           </ChartBox>
           <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
             <div>
-              <p className="text-xs font-semibold text-[#64748b] dark:text-slate-400">{labels.summaryTotal}</p>
-              <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-[#0f172a] dark:text-white">
+              <p className="text-[11px] font-semibold leading-none text-[#64748b] dark:text-slate-400">{labels.summaryTotal}</p>
+              <p className="mt-2 text-2xl font-bold leading-none tracking-[-0.02em] text-[#0f172a] dark:text-white">
                 {formatNumber(total, locale)}
               </p>
             </div>
           </div>
         </div>
-        <div className="grid gap-1.5">
+        <div className="grid gap-2">
           {rows.map((row, index) => (
-          <div
-            key={`${row.label}-${row.value}`}
-            className="flex items-center justify-between gap-3 text-[13px]"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <span
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: statusPalette[index % statusPalette.length] }}
-              />
-              <span className="truncate font-semibold text-[#334155] dark:text-slate-200">{row.label}</span>
-            </span>
-            <span className="shrink-0 font-bold text-[#0f172a] dark:text-white">
-              {row.display} ({formatPercent(row.value, total, locale)})
-            </span>
-          </div>
+            <div
+              key={`${row.label}-${row.value}`}
+              className="flex items-center justify-between gap-3 text-[13px]"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: statusPalette[index % statusPalette.length] }}
+                />
+                <span className="truncate font-semibold text-[#334155] dark:text-slate-200">{row.label}</span>
+              </span>
+              <span className="shrink-0 font-bold text-[#0f172a] dark:text-white">
+                {row.display} ({formatPercent(row.value, total, locale)})
+              </span>
+            </div>
           ))}
         </div>
       </div>
-      <Link
-        href="/admin/orders"
-        className="flex h-10 items-center justify-center gap-2 rounded-full bg-[#f8fafc] text-sm font-bold text-[#334155] transition-colors duration-500 hover:bg-[#fff4e5] hover:text-[#ea580c] dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
-      >
-        {labels.viewAllStatuses}
-        <ChevronRightIcon />
-      </Link>
+      <div className="flex justify-end border-t border-slate-950/[0.06] pt-3 dark:border-white/10">
+        <Link
+          href="/admin/orders"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-3 text-sm font-bold text-[#334155] transition-colors duration-500 hover:bg-[#fff4e5] hover:text-[#ea580c] dark:text-slate-200 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+        >
+          {labels.viewAllStatuses}
+          <ChevronRightIcon />
+        </Link>
+      </div>
     </div>
   );
 }
@@ -816,12 +820,10 @@ function ChartSummary({
   rows,
   totalDisplay,
   labels,
-  locale,
 }: {
   rows: ChartRow[];
   totalDisplay: string;
   labels: DashboardLabels;
-  locale: Locale;
 }) {
   const peak = rows.reduce<ChartRow | undefined>(
     (current, row) => (!current || row.value > current.value ? row : current),
@@ -829,7 +831,7 @@ function ChartSummary({
   );
 
   return (
-    <div className="grid gap-2 sm:grid-cols-3">
+    <div className="grid gap-2 sm:grid-cols-2">
       <div className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-950/[0.04] dark:bg-white/[0.035] dark:ring-white/10">
         <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryTotal}</p>
         <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">{totalDisplay}</p>
@@ -839,10 +841,6 @@ function ChartSummary({
         <p className="mt-0.5 truncate text-sm font-black text-slate-950 dark:text-white">
           {peak?.display ?? "—"}
         </p>
-      </div>
-      <div className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-950/[0.04] dark:bg-white/[0.035] dark:ring-white/10">
-        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">{labels.summaryPoints}</p>
-        <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{formatNumber(rows.length, locale)}</p>
       </div>
     </div>
   );
@@ -945,7 +943,7 @@ function QueueList({
       value: numberValue(counters?.pending_orders),
       icon: FileText,
       tone: "purple",
-      href: "/admin/orders",
+      href: "/admin/orders?status=10",
     },
     {
       label: labels.paymentPending,
@@ -953,7 +951,7 @@ function QueueList({
       value: numberValue(counters?.payment_pending),
       icon: CreditCard,
       tone: "red",
-      href: "/admin/orders",
+      href: "/admin/orders?status=20",
     },
     {
       label: labels.pendingComments,
@@ -1156,7 +1154,7 @@ function getDashboardLabels(locale: Locale) {
       revenue: "Доход",
       revenueByDay: "Доход по дням",
       revenueByDayDescription: "Динамика ежедневного дохода.",
-      revenueLegend: "Доход (UZS)",
+      revenueLegend: "Доход (so'm)",
       selectedPeriodEmpty: "За выбранный период данных нет",
       statusAccepted: "Принято",
       statusActive: "Активный",
@@ -1236,7 +1234,7 @@ function getDashboardLabels(locale: Locale) {
     revenue: "Daromad",
     revenueByDay: "Daromad kunlar bo'yicha",
     revenueByDayDescription: "Kunlik daromad dinamikasi.",
-    revenueLegend: "Daromad (UZS)",
+    revenueLegend: "Daromad (so'm)",
     selectedPeriodEmpty: "Tanlangan davrda ma'lumot yo'q",
     statusAccepted: "Qabul qilingan",
     statusActive: "Faol",
@@ -1277,6 +1275,34 @@ function arrayOrEmpty<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
 }
 
+function filterRowsByPeriod<T extends { date?: string }>(
+  rows: T[],
+  period: DashboardStats["period"],
+) {
+  const from = toDateKey(period?.from);
+  const to = toDateKey(period?.to);
+  if (!from || !to) return rows;
+
+  return rows.filter((row) => {
+    const date = toDateKey(row.date);
+    return date ? date >= from && date <= to : false;
+  });
+}
+
+function toDateKey(value: unknown) {
+  if (typeof value !== "string" || !value) return "";
+  const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) return match[0];
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function sumChartValues(rows: ChartRow[]) {
   return rows.reduce((sum, row) => sum + row.value, 0);
 }
@@ -1299,7 +1325,7 @@ function formatNumber(value: number, locale: Locale) {
 }
 
 function formatCurrency(value: number, locale: Locale) {
-  return `UZS ${formatNumber(Math.round(value), locale)}`;
+  return formatMoneyWithCurrency(value, locale);
 }
 
 function formatPercent(value: number, total: number, locale: Locale) {

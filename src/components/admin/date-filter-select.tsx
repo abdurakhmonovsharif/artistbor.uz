@@ -39,14 +39,14 @@ export function DateFilterSelect({
 }) {
   const mode = value.mode;
   const commonInputClassName = cn(
-    "artistbor-table-filter-control !h-[38px] !w-[150px] shrink-0 !rounded-xl !border-[#e6ebf2] !bg-white !text-[13px] !font-medium !text-[#475569] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+    "artistbor-table-filter-control !h-10 !w-[150px] shrink-0 !rounded-xl !border-[#e6ebf2] !bg-[#f8fafc] !text-[13px] !font-bold !text-[#475569] dark:!border-white/10 dark:!bg-white/[0.035] dark:!text-slate-200",
     inputClassName,
   );
 
   return (
     <div className={cn("flex min-w-0 flex-nowrap items-center gap-2", className)}>
       <Select
-        className={cn("artistbor-compact-select artistbor-table-filter-control !h-[38px] !w-[190px] shrink-0", selectClassName)}
+        className={cn("artistbor-compact-select artistbor-table-filter-control !h-10 !w-[190px] shrink-0", selectClassName)}
         value={mode}
         aria-label={labels.label}
         onChange={(nextMode: DateFilterMode) =>

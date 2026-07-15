@@ -52,11 +52,11 @@ No destructive API actions were submitted.
 
 | Check | Status | Notes |
 |---|---:|---|
-| Bearer token usage | Pass | `apiClient` reads `artistbor_admin_token` from localStorage and sends `Authorization: Bearer <token>`. |
-| Auth login | Pass | `POST /v1/admin/auth/login` is used by `src/lib/api/auth.ts`. |
-| Current admin | Pass | `GET /v1/admin/auth/me` is used on refresh. |
-| Logout | Pass | `POST /v1/admin/auth/logout` is called, then local token is cleared. |
-| 401 handling | Pass | Response interceptor clears token and redirects to `/login`, except development auth preview. |
+| Bearer token usage | Pass | Browser calls same-origin `/api/admin-proxy/*`; the route handler reads the httpOnly session cookie and sends `Authorization: Bearer <token>` server-side. |
+| Auth login | Pass | `POST /api/admin-auth/login` calls backend `/v1/admin/auth/login` and sets an httpOnly cookie. |
+| Current admin | Pass | `GET /api/admin-auth/me` is used on refresh. |
+| Logout | Pass | `POST /api/admin-auth/logout` calls backend logout when possible, then clears the session cookie. |
+| 401 handling | Pass | Response interceptor redirects to `/login`, except development auth preview; BFF route handlers clear invalid session cookies. |
 | Response unwrap | Pass | `unwrapData` supports the API envelope shape `{ success, data }`. |
 | Live `data.list` shape | Pass | `normalizeList` supports live list response shape `data.list` and `data.meta`. |
 
@@ -147,4 +147,3 @@ This audit should be followed by:
 
 - `npm run lint`
 - `npm run build`
-

@@ -7,6 +7,7 @@ export function formatUnixDateTime(seconds: unknown) {
     day: "2-digit",
     year: "numeric",
     hour: "2-digit",
+    hourCycle: "h23",
     minute: "2-digit",
   }).format(new Date(value * 1000));
 }

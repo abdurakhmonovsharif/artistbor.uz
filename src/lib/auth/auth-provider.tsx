@@ -3,8 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getCurrentAdmin, login as loginRequest, logout as logoutRequest } from "@/lib/api/auth";
-import { ADMIN_AUTH_PREVIEW_ENABLED, getToken } from "@/lib/api/client";
+import { ADMIN_AUTH_PREVIEW_ENABLED } from "@/lib/api/client";
 import { staffApi, type StaffRole, type UpdateStaffPayload } from "@/lib/api/admin-content";
+import { canAccessAdminPanel, normalizeStaffRole } from "@/lib/auth/permissions";
 import type { User } from "@/types/api";
 
 export type AdminProfileUpdatePayload = {
@@ -17,7 +18,7 @@ export type AdminProfileUpdatePayload = {
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
-  login: (phone: string, password: string) => Promise<void>;
+  login: (phone: string, password: string, rememberDevice?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   updateProfile: (payload: AdminProfileUpdatePayload) => Promise<void>;
@@ -41,21 +42,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const refresh = useCallback(async () => {
-    const token = getToken();
-    if (!token) {
-      if (ADMIN_AUTH_PREVIEW_ENABLED) {
-        setUser(previewAdmin);
-        setLoading(false);
-        if (pathname.startsWith("/login")) router.replace("/admin");
-        return;
-      }
-      setUser(null);
+    if (ADMIN_AUTH_PREVIEW_ENABLED) {
+      setUser(previewAdmin);
       setLoading(false);
-      if (!pathname.startsWith("/login")) router.replace("/login");
+      if (pathname.startsWith("/login")) router.replace("/admin");
       return;
     }
+
     try {
       const current = await getCurrentAdmin();
+      if (!canAccessAdminPanel(current.role)) {
+        await logoutRequest();
+        throw new Error("Bu panelga kirish huquqi yo'q");
+      }
       setUser(current);
     } catch {
       setUser(null);
@@ -73,14 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(
-    async (phone: string, password: string) => {
-      const result = await loginRequest({ phone, password });
-      if (result.user) {
-        setUser(result.user);
-      } else {
-        const current = await getCurrentAdmin();
-        setUser(current);
+    async (phone: string, password: string, rememberDevice = false) => {
+      const result = await loginRequest({ phone, password, rememberDevice });
+      if (!canAccessAdminPanel(result.user.role)) {
+        await logoutRequest();
+        throw new Error("Bu panelga kirish huquqi yo'q");
       }
+      setUser(result.user);
       router.replace("/admin");
     },
     [router],
@@ -133,11 +131,7 @@ export function useAuth() {
 }
 
 function resolveStaffRole(role: User["role"]): StaffRole {
-  if (role === 20 || role === 25 || role === 30) return role;
-  if (role === "20") return 20;
-  if (role === "25") return 25;
-  if (role === "30") return 30;
-  if (role === "operator") return 20;
-  if (role === "moderator") return 25;
-  return 30;
+  const normalized = normalizeStaffRole(role);
+  if (!normalized) throw new Error("Admin roli aniqlanmadi");
+  return normalized;
 }

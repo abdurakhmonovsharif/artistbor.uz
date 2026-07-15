@@ -105,7 +105,7 @@ function PaginationShell({
     : t("pagination.range", { from: firstItem, to: lastItem });
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 rounded-[22px] border border-slate-100 bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827] dark:text-slate-400">
+    <div className="flex flex-wrap items-center justify-end gap-2 rounded-[18px] border border-slate-100 bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827] dark:text-slate-400">
       <PaginationIconButton
         label={t("pagination.first")}
         disabled={!canGoPrevious}
@@ -169,7 +169,7 @@ function PaginationShell({
         <select
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition hover:border-slate-300 focus:border-teal-500 dark:border-slate-600 dark:bg-[#0f172a] dark:text-slate-100 dark:hover:border-slate-500"
+          className="artistbor-table-filter-control h-10 rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 text-[13px] font-bold text-[#475569] shadow-none outline-none transition hover:border-[#e6ebf2] focus:border-orange-500/45 focus:ring-0 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200"
           aria-label={t("pagination.perPage")}
         >
           {pageSizeOptions.map((option) => (

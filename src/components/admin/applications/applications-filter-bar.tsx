@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, DatePicker, Input, Select } from "antd";
+import { DatePicker, Input, Select } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { RotateCcw, Search } from "lucide-react";
@@ -49,7 +49,7 @@ export function ApplicationsFilterBar({
 
   return (
     <div className="artistbor-table-filter-shell overflow-x-auto">
-      <div className="artistbor-table-filter-panel flex min-h-[52px] min-w-[820px] items-center gap-2.5 py-2">
+      <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
         <Input
           allowClear
           prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -57,13 +57,13 @@ export function ApplicationsFilterBar({
           value={value.search}
           onChange={(event) => onChange({ ...value, search: event.target.value })}
           className={cn(
-            "artistbor-filter-search artistbor-table-filter-control !h-[38px] !rounded-xl !border-[#e6ebf2] !bg-white !text-[13px] !font-medium dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-white",
+            "artistbor-table-filter-control artistbor-filter-search h-10",
             value.search && "artistbor-filter-search-active",
           )}
         />
 
         <Select
-          className="artistbor-compact-select artistbor-table-filter-control !h-[38px] !w-[220px] shrink-0"
+          className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[220px] shrink-0 md:justify-self-start"
           value={value.categoryId}
           onChange={(categoryId) => onChange({ ...value, categoryId })}
           options={[{ value: "", label: labels.categoryAll }, ...categoryOptions]}
@@ -72,7 +72,7 @@ export function ApplicationsFilterBar({
         />
 
         <Select
-          className="artistbor-compact-select artistbor-table-filter-control !h-[38px] !w-[180px] shrink-0"
+          className="artistbor-compact-select artistbor-table-filter-control !h-10 !w-[180px] shrink-0 md:justify-self-start"
           value={value.dateRange}
           onChange={(dateRange) =>
             onChange({
@@ -92,7 +92,7 @@ export function ApplicationsFilterBar({
 
         {value.dateRange === "custom" ? (
           <RangePicker
-            className="!h-[38px] !w-[230px] shrink-0 !rounded-[11px] !border-[#e6ebf2] !bg-white dark:!border-white/10 dark:!bg-white/[0.03]"
+            className="artistbor-table-filter-control !h-10 !w-[230px] shrink-0 !rounded-xl !border-[#e6ebf2] !bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.035]"
             format="YYYY-MM-DD"
             value={toRangePickerValue(value.customDateRange)}
             onChange={(_, dateStrings) => {
@@ -105,13 +105,14 @@ export function ApplicationsFilterBar({
           />
         ) : null}
 
-        <Button
-          className="artistbor-filter-reset artistbor-table-filter-control !h-[38px] !w-28 shrink-0 !rounded-xl !border-[#e6ebf2] !bg-white !px-3 !text-sm !font-bold !text-[#475569] hover:!border-[#cbd5e1] hover:!bg-[#f8fafc] dark:!border-white/10 dark:!bg-white/[0.03] dark:!text-slate-200"
-          icon={<RotateCcw className="size-4" />}
+        <button
+          type="button"
+          className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 px-4 md:col-start-6"
           onClick={onReset}
         >
+          <RotateCcw className="size-4" />
           {labels.reset}
-        </Button>
+        </button>
       </div>
     </div>
   );

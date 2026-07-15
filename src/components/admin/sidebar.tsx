@@ -9,7 +9,7 @@ import type { MenuProps } from "antd";
 import { LogOut, X } from "lucide-react";
 import {
   adminMenu,
-  adminMenuGroups,
+  getAdminMenuGroupsForRole,
   type AdminMenuGroup,
   type AdminMenuItem,
 } from "@/components/admin/menu";
@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { TranslationKey } from "@/lib/i18n/translations";
 import type { DashboardQuickStats } from "@/lib/api/admin-content";
+import type { User } from "@/types/api";
 
 export function Sidebar({
   open,
@@ -24,12 +25,14 @@ export function Sidebar({
   onClose,
   onLogout,
   quickStats,
+  userRole,
 }: {
   open: boolean;
   collapsed: boolean;
   onClose: () => void;
   onLogout: () => void;
   quickStats: DashboardQuickStats | null;
+  userRole: User["role"];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -37,9 +40,10 @@ export function Sidebar({
   const [isDesktop, setIsDesktop] = useState(false);
   const selectedKey = useMemo(() => getSelectedKey(pathname), [pathname]);
   const compact = collapsed && isDesktop;
+  const filteredGroups = useMemo(() => getAdminMenuGroupsForRole(userRole), [userRole]);
   const menuItems = useMemo<MenuProps["items"]>(
-    () => adminMenuGroups.map((item) => createGroupMenuItem(item, quickStats, t)),
-    [quickStats, t],
+    () => filteredGroups.map((item) => createGroupMenuItem(item, quickStats, t)),
+    [filteredGroups, quickStats, t],
   );
 
   useEffect(() => {
@@ -70,7 +74,7 @@ export function Sidebar({
       />
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-24px)] flex-col border-r border-slate-200/80 bg-white shadow-lg shadow-slate-950/10 transition-[transform,width] duration-200 dark:border-white/10 dark:bg-[#111827] lg:sticky lg:top-0 lg:h-screen lg:max-w-none lg:translate-x-0 lg:shadow-none",
+          "artistbor-sidebar-fixed fixed inset-y-0 left-0 z-40 flex h-dvh w-[280px] max-w-[calc(100vw-24px)] flex-col border-r border-slate-200/80 bg-white shadow-lg shadow-slate-950/10 transition-[transform,width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] dark:border-white/10 dark:bg-[#111827] lg:col-start-1 lg:row-start-1 lg:max-w-none lg:translate-x-0 lg:shadow-none",
           compact ? "lg:w-20" : "lg:w-[var(--artistbor-sidebar-width)]",
           open ? "translate-x-0" : "-translate-x-full",
           compact && "artistbor-sidebar-collapsed",
@@ -133,7 +137,7 @@ export function Sidebar({
               type="button"
               onClick={onLogout}
               className={cn(
-                "flex h-10 items-center rounded-lg text-sm font-semibold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300",
+                "flex h-10 items-center rounded-xl text-sm font-semibold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300",
                 compact ? "mx-auto w-10 justify-center px-0" : "w-full gap-3 px-3",
               )}
               aria-label={t("admin.logout")}
