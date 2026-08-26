@@ -9,6 +9,7 @@ import {
   Activity,
   BarChart3,
   CalendarDays,
+  ChevronRight,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -30,9 +31,11 @@ import {
   type DashboardStatsFilters,
 } from "@/lib/api/admin-content";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { cn, toDisplay } from "@/lib/utils";
 import { useTheme } from "@/lib/theme/theme-provider";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardStatus } from "@/lib/i18n/dashboard-copy";
 import type { Locale } from "@/lib/i18n/translations";
 import { formatMoneyWithCurrency } from "@/lib/money-format";
 
@@ -117,19 +120,19 @@ export default function AdminHome() {
       arrayOrEmpty(charts?.orders_by_status).map((row) => {
         const value = numberValue(row.count);
         return {
-          label: dashboardStatusLabel(row.status_label ?? row.status, labels),
+          label: dashboardStatusLabel(row.status ?? row.status_label, locale),
           value,
           display: formatNumber(value, locale),
         };
       }),
-    [charts, labels, locale],
+    [charts, locale],
   );
   const categoryChartRows = useMemo(
     () =>
       topCategories.slice(0, 8).map((category, index) => {
         const value = numberValue(category.orders_count);
         return {
-          label: category.name || `${labels.categoryFallback} #${category.id ?? index + 1}`,
+          label: category.name || `${labels.categoryFallback} ${index + 1}`,
           value,
           display: `${formatNumber(value, locale)} ${labels.ordersUnit}`,
         };
@@ -165,31 +168,23 @@ export default function AdminHome() {
 
   return (
     <section className="dashboard-page artistbor-admin-page w-full min-w-0 space-y-4 pb-2">
-      <header className="relative overflow-hidden rounded-[26px] bg-white/55 p-1 shadow-[0_18px_46px_rgba(15,23,42,0.07)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10 sm:rounded-[30px] sm:p-1.5 sm:shadow-[0_26px_70px_rgba(15,23,42,0.08)]">
-        <div className="absolute -right-16 -top-20 h-44 w-44 rounded-full bg-amber-300/20 blur-3xl dark:bg-amber-400/10" />
-        <div className="relative flex min-h-[112px] flex-col justify-between gap-4 rounded-[calc(26px-0.25rem)] bg-white/95 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[96px] sm:rounded-[calc(30px-0.375rem)] sm:px-5 min-[1320px]:flex-row min-[1320px]:items-center">
-          <div className="max-w-3xl">
-            <p className="inline-flex rounded-full bg-[#fff4e5] px-3 py-1 text-[10px] font-black uppercase leading-none tracking-[0.2em] text-[#c26a00] ring-1 ring-[#ffcf73]/50 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-300/15">
-              Artistbor
-            </p>
-            <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-              {labels.title}
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-              {labels.description}
-            </p>
-          </div>
-
-          <div className="dashboard-filter-shell artistbor-table-filter-shell flex w-full shrink-0 items-center gap-1.5 overflow-x-auto bg-[#f8fafc] p-1 dark:bg-white/[0.035] sm:h-11 min-[1320px]:w-auto min-[1320px]:overflow-visible">
+      <AdminPageHeader
+        eyebrow="Artistbor"
+        title={labels.title}
+        description={labels.description}
+        className="md:flex-col md:items-stretch min-[1320px]:flex-row min-[1320px]:items-center"
+        actionsClassName="md:w-full min-[1320px]:w-auto"
+        actions={(
+          <div className="dashboard-filter-shell artistbor-table-filter-shell flex w-full shrink-0 items-center gap-1.5 overflow-x-auto bg-artistbor-surface-subtle p-1 sm:h-11 min-[1320px]:w-auto min-[1320px]:overflow-visible">
             {stats?.period ? (
               <button
                 type="button"
                 onClick={handleDatePillClick}
-                className="dashboard-date-pill artistbor-table-filter-control inline-flex h-10 w-[248px] shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[#f8fafc] px-3 text-left text-[13px] font-bold leading-none text-[#475569] ring-1 ring-[#e6ebf2] transition hover:border-[#e6ebf2] hover:bg-[#f8fafc] focus:outline-none focus:ring-0 dark:bg-white/[0.035] dark:text-slate-200 dark:ring-white/10 sm:w-[260px] min-[1440px]:w-[292px]"
+                className="dashboard-date-pill artistbor-table-filter-control inline-flex h-10 w-[248px] shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-artistbor-surface-subtle px-3 text-left text-[13px] font-bold leading-none text-artistbor-secondary ring-1 ring-artistbor-border transition-colors duration-200 hover:border-artistbor-border hover:bg-artistbor-surface-subtle focus:outline-none focus:ring-0 sm:w-[260px] min-[1440px]:w-[292px]"
                 aria-label={labels.customRange}
                 title={`${toDisplay(stats.period.from)} - ${toDisplay(stats.period.to)}`}
               >
-                <CalendarDays className="size-3.5 shrink-0 text-[#475569]" />
+                <CalendarDays className="size-3.5 shrink-0 text-artistbor-secondary" />
                 <span className="min-w-0 whitespace-nowrap">{toDisplay(stats.period.from)} - {toDisplay(stats.period.to)}</span>
               </button>
             ) : null}
@@ -222,14 +217,14 @@ export default function AdminHome() {
               onClick={() => void fetchStats(filters)}
               disabled={loading}
               icon={<RefreshCcw className={cn("size-4", loading && stats ? "animate-spin" : "")} />}
-              className="artistbor-table-filter-control !h-10 !w-[104px] shrink-0 !rounded-xl !border-[#e6ebf2] !bg-[#f8fafc] !px-3 !text-[13px] !font-bold !text-[#475569] dark:!border-white/10 dark:!bg-white/[0.035] dark:!text-slate-200 min-[1440px]:!w-32 min-[1440px]:!px-4"
+              className="artistbor-table-filter-control !h-10 !w-[104px] shrink-0 !rounded-xl !border-artistbor-border !bg-artistbor-surface-subtle !px-3 !text-[13px] !font-bold !text-artistbor-secondary min-[1440px]:!w-32 min-[1440px]:!px-4"
               aria-label={labels.refreshAria}
             >
               {labels.refresh}
             </Button>
           </div>
-        </div>
-      </header>
+        )}
+      />
 
       {loading && !stats ? <LoadingState label={labels.loading} /> : null}
 
@@ -259,7 +254,7 @@ export default function AdminHome() {
               label={labels.totalOrders}
               value={formatNumber(numberValue(counters?.total_orders), locale)}
               icon={PackageCheck}
-              tone="sky"
+              tone="neutral"
               href="/admin/orders"
             />
             <MetricCard
@@ -372,7 +367,7 @@ function MetricCard({
   label: string;
   value: string;
   icon: LucideIcon;
-  tone: "amber" | "emerald" | "rose" | "sky" | "violet";
+  tone: "amber" | "emerald" | "rose" | "neutral";
   href: string;
 }) {
   const toneClass = {
@@ -380,9 +375,8 @@ function MetricCard({
     emerald:
       "bg-emerald-50 text-emerald-700 ring-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300",
     rose: "bg-rose-50 text-rose-700 ring-rose-400/20 dark:bg-rose-500/10 dark:text-rose-300",
-    sky: "bg-sky-50 text-sky-700 ring-sky-400/20 dark:bg-sky-500/10 dark:text-sky-300",
-    violet:
-      "bg-violet-50 text-violet-700 ring-violet-400/20 dark:bg-violet-500/10 dark:text-violet-300",
+    neutral:
+      "bg-slate-50 text-slate-600 ring-slate-300/60 dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/10",
   }[tone];
 
   return (
@@ -390,15 +384,15 @@ function MetricCard({
       href={href}
       className={dashboardMetricCardClass}
     >
-      <div className="flex min-h-[82px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[88px]">
-        <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl ring-1 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-105 sm:size-9", toneClass)}>
+      <div className="flex min-h-[82px] items-start gap-3 px-4 py-3 sm:min-h-[88px]">
+        <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl ring-1 transition-transform duration-200 group-hover:-translate-y-[1px] group-hover:scale-105 sm:size-9", toneClass)}>
           <Icon className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-semibold leading-4 text-[#475569] dark:text-slate-300">
+          <p className="text-xs font-semibold leading-4 text-artistbor-secondary">
             {label}
           </p>
-          <p className="mt-2 break-words text-[clamp(22px,6vw,28px)] font-black leading-[1.08] tracking-[-0.04em] text-[#0f172a] dark:text-white sm:text-[clamp(19px,1.35vw,25px)]">
+          <p className="mt-2 break-words text-2xl font-bold leading-[1.2] tracking-[-0.02em] text-artistbor-primary">
             {value}
           </p>
         </div>
@@ -417,15 +411,14 @@ function CompactMetric({
   label: string;
   value: string;
   icon: LucideIcon;
-  tone: "amber" | "emerald" | "rose" | "sky" | "violet";
+  tone: "amber" | "emerald" | "rose" | "neutral";
   href: string;
 }) {
   const toneClass = {
     amber: "text-amber-600 dark:text-amber-300",
     emerald: "text-emerald-600 dark:text-emerald-300",
     rose: "text-rose-600 dark:text-rose-300",
-    sky: "text-sky-600 dark:text-sky-300",
-    violet: "text-violet-600 dark:text-violet-300",
+    neutral: "text-slate-600 dark:text-slate-300",
   }[tone];
 
   return (
@@ -433,15 +426,15 @@ function CompactMetric({
       href={href}
       className={dashboardMetricCardClass}
     >
-      <div className="flex min-h-[82px] items-start gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),inset_0_-1px_0_rgba(15,23,42,0.035)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:min-h-[88px]">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-50 ring-1 ring-[#e6ebf2] dark:bg-white/[0.04] dark:ring-white/10 sm:size-9">
-          <Icon className={cn("size-4 transition-transform duration-500 group-hover:-translate-y-[1px] group-hover:scale-110", toneClass)} />
+      <div className="flex min-h-[82px] items-start gap-3 px-4 py-3 sm:min-h-[88px]">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-artistbor-surface-subtle ring-1 ring-artistbor-border sm:size-9">
+          <Icon className={cn("size-4 transition-transform duration-200 group-hover:-translate-y-[1px] group-hover:scale-110", toneClass)} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-semibold leading-4 text-[#475569] dark:text-slate-300">
+          <p className="text-xs font-semibold leading-4 text-artistbor-secondary">
             {label}
           </p>
-          <p className="mt-2 text-[clamp(22px,6vw,28px)] font-black leading-[1.08] tracking-[-0.04em] text-[#0f172a] dark:text-white sm:text-[clamp(19px,1.35vw,25px)]">{value}</p>
+          <p className="mt-2 text-2xl font-bold leading-[1.2] tracking-[-0.02em] text-artistbor-primary">{value}</p>
         </div>
       </div>
     </Link>
@@ -449,7 +442,7 @@ function CompactMetric({
 }
 
 const dashboardMetricCardClass =
-  "group block rounded-[26px] bg-white/55 p-1 shadow-[0_14px_34px_rgba(15,23,42,0.05)] ring-1 ring-slate-950/[0.06] transition-all duration-500 hover:-translate-y-[2px] hover:bg-white/80 hover:shadow-[0_24px_54px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:bg-white/[0.035] dark:ring-white/10 dark:hover:bg-white/[0.055] sm:shadow-[0_18px_42px_rgba(15,23,42,0.055)]";
+  "group block rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)] transition-[border-color,transform] duration-200 hover:-translate-y-[1px] hover:border-artistbor-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-artistbor-focus";
 
 function Panel({
   title,
@@ -467,17 +460,17 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className={cn("rounded-[26px] bg-white/55 p-1 shadow-[0_16px_42px_rgba(15,23,42,0.055)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10 sm:rounded-[28px] sm:p-1.5 sm:shadow-[0_22px_58px_rgba(15,23,42,0.06)]", className)}>
-      <div className="flex h-full flex-col rounded-[calc(26px-0.25rem)] bg-white/95 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:rounded-[calc(28px-0.375rem)] sm:p-4">
+    <section className={cn("rounded-[18px] border border-artistbor-border bg-artistbor-surface p-4 shadow-[var(--artistbor-surface-shadow)]", className)}>
+      <div className="flex h-full flex-col">
         <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
           <div>
-            <h2 className="text-[14px] font-black leading-5 tracking-[-0.015em] text-[#0f172a] dark:text-white sm:text-[15px]">{title}</h2>
-            <p className="mt-1 text-[11px] leading-4 text-[#64748b] dark:text-slate-400 sm:text-xs sm:leading-[17px]">
+            <h2 className="text-base font-semibold leading-5 text-artistbor-primary">{title}</h2>
+            <p className="mt-1 text-xs leading-4 text-artistbor-secondary">
               {description}
             </p>
           </div>
           {action ?? (
-            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#fff4e5] text-[#d97706] ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-amber-300/30 dark:bg-amber-500/10 dark:text-amber-300">
               <Icon className="size-3.5" />
             </span>
           )}
@@ -490,7 +483,7 @@ function Panel({
 
 function PanelFrequency({ label }: { label: string }) {
   return (
-    <span className="inline-flex h-8 min-w-[82px] items-center justify-center rounded-full bg-[#f8fafc] px-3 text-xs font-black text-[#334155] ring-1 ring-[#e6ebf2] dark:bg-white/[0.04] dark:text-white dark:ring-white/10">
+    <span className="inline-flex h-8 min-w-[82px] items-center justify-center rounded-full bg-artistbor-surface-subtle px-3 text-xs font-bold text-artistbor-primary ring-1 ring-artistbor-border">
       {label}
     </span>
   );
@@ -636,7 +629,7 @@ function OrderStatusDonut({
     innerRadius: 0.68,
     theme: getDashboardChartTheme(chartTokens),
     scale: {
-      color: { range: ["#f59e0b", "#f43f5e", "#8b5cf6", "#10b981", "#cbd5e1", "#3b82f6"] },
+      color: { range: statusPalette },
     },
     label: false,
     legend: false,
@@ -662,7 +655,7 @@ function OrderStatusDonut({
           <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
             <div>
               <p className="text-[11px] font-semibold leading-none text-[#64748b] dark:text-slate-400">{labels.summaryTotal}</p>
-              <p className="mt-2 text-2xl font-bold leading-none tracking-[-0.02em] text-[#0f172a] dark:text-white">
+              <p className="mt-2 text-2xl font-bold leading-none tracking-[-0.02em] text-artistbor-primary">
                 {formatNumber(total, locale)}
               </p>
             </div>
@@ -681,7 +674,7 @@ function OrderStatusDonut({
                 />
                 <span className="truncate font-semibold text-[#334155] dark:text-slate-200">{row.label}</span>
               </span>
-              <span className="shrink-0 font-bold text-[#0f172a] dark:text-white">
+              <span className="shrink-0 font-bold text-artistbor-primary">
                 {row.display} ({formatPercent(row.value, total, locale)})
               </span>
             </div>
@@ -691,17 +684,17 @@ function OrderStatusDonut({
       <div className="flex justify-end border-t border-slate-950/[0.06] pt-3 dark:border-white/10">
         <Link
           href="/admin/orders"
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-3 text-sm font-bold text-[#334155] transition-colors duration-500 hover:bg-[#fff4e5] hover:text-[#ea580c] dark:text-slate-200 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-3 text-sm font-bold text-artistbor-secondary transition-colors duration-200 hover:bg-amber-50 hover:text-artistbor-accent dark:hover:bg-amber-400/10"
         >
           {labels.viewAllStatuses}
-          <ChevronRightIcon />
+          <ChevronRight className="size-4" />
         </Link>
       </div>
     </div>
   );
 }
 
-const statusPalette = ["#f59e0b", "#f43f5e", "#8b5cf6", "#10b981", "#cbd5e1", "#3b82f6"];
+const statusPalette = ["#f59e0b", "#f43f5e", "#64748b", "#10b981", "#cbd5e1", "#334155"];
 
 function ChartLegend({ color, label }: { color: string; label: string }) {
   return (
@@ -711,14 +704,6 @@ function ChartLegend({ color, label }: { color: string; label: string }) {
         {label}
       </span>
     </div>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg className="size-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="m9 18 6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 
@@ -878,7 +863,7 @@ function useDashboardChartTokens(): DashboardChartTokens {
       label: dark ? "#cbd5e1" : "#475569",
       axis: dark ? "rgba(203, 213, 225, 0.32)" : "rgba(100, 116, 139, 0.35)",
       grid: dark ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.28)",
-      chartSurface: dark ? "#0b1020" : "#f8fafc",
+      chartSurface: dark ? "#0f172a" : "#f8fafc",
       barOpacity: dark ? 0.92 : 0.96,
     }),
     [dark],
@@ -934,7 +919,7 @@ function QueueList({
       description: labels.pendingApplicationsQueueDescription,
       value: numberValue(counters?.pending_applications),
       icon: Clock3,
-      tone: "orange",
+      tone: "amber",
       href: "/admin/applications",
     },
     {
@@ -942,7 +927,7 @@ function QueueList({
       description: labels.pendingOrdersQueueDescription,
       value: numberValue(counters?.pending_orders),
       icon: FileText,
-      tone: "purple",
+      tone: "neutral",
       href: "/admin/orders?status=10",
     },
     {
@@ -950,7 +935,7 @@ function QueueList({
       description: labels.paymentPendingQueueDescription,
       value: numberValue(counters?.payment_pending),
       icon: CreditCard,
-      tone: "red",
+      tone: "danger",
       href: "/admin/orders?status=20",
     },
     {
@@ -958,7 +943,7 @@ function QueueList({
       description: labels.pendingCommentsQueueDescription,
       value: numberValue(counters?.pending_comments),
       icon: MessageSquare,
-      tone: "blue",
+      tone: "warning",
       href: "/admin/comments",
     },
     {
@@ -980,22 +965,22 @@ function QueueList({
           <Link
             key={item.label}
             href={item.href}
-            className="flex min-h-[52px] items-center justify-between gap-3 rounded-2xl bg-[#f8fafc] px-3 py-2 ring-1 ring-slate-950/[0.045] transition-all duration-500 hover:-translate-y-[1px] hover:bg-[#fffaf2] hover:ring-amber-300/45 dark:bg-white/[0.035] dark:ring-white/10 dark:hover:bg-amber-400/10"
+            className="flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-artistbor-border bg-artistbor-surface-subtle px-3 py-2 transition-[border-color,background-color] duration-200 hover:border-amber-300 hover:bg-amber-50/50 dark:hover:bg-amber-400/10"
           >
             <div className="flex min-w-0 items-center gap-3">
-              <span className={cn("grid size-8 shrink-0 place-items-center rounded-full", toneClass.box)}>
+              <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", toneClass.box)}>
                 <Icon className={cn("size-4", toneClass.icon)} />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-[13px] font-bold text-[#0f172a] dark:text-white">
+                <span className="block truncate text-[13px] font-bold text-artistbor-primary">
                   {item.label}
                 </span>
-                <span className="mt-0.5 block truncate text-[11px] font-medium text-[#64748b] dark:text-slate-400">
+                <span className="mt-0.5 block truncate text-[11px] font-normal text-artistbor-secondary">
                   {item.description}
                 </span>
               </span>
             </div>
-            <span className="shrink-0 text-base font-black text-[#0f172a] dark:text-white">
+            <span className="shrink-0 text-base font-bold text-artistbor-primary">
               {formatNumber(item.value, locale)}
             </span>
           </Link>
@@ -1003,20 +988,20 @@ function QueueList({
       })}
       <Link
         href="/admin/orders"
-        className="flex h-10 items-center justify-center gap-2 rounded-full bg-[#fff4e5] text-sm font-bold text-[#ea580c] transition-colors duration-500 hover:bg-[#ffedd5]"
+        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-50 text-sm font-bold text-artistbor-accent transition-colors duration-200 hover:bg-orange-100 dark:bg-amber-400/10 dark:hover:bg-amber-400/15"
       >
         {labels.viewAllQueue}
-        <ChevronRightIcon />
+        <ChevronRight className="size-4" />
       </Link>
     </div>
   );
 }
 
 const queueToneClass = {
-  orange: { box: "bg-orange-50", icon: "text-orange-500" },
-  purple: { box: "bg-violet-50", icon: "text-violet-500" },
-  red: { box: "bg-rose-50", icon: "text-rose-500" },
-  blue: { box: "bg-blue-50", icon: "text-blue-500" },
+  amber: { box: "bg-amber-50", icon: "text-amber-600" },
+  neutral: { box: "bg-slate-100", icon: "text-slate-600" },
+  danger: { box: "bg-rose-50", icon: "text-rose-500" },
+  warning: { box: "bg-orange-50", icon: "text-orange-500" },
   slate: { box: "bg-slate-100", icon: "text-slate-500" },
 };
 
@@ -1035,7 +1020,7 @@ function TopArtists({
     <div className="space-y-3">
       {artists.map((artist, index) => {
         const avatarUrl = safeHttpUrl(artist.avatar_url);
-        const name = artist.full_name || `${labels.artistFallback} #${artist.id ?? index + 1}`;
+        const name = artist.full_name || `${labels.artistFallback} ${artist.public_id ?? "—"}`;
         return (
           <div
             key={artist.id ?? `${name}-${index}`}
@@ -1070,31 +1055,8 @@ function TopArtists({
   );
 }
 
-function dashboardStatusLabel(value: unknown, labels: DashboardLabels) {
-  if (value === null || value === undefined || value === "") return labels.unknown;
-  const normalized = String(value).trim().toLowerCase().replace(/[_-]+/g, " ");
-  const statusLabels: Record<string, string> = {
-    active: labels.statusActive,
-    inactive: labels.statusInactive,
-    pending: labels.statusPending,
-    "pending review": labels.statusPendingReview,
-    "payment pending": labels.paymentPending,
-    "awaiting payment": labels.paymentPending,
-    confirmed: labels.statusConfirmed,
-    approved: labels.statusConfirmed,
-    accepted: labels.statusAccepted,
-    "in progress": labels.statusInProgress,
-    processing: labels.statusInProgress,
-    completed: labels.statusCompleted,
-    done: labels.statusCompleted,
-    cancelled: labels.statusCancelled,
-    canceled: labels.statusCancelled,
-    rejected: labels.statusRejected,
-    expired: labels.statusExpired,
-    unknown: labels.unknown,
-  };
-
-  return statusLabels[normalized] ?? String(value);
+function dashboardStatusLabel(value: unknown, locale: Locale) {
+  return getDashboardStatus("order", value, locale).label;
 }
 
 function getDashboardPeriodOptions(labels: DashboardLabels): {

@@ -103,5 +103,5 @@ function addLocationName(target: Record<string, string>, item: Region | District
   if (typeof item.id !== "number" && typeof item.id !== "string") return;
 
   const name = item.name_uz || item.name_ru || item.name_en;
-  target[String(item.id)] = name?.trim() || `#${item.id}`;
+  target[String(item.id)] = name?.trim() || "—";
 }

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const rememberDevice = body?.rememberDevice === true;
 
   if (!phone || !password) {
-    return NextResponse.json({ message: "Telefon va parol majburiy" }, { status: 400 });
+    return NextResponse.json({ code: "LOGIN_REQUIRED", message: "Telefon va parol majburiy" }, { status: 400 });
   }
 
   const backendResponse = await fetch(`${API_BASE_URL}/v1/admin/auth/login`, {
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   const payload = await readBackendPayload(backendResponse);
   if (!backendResponse.ok) {
-    return NextResponse.json(toClientError(payload, "Login bajarilmadi"), {
+    return NextResponse.json({ ...toClientError(payload, "Login bajarilmadi"), code: "LOGIN_FAILED" }, {
       status: backendResponse.status,
     });
   }
@@ -45,11 +45,11 @@ export async function POST(request: Request) {
   const user = normalizeAuthUser(data);
 
   if (!token || !user) {
-    return NextResponse.json({ message: "Auth javobi to'liq emas" }, { status: 502 });
+    return NextResponse.json({ code: "AUTH_RESPONSE_INVALID", message: "Auth javobi to'liq emas" }, { status: 502 });
   }
 
   if (!canAccessAdminPanel(user.role)) {
-    return NextResponse.json({ message: "Bu panelga kirish huquqi yo'q" }, { status: 403 });
+    return NextResponse.json({ code: "PANEL_ACCESS_DENIED", message: "Bu panelga kirish huquqi yo'q" }, { status: 403 });
   }
 
   await setAdminSessionToken(token, rememberDevice);

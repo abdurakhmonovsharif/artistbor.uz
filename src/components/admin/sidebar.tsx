@@ -74,7 +74,7 @@ export function Sidebar({
       />
       <aside
         className={cn(
-          "artistbor-sidebar-fixed fixed inset-y-0 left-0 z-40 flex h-dvh w-[280px] max-w-[calc(100vw-24px)] flex-col border-r border-slate-200/80 bg-white shadow-lg shadow-slate-950/10 transition-[transform,width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] dark:border-white/10 dark:bg-[#111827] lg:col-start-1 lg:row-start-1 lg:max-w-none lg:translate-x-0 lg:shadow-none",
+          "artistbor-sidebar-fixed fixed inset-y-0 left-0 z-40 flex h-dvh w-[280px] max-w-[calc(100vw-24px)] flex-col border-r border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)] transition-[transform,width] duration-300 ease-out lg:col-start-1 lg:row-start-1 lg:max-w-none lg:translate-x-0 lg:shadow-none",
           compact ? "lg:w-20" : "lg:w-[var(--artistbor-sidebar-width)]",
           open ? "translate-x-0" : "-translate-x-full",
           compact && "artistbor-sidebar-collapsed",
@@ -82,7 +82,7 @@ export function Sidebar({
       >
         <div
           className={cn(
-            "relative flex min-h-16 items-center border-b border-slate-100 dark:border-white/10",
+            "relative flex min-h-16 items-center border-b border-artistbor-border",
             compact ? "justify-center px-0" : "justify-between px-4",
           )}
         >
@@ -98,10 +98,10 @@ export function Sidebar({
               <span className="flex min-w-0 items-center gap-3">
                 <BrandMark className="size-10 shrink-0" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-950 dark:text-white">
+                  <span className="block truncate text-sm font-semibold text-artistbor-primary">
                     Artistbor
                   </span>
-                  <span className="block truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <span className="block truncate text-xs font-normal text-artistbor-secondary">
                     {t("menu.dashboard")}
                   </span>
                 </span>
@@ -131,7 +131,7 @@ export function Sidebar({
           />
         </nav>
 
-        <div className="border-t border-slate-100 px-3 py-3 dark:border-white/10">
+        <div className="border-t border-artistbor-border px-3 py-3">
           <Tooltip title={compact ? t("admin.logout") : null} placement="right" mouseEnterDelay={0.2}>
             <button
               type="button"

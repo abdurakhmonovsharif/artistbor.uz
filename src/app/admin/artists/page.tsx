@@ -6,7 +6,6 @@ import { Button, Drawer, Input, Modal, Select, Tabs } from "antd";
 import {
   ArrowDownUp,
   CalendarDays,
-  CalendarPlus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -22,8 +21,8 @@ import {
   Languages,
   ListChecks,
   Loader2,
+  LockKeyhole,
   Mail,
-  MoreHorizontal,
   Pencil,
   PlayCircle,
   Phone,
@@ -42,6 +41,7 @@ import {
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
 import { AdminDrawer, adminDrawerClassNames, adminDrawerStyles, adminDrawerSubtitleStyles } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import {
   DateFilterSelect,
   getDateFilterPatch,
@@ -49,7 +49,7 @@ import {
   type DateFilterValue,
 } from "@/components/admin/date-filter-select";
 import { FormField, type FormFieldOption } from "@/components/ui/form-field";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import { useToast } from "@/components/ui/toast";
 import type { Locale } from "@/lib/i18n/translations";
@@ -70,7 +70,6 @@ import {
   usersApi,
   type CreateArtistPayload,
   type ArtistFilters,
-  type ArtistBusySlotPayload,
   type ArtistRegionPriceRecord,
   type ArtistServiceAssignmentPayload,
   type ArtistServiceRegionPricePayload,
@@ -80,10 +79,24 @@ import {
   type UpdateUserPayload,
   type UploadedFileRecord,
 } from "@/lib/api/admin-content";
+import { buildArtistBusySlotPayload } from "@/lib/artist-busy-slot";
+import {
+  findOverlappingArtistAvailabilityInterval,
+  formatArtistAvailabilityMonth,
+  getArtistAvailabilityOrderPublicId,
+  isEditableArtistAvailabilitySource,
+  isVisibleArtistAvailabilityRecord,
+} from "@/lib/artist-availability";
 import { API_BASE_URL } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { canUseAdminAction } from "@/lib/auth/permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import {
+  getDashboardNotification,
+  getDashboardStatus,
+  getDashboardStatusDomain,
+  type DashboardStatusTone,
+} from "@/lib/i18n/dashboard-copy";
 import {
   formatMoneyInput,
   formatMoneyWithCurrency,
@@ -92,6 +105,7 @@ import {
 } from "@/lib/money-format";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 import type {
   ArtistBalanceRecord,
@@ -107,22 +121,28 @@ import type {
 
 type DialogState =
   | { type: "create" }
-  | { type: "view"; artist: ArtistProfile }
+  | { type: "view"; artist: ArtistProfile; detailLoading: boolean }
   | { type: "edit"; artist: ArtistProfile }
   | null;
 
 type DetailTab = "profile" | "services" | "finance" | "availability" | "gallery" | "videos" | "comments" | "ratings";
 type ResourceTab = Exclude<DetailTab, "profile">;
+type ArtistFormTab = "basic" | "profile" | "services" | "account";
 type DetailResourceState = {
   loading: boolean;
+  loaded?: boolean;
   error: string | null;
   rows: UnknownRecord[];
   meta?: ListResult<UnknownRecord>["meta"];
   raw?: unknown;
 };
-type ScheduleDrawerState =
-  | { mode: "manage"; schedule: UnknownRecord }
-  | { mode: "create"; schedule: null };
+
+type ResourceReloadOptions = { background?: boolean };
+type AvailabilityRange = { date_from: string; date_to: string };
+type AvailabilityReloadOptions = ResourceReloadOptions & Partial<AvailabilityRange>;
+type AvailabilityRangeReloader = (range: AvailabilityRange) => Promise<boolean>;
+type ResourceReloader = (options?: ResourceReloadOptions) => Promise<void>;
+type ScheduleDrawerState = { schedule: UnknownRecord };
 type BusySlotDialogState =
   | { mode: "create"; row?: AvailabilityRow; date?: string }
   | { mode: "edit"; row: AvailabilityRow }
@@ -131,10 +151,12 @@ type BusySlotFormValues = {
   date: string;
   start_time: string;
   end_time: string;
-  reason: string;
+  note: string;
 };
 
 const limit = 20;
+const MAX_GALLERY_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_GALLERY_FILES = 10;
 
 const initialFilters: ArtistFilters = {
   search: "",
@@ -173,7 +195,7 @@ function mergeArtistCategoryFallback(row: ArtistProfile, detail: ArtistProfile):
   const detailRecord = detail as UnknownRecord;
   const merged: UnknownRecord = { ...detailRecord };
 
-  for (const key of ["categories", "category", "category_ids", "category_id"]) {
+  for (const key of ["categories", "category", "category_ids", "category_id", "artistCategories", "artist_categories"]) {
     if (!hasMeaningfulValue(merged[key]) && hasMeaningfulValue(rowRecord[key])) {
       merged[key] = rowRecord[key];
     }
@@ -183,7 +205,7 @@ function mergeArtistCategoryFallback(row: ArtistProfile, detail: ArtistProfile):
   const detailArtistProfile = firstRecordValue(detailRecord, ["artistProfile", "artist_profile"]);
   if (rowArtistProfile) {
     const nested = { ...(detailArtistProfile ?? {}) };
-    for (const key of ["categories", "category", "category_ids", "category_id"]) {
+    for (const key of ["categories", "category", "category_ids", "category_id", "artistCategories", "artist_categories"]) {
       if (!hasMeaningfulValue(nested[key]) && hasMeaningfulValue(rowArtistProfile[key])) {
         nested[key] = rowArtistProfile[key];
       }
@@ -209,21 +231,29 @@ export default function ArtistsPage() {
   const { locale } = useI18n();
   const labels = getArtistsLabels(locale);
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
   const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
-  const fetchArtists = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchArtists = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await artistsApi.list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed]);
+  }, [filters, labels.loadFailed, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -261,14 +291,32 @@ export default function ArtistsPage() {
   const openDialog = async (type: "view" | "edit", row: ArtistProfile) => {
     const artistId = getArtistId(row);
     if (!artistId) return;
+
+    if (type === "view") {
+      setDialog({ type, artist: row, detailLoading: true });
+      try {
+        const artist = await artistsApi.detail(artistId);
+        setDialog((current) =>
+          current?.type === "view" && getArtistId(current.artist) === artistId
+            ? { type, artist: mergeArtistCategoryFallback(row, artist), detailLoading: false }
+            : current,
+        );
+      } catch (caught) {
+        setDialog((current) =>
+          current?.type === "view" && getArtistId(current.artist) === artistId
+            ? { ...current, detailLoading: false }
+            : current,
+        );
+        toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
       const artist = await artistsApi.detail(artistId);
       setDialog({ type, artist: mergeArtistCategoryFallback(row, artist) });
     } catch (caught) {
-      if (type === "view") {
-        setDialog({ type, artist: row });
-      }
       toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
     } finally {
       setSubmitting(false);
@@ -313,34 +361,28 @@ export default function ArtistsPage() {
   const page = Number(filters.page ?? 1);
 
   return (
-    <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-            {labels.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDialog({ type: "create" })}
-          className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
-        >
-          <Plus className="size-4" />
-          {labels.createArtist}
-        </button>
-      </div>
+    <section className="artistbor-admin-page artistbor-responsive-data-page w-full space-y-4">
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.description}
+        actions={(
+          <button
+            type="button"
+            onClick={() => setDialog({ type: "create" })}
+            className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
+          >
+            <Plus className="size-4" />
+            {labels.createArtist}
+          </button>
+        )}
+      />
 
       <form
         onSubmit={applyFilters}
-        className="artistbor-table-filter-shell overflow-x-auto"
+        className="artistbor-table-filter-shell artistbor-responsive-filter-shell"
       >
-        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
+        <div className="artistbor-table-filter-panel artistbor-responsive-filter-panel">
           <Input
             allowClear
             prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -348,7 +390,7 @@ export default function ArtistsPage() {
             value={draftFilters.search ?? ""}
             onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
             className={cn(
-              "artistbor-table-filter-control artistbor-filter-search h-10",
+              "artistbor-table-filter-control artistbor-filter-search artistbor-artist-search h-10",
               draftFilters.search && "artistbor-filter-search-active",
             )}
           />
@@ -391,7 +433,7 @@ export default function ArtistsPage() {
           />
           <Button
             htmlType="button"
-            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 w-28 shrink-0 md:col-start-6"
+            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 w-28 shrink-0"
             icon={<RotateCcw className="size-4" />}
             onClick={resetFilters}
           >
@@ -426,6 +468,7 @@ export default function ArtistsPage() {
 
       <ArtistDrawer
         artist={dialog && dialog.type !== "create" ? dialog.artist : null}
+        detailLoading={dialog?.type === "view" ? dialog.detailLoading : false}
         mode={dialog && dialog.type !== "create" ? dialog.type : "view"}
         loading={submitting}
         open={Boolean(dialog && dialog.type !== "create")}
@@ -446,7 +489,7 @@ export default function ArtistsPage() {
             }
             toast.success(labels.updated);
             setDialog(null);
-            await fetchArtists();
+            void fetchArtists({ background: true });
           } catch (caught) {
             toast.error(caught instanceof Error ? caught.message : labels.updateFailed);
           } finally {
@@ -467,7 +510,7 @@ export default function ArtistsPage() {
               await artistsApi.create(payload);
               toast.success(labels.created);
               setDialog(null);
-              await fetchArtists();
+              void fetchArtists({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : labels.createFailed);
             } finally {
@@ -492,63 +535,68 @@ function ArtistsTable({
   onEdit: (row: ArtistProfile) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1012px] border-separate border-spacing-0">
-            <colgroup>
-              <col className="w-12" />
-              <col className="w-[280px]" />
-              <col className="w-[170px]" />
-              <col className="w-28" />
-              <col className="w-[120px]" />
-              <col className="w-[170px]" />
-              <col className="w-28" />
-            </colgroup>
-            <thead>
-              <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
-                <ArtistTableHead label={labels.id} sortable />
-                <ArtistTableHead label={labels.artist} />
-                <ArtistTableHead label={labels.contact} />
-                <ArtistTableHead label={labels.status} />
-                <ArtistTableHead label={labels.rating} sortable />
-                <ArtistTableHead label={labels.lastActivity} sortable />
-                <ArtistTableHead label={labels.actions} align="right" />
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div
+        role="region"
+        tabIndex={0}
+        aria-label={labels.tableRegionLabel}
+        className="admin-table-scroll artistbor-artists-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent"
+      >
+        <table className="w-full border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-[280px]" />
+            <col className="w-[170px]" />
+            <col className="w-28" />
+            <col className="w-[120px]" />
+            <col className="w-[170px]" />
+            <col className="w-28" />
+          </colgroup>
+          <thead>
+            <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
+              <ArtistTableHead label={labels.id} sortable />
+              <ArtistTableHead label={labels.artist} />
+              <ArtistTableHead label={labels.contact} />
+              <ArtistTableHead label={labels.status} />
+              <ArtistTableHead label={labels.rating} sortable />
+              <ArtistTableHead label={labels.lastActivity} sortable />
+              <ArtistTableHead label={labels.actions} align="right" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${getArtistId(row) ?? "artist"}-${index}`} className="group h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
+                <td className="whitespace-nowrap border-b border-[#edf2f7] px-3 py-[9px] align-middle text-[13px] font-semibold text-[#64748b] dark:border-white/10 dark:text-slate-400">
+                  {toDisplay(row.public_id)}
+                </td>
+                <td className="border-b border-[#edf2f7] px-3 py-[9px] align-middle dark:border-white/10">
+                  <ArtistIdentityCell artist={row} labels={labels} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3 py-[9px] align-middle dark:border-white/10">
+                  <ArtistContactCell artist={row} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3 py-[9px] align-middle dark:border-white/10">
+                  <ArtistStatusPill artist={row} labels={labels} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3 py-[9px] align-middle dark:border-white/10">
+                  <ArtistRatingCell artist={row} />
+                </td>
+                <td className="border-b border-[#edf2f7] px-3 py-[9px] align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
+                  {formatArtistActivityDate(getArtistActivityDate(row), labels.locale)}
+                </td>
+                <td className="border-b border-[#edf2f7] px-3 py-[9px] align-middle dark:border-white/10">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <ArtistTableActionButton label={labels.detailTitle} onClick={() => onView(row)}>
+                      <Eye className="size-4" />
+                    </ArtistTableActionButton>
+                    <ArtistTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
+                      <Pencil className="size-4" />
+                    </ArtistTableActionButton>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={`${getArtistId(row) ?? "artist"}-${index}`} className="group h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-semibold text-[#64748b] dark:border-white/10 dark:text-slate-400">
-                    {toDisplay(getArtistId(row))}
-                  </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
-                    <ArtistIdentityCell artist={row} labels={labels} />
-                  </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
-                    <ArtistContactCell artist={row} />
-                  </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
-                    <ArtistStatusPill artist={row} labels={labels} />
-                  </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
-                    <ArtistRatingCell artist={row} />
-                  </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium text-[#475569] dark:border-white/10 dark:text-slate-300">
-                    {formatArtistActivityDate(getArtistActivityDate(row), labels.locale)}
-                  </td>
-                  <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <ArtistTableActionButton label={labels.detailTitle} onClick={() => onView(row)}>
-                        <Eye className="size-4" />
-                      </ArtistTableActionButton>
-                      <ArtistTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
-                        <Pencil className="size-4" />
-                      </ArtistTableActionButton>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>
@@ -567,7 +615,7 @@ function ArtistTableHead({
   return (
     <th
       className={cn(
-        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        "border-b border-[#e6ebf2] px-3 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
         align === "right" ? "text-right" : "text-left",
       )}
     >
@@ -629,10 +677,9 @@ function ArtistContactCell({ artist }: { artist: ArtistProfile }) {
 }
 
 function ArtistStatusPill({ artist, labels }: { artist: ArtistProfile; labels: ArtistsLabels }) {
-  const rawStatus = artist.status_label ?? artist.status ?? (isDeletedArtist(artist) ? "0" : "10");
-  const normalized = normalizeEnumToken(String(rawStatus));
-  const label = formatEnumValue("status", rawStatus, labels);
-  const tone = statusTone("status", normalized, label, String(rawStatus), labels);
+  const rawStatus = artist.status ?? artist.status_label ?? (isDeletedArtist(artist) ? "0" : "10");
+  const status = getDashboardStatus("account", rawStatus, labels.locale);
+  const tone = toArtistStatusTone(status.tone);
 
   return (
     <span
@@ -647,7 +694,7 @@ function ArtistStatusPill({ artist, labels }: { artist: ArtistProfile; labels: A
               : "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
       )}
     >
-      {label}
+      {status.label}
     </span>
   );
 }
@@ -721,9 +768,11 @@ function ArtistsPagination({
   const rangeLabel = t("pagination.rangeTotal", { from: firstItem, to: lastItem, total });
 
   return (
-    <div className="rounded-[26px] bg-white/55 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.06] dark:bg-white/[0.035] dark:ring-white/10">
-      <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-2 rounded-[calc(26px-0.375rem)] bg-white/95 px-3 text-sm font-semibold text-[#64748b] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-slate-950/92 dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <span className="whitespace-nowrap text-xs font-semibold text-[#64748b] dark:text-slate-400">
+    <nav
+      aria-label={t("pagination.label")}
+      className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-[18px] border border-artistbor-border bg-artistbor-surface px-3 text-sm font-semibold text-artistbor-secondary shadow-[var(--artistbor-surface-shadow)]"
+    >
+        <span className="whitespace-nowrap text-xs font-semibold text-artistbor-secondary">
           {rangeLabel}
         </span>
         <div className="flex items-center gap-1.5">
@@ -773,21 +822,15 @@ function ArtistsPagination({
           >
             <ChevronsRight className="size-4" />
           </ArtistPaginationButton>
-          <select
+          <Select
+            className="artistbor-pagination-select ml-1 shrink-0"
             value={limitValue}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="ml-1 h-8 rounded-lg border border-[#e6ebf2] bg-white px-2 text-xs font-bold text-[#0f172a] outline-none transition hover:border-[#cbd5e1] focus:border-[#f97316] dark:border-white/10 dark:bg-white/[0.03] dark:text-white"
+            onChange={(value) => onPageSizeChange(Number(value))}
+            options={[20, 50, 100].map((option) => ({ label: `${option} / ${labels.page.toLowerCase()}`, value: option }))}
             aria-label={t("pagination.perPage")}
-          >
-            {[20, 50, 100].map((option) => (
-              <option key={option} value={option}>
-                {option} / {labels.page.toLowerCase()}
-              </option>
-            ))}
-          </select>
+          />
         </div>
-      </div>
-    </div>
+    </nav>
   );
 }
 
@@ -809,7 +852,7 @@ function ArtistPaginationButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-lg text-[#64748b] transition hover:bg-[#f8fafc] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-white"
+      className="grid size-8 place-items-center rounded-lg text-artistbor-secondary transition-colors duration-200 hover:bg-artistbor-surface-subtle hover:text-artistbor-primary disabled:cursor-not-allowed disabled:text-artistbor-muted"
     >
       {children}
     </button>
@@ -911,6 +954,7 @@ function formatArtistActivityDate(value: unknown, locale: Locale) {
 
 function ArtistDrawer({
   artist,
+  detailLoading,
   mode,
   loading,
   open,
@@ -919,6 +963,7 @@ function ArtistDrawer({
   onSubmit,
 }: {
   artist: ArtistProfile | null;
+  detailLoading: boolean;
   mode: "view" | "edit";
   loading: boolean;
   open: boolean;
@@ -931,6 +976,9 @@ function ArtistDrawer({
   const labels = getArtistsLabels(locale);
   const canViewArtistVideos = canUseAdminAction(user?.role, "artistVideosRead");
   const canModerateArtistComments = canUseAdminAction(user?.role, "artistCommentsModerate");
+  const canManageArtistServices = canUseAdminAction(user?.role, "artistServicesManage");
+  const canManageArtistAvailability = canUseAdminAction(user?.role, "artistAvailabilityManage");
+  const canManageArtistGallery = canUseAdminAction(user?.role, "artistGalleryManage");
   const detailTabs = getDetailTabs(labels, {
     canViewVideos: canViewArtistVideos,
     canModerateComments: canModerateArtistComments,
@@ -939,10 +987,24 @@ function ArtistDrawer({
   const [resources, setResources] = useState<Record<ResourceTab, DetailResourceState>>(
     createDetailResources,
   );
+  const loadedResourceTabs = useRef<Set<ResourceTab>>(new Set());
+  const resourceArtistId = useRef<number | undefined>(undefined);
+  const resourceRequestIds = useRef<Record<ResourceTab, number>>(createResourceRequestIds());
   const [scheduleDrawer, setScheduleDrawer] = useState<ScheduleDrawerState | null>(null);
+  const [serviceManagementOpen, setServiceManagementOpen] = useState(false);
   const [passwordResetOpen, setPasswordResetOpen] = useState(false);
   const artistId = artist ? getArtistId(artist) : undefined;
+  const hasArtist = Boolean(artist);
   const formId = artistId ? `artist-edit-form-${artistId}` : "artist-edit-form";
+  const toast = useToast();
+
+  const startResourceRequest = useCallback((key: ResourceTab, currentArtistId: number) => {
+    const requestId = ++resourceRequestIds.current[key];
+    return () => (
+      resourceRequestIds.current[key] === requestId
+      && resourceArtistId.current === currentArtistId
+    );
+  }, []);
 
   useEffect(() => {
     if (!detailTabs.some((tab) => tab.key === activeTab)) {
@@ -951,18 +1013,46 @@ function ArtistDrawer({
   }, [activeTab, detailTabs]);
 
   useEffect(() => {
-    if (!artist) return;
-    const initialResources = createDetailResources(true);
+    resourceArtistId.current = artistId;
+    loadedResourceTabs.current.clear();
+    resourceTabs.forEach((key) => {
+      resourceRequestIds.current[key] += 1;
+    });
+    setActiveTab("profile");
+
+    if (!hasArtist) {
+      setResources(createDetailResources());
+      return;
+    }
+
+    const initialResources = createDetailResources();
     if (!canViewArtistVideos) initialResources.videos = { loading: false, error: null, rows: [] };
     if (!canModerateArtistComments) initialResources.comments = { loading: false, error: null, rows: [] };
     setResources(initialResources);
     if (!artistId) {
       setResources(createDetailResources(false, labels.artistIdMissing));
-      return;
     }
+  }, [artistId, canModerateArtistComments, canViewArtistVideos, hasArtist, labels.artistIdMissing]);
 
-    let ignore = false;
+  useEffect(() => {
+    if (!artistId || mode !== "view" || activeTab === "profile") return;
+    if (activeTab === "videos" && !canViewArtistVideos) return;
+    if (activeTab === "comments" && !canModerateArtistComments) return;
+    if (loadedResourceTabs.current.has(activeTab)) return;
+
+    loadedResourceTabs.current.add(activeTab);
     const currentArtistId = artistId;
+    const resourceKey = activeTab;
+    const isLatestRequest = startResourceRequest(resourceKey, currentArtistId);
+
+    setResources((current) => ({
+      ...current,
+      [resourceKey]: {
+        ...current[resourceKey],
+        loading: true,
+        error: null,
+      },
+    }));
 
     async function loadResource<T extends object>(
       key: ResourceTab,
@@ -970,7 +1060,7 @@ function ArtistDrawer({
     ) {
       try {
         const result = await request;
-        if (ignore) return;
+        if (!isLatestRequest()) return;
         setResources((current) => ({
           ...current,
           [key]: {
@@ -982,7 +1072,8 @@ function ArtistDrawer({
           },
         }));
       } catch (caught) {
-        if (ignore) return;
+        if (!isLatestRequest()) return;
+        loadedResourceTabs.current.delete(key);
         setResources((current) => ({
           ...current,
           [key]: {
@@ -1000,7 +1091,7 @@ function ArtistDrawer({
           artistsApi.balance(currentArtistId),
           artistsApi.transactions(currentArtistId),
         ]);
-        if (ignore) return;
+        if (!isLatestRequest()) return;
         setResources((current) => ({
           ...current,
           finance: {
@@ -1011,7 +1102,8 @@ function ArtistDrawer({
           },
         }));
       } catch (caught) {
-        if (ignore) return;
+        if (!isLatestRequest()) return;
+        loadedResourceTabs.current.delete("finance");
         setResources((current) => ({
           ...current,
           finance: {
@@ -1023,83 +1115,53 @@ function ArtistDrawer({
       }
     }
 
-    void loadResource("services", artistServicesApi.list({ artist_id: currentArtistId }));
-    void loadFinance();
-    void loadResource("availability", artistAvailabilityApi.list(currentArtistId));
-    void loadResource("gallery", artistGalleryApi.list({ artist_id: currentArtistId }));
-    if (canViewArtistVideos) {
+    if (resourceKey === "services") {
+      void loadResource("services", artistServicesApi.list({ artist_id: currentArtistId }));
+    } else if (resourceKey === "finance") {
+      void loadFinance();
+    } else if (resourceKey === "availability") {
+      void loadResource("availability", artistAvailabilityApi.list(currentArtistId));
+    } else if (resourceKey === "gallery") {
+      void loadResource("gallery", artistGalleryApi.list({ artist_id: currentArtistId }));
+    } else if (resourceKey === "videos") {
       void loadResource("videos", artistVideosApi.list({ artist_id: currentArtistId }));
-    }
-    if (canModerateArtistComments) {
+    } else if (resourceKey === "comments") {
       void loadResource("comments", commentsApi.byArtist(currentArtistId));
+    } else {
+      void loadResource("ratings", ratingsApi.byArtist(currentArtistId, 1, limit));
     }
-    void loadResource("ratings", ratingsApi.byArtist(currentArtistId, 1, limit));
-
-    return () => {
-      ignore = true;
-    };
   }, [
-    artist,
+    activeTab,
     artistId,
     canModerateArtistComments,
     canViewArtistVideos,
-    labels.artistIdMissing,
     labels.resourceLoadFailed,
+    mode,
+    startResourceRequest,
   ]);
 
-  const reloadServices = useCallback(async () => {
+  const reloadServices = useCallback(async ({ background = false }: ResourceReloadOptions = {}) => {
     if (!artistId) return;
+    const currentArtistId = artistId;
+    const isLatestRequest = startResourceRequest("services", currentArtistId);
 
-    setResources((current) => ({
-      ...current,
-      services: {
-        ...current.services,
-        loading: true,
-        error: null,
-      },
-    }));
-
-    try {
-      const result = await artistServicesApi.list({ artist_id: artistId });
-      setResources((current) => ({
-        ...current,
-        services: {
-          loading: false,
-          error: null,
-          rows: result.items as UnknownRecord[],
-          meta: result.meta,
-          raw: result.raw,
-        },
-      }));
-    } catch (caught) {
+    if (!background) {
       setResources((current) => ({
         ...current,
         services: {
           ...current.services,
-          loading: false,
-          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          loading: true,
+          error: null,
         },
       }));
     }
-  }, [artistId, labels.resourceLoadFailed]);
-
-  const reloadAvailability = useCallback(async () => {
-    if (!artistId) return;
-
-    setResources((current) => ({
-      ...current,
-      availability: {
-        ...current.availability,
-        loading: true,
-        error: null,
-      },
-    }));
 
     try {
-      const result = await artistAvailabilityApi.list(artistId);
+      const result = await artistServicesApi.list({ artist_id: currentArtistId });
+      if (!isLatestRequest()) return;
       setResources((current) => ({
         ...current,
-        availability: {
+        services: {
           loading: false,
           error: null,
           rows: result.items as UnknownRecord[],
@@ -1108,34 +1170,92 @@ function ArtistDrawer({
         },
       }));
     } catch (caught) {
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.resourceLoadFailed);
+      } else {
+        setResources((current) => ({
+          ...current,
+          services: {
+            ...current.services,
+            loading: false,
+            error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          },
+        }));
+      }
+    }
+  }, [artistId, labels.resourceLoadFailed, startResourceRequest, toast]);
+
+  const reloadAvailability = useCallback(async ({
+    background = false,
+    date_from,
+    date_to,
+  }: AvailabilityReloadOptions = {}): Promise<boolean> => {
+    if (!artistId) return false;
+    const currentArtistId = artistId;
+    const isLatestRequest = startResourceRequest("availability", currentArtistId);
+
+    if (!background) {
       setResources((current) => ({
         ...current,
         availability: {
           ...current.availability,
-          loading: false,
-          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          loading: true,
+          error: null,
         },
       }));
     }
-  }, [artistId, labels.resourceLoadFailed]);
-
-  const reloadComments = useCallback(async () => {
-    if (!artistId || !canModerateArtistComments) return;
-
-    setResources((current) => ({
-      ...current,
-      comments: {
-        ...current.comments,
-        loading: true,
-        error: null,
-      },
-    }));
 
     try {
-      const result = await commentsApi.byArtist(artistId);
+      const result = await artistAvailabilityApi.list(currentArtistId, { date_from, date_to });
+      if (!isLatestRequest()) return false;
       setResources((current) => ({
         ...current,
-        comments: {
+        availability: {
+          loading: false,
+          error: null,
+          rows: result.items as UnknownRecord[],
+          meta: result.meta,
+          raw: result.raw,
+        },
+      }));
+      return true;
+    } catch (caught) {
+      if (!isLatestRequest()) return false;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.resourceLoadFailed);
+      } else {
+        setResources((current) => ({
+          ...current,
+          availability: {
+            ...current.availability,
+            loading: false,
+            error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          },
+        }));
+      }
+      return false;
+    }
+  }, [artistId, labels.resourceLoadFailed, startResourceRequest, toast]);
+
+  const reloadGallery = useCallback(async ({ background = false }: ResourceReloadOptions = {}) => {
+    if (!artistId) return;
+    const currentArtistId = artistId;
+    const isLatestRequest = startResourceRequest("gallery", currentArtistId);
+
+    if (!background) {
+      setResources((current) => ({
+        ...current,
+        gallery: { ...current.gallery, loading: true, error: null },
+      }));
+    }
+
+    try {
+      const result = await artistGalleryApi.list({ artist_id: currentArtistId });
+      if (!isLatestRequest()) return;
+      setResources((current) => ({
+        ...current,
+        gallery: {
           loading: false,
           error: null,
           rows: result.items as UnknownRecord[],
@@ -1144,31 +1264,83 @@ function ArtistDrawer({
         },
       }));
     } catch (caught) {
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.resourceLoadFailed;
+      if (background) toast.error(message);
+      else {
+        setResources((current) => ({
+          ...current,
+          gallery: { ...current.gallery, loading: false, error: message },
+        }));
+      }
+    }
+  }, [artistId, labels.resourceLoadFailed, startResourceRequest, toast]);
+
+  const reloadComments = useCallback(async ({ background = false }: ResourceReloadOptions = {}) => {
+    if (!artistId || !canModerateArtistComments) return;
+    const currentArtistId = artistId;
+    const isLatestRequest = startResourceRequest("comments", currentArtistId);
+
+    if (!background) {
       setResources((current) => ({
         ...current,
         comments: {
           ...current.comments,
-          loading: false,
-          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          loading: true,
+          error: null,
         },
       }));
     }
-  }, [artistId, canModerateArtistComments, labels.resourceLoadFailed]);
-
-  const reloadRatings = useCallback(async () => {
-    if (!artistId) return;
-
-    setResources((current) => ({
-      ...current,
-      ratings: {
-        ...current.ratings,
-        loading: true,
-        error: null,
-      },
-    }));
 
     try {
-      const result = await ratingsApi.byArtist(artistId, 1, limit);
+      const result = await commentsApi.byArtist(currentArtistId);
+      if (!isLatestRequest()) return;
+      setResources((current) => ({
+        ...current,
+        comments: {
+          loading: false,
+          error: null,
+          rows: result.items as UnknownRecord[],
+          meta: result.meta,
+          raw: result.raw,
+        },
+      }));
+    } catch (caught) {
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.resourceLoadFailed);
+      } else {
+        setResources((current) => ({
+          ...current,
+          comments: {
+            ...current.comments,
+            loading: false,
+            error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          },
+        }));
+      }
+    }
+  }, [artistId, canModerateArtistComments, labels.resourceLoadFailed, startResourceRequest, toast]);
+
+  const reloadRatings = useCallback(async ({ background = false }: ResourceReloadOptions = {}) => {
+    if (!artistId) return;
+    const currentArtistId = artistId;
+    const isLatestRequest = startResourceRequest("ratings", currentArtistId);
+
+    if (!background) {
+      setResources((current) => ({
+        ...current,
+        ratings: {
+          ...current.ratings,
+          loading: true,
+          error: null,
+        },
+      }));
+    }
+
+    try {
+      const result = await ratingsApi.byArtist(currentArtistId, 1, limit);
+      if (!isLatestRequest()) return;
       setResources((current) => ({
         ...current,
         ratings: {
@@ -1180,25 +1352,34 @@ function ArtistDrawer({
         },
       }));
     } catch (caught) {
-      setResources((current) => ({
-        ...current,
-        ratings: {
-          ...current.ratings,
-          loading: false,
-          error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
-        },
-      }));
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.resourceLoadFailed);
+      } else {
+        setResources((current) => ({
+          ...current,
+          ratings: {
+            ...current.ratings,
+            loading: false,
+            error: caught instanceof Error ? caught.message : labels.resourceLoadFailed,
+          },
+        }));
+      }
     }
-  }, [artistId, labels.resourceLoadFailed]);
+  }, [artistId, labels.resourceLoadFailed, startResourceRequest, toast]);
 
   if (!artist) return null;
+
+  const managedSchedule = scheduleDrawer
+    ? scheduleRecordsFromState(resources.availability, artist)[0] ?? scheduleDrawer.schedule
+    : null;
 
   return (
     <>
     <Drawer
       open={open}
       onClose={onClose}
-      size={mode === "view" ? "min(100vw, 760px)" : "min(100vw, 560px)"}
+      size={mode === "view" ? "min(100vw, 760px)" : "min(100vw, 800px)"}
       placement="right"
       closable={{ placement: "start" }}
       closeIcon={<X className="size-5" />}
@@ -1207,10 +1388,10 @@ function ArtistDrawer({
       title={
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
-            {mode === "edit" ? labels.editTitle : `${labels.artist} #${toDisplay(artistId)}`}
+            {mode === "edit" ? `${labels.editTitle} · ${artist.public_id ?? "—"}` : `${labels.artist} ${artist.public_id ?? "—"}`}
           </span>
           <ArtistHeaderBadge
-            label={formatEnumValue("status", artist.status_label ?? artist.status, labels)}
+            label={formatEnumValue("status", artist.status ?? artist.status_label, labels)}
             tone={isDeletedArtist(artist) ? "danger" : "neutral"}
           />
           {artist.is_top ? <ArtistHeaderBadge label={labels.top} tone="warning" /> : null}
@@ -1229,6 +1410,7 @@ function ArtistDrawer({
       styles={adminDrawerStyles}
     >
       <div className="space-y-3.5 p-4">
+        {detailLoading ? <InlineLoadingState /> : null}
         <ArtistDrawerProfile artist={artist} labels={labels} />
 
         {mode === "edit" ? (
@@ -1259,6 +1441,11 @@ function ArtistDrawer({
                     state={resources.services}
                     labels={labels}
                     onChanged={reloadServices}
+                    readOnly
+                    onManage={canManageArtistServices ? () => {
+                      setServiceManagementOpen(true);
+                      void reloadServices();
+                    } : undefined}
                   />
                 ) : tab.key === "finance" ? (
                   <ArtistFinanceTab
@@ -1270,11 +1457,19 @@ function ArtistDrawer({
                     artist={artist}
                     labels={labels}
                     state={resources.availability}
-                    onCreate={() => setScheduleDrawer({ mode: "create", schedule: null })}
-                    onOpen={(schedule) => setScheduleDrawer({ mode: "manage", schedule })}
+                    onRangeChange={(range) => reloadAvailability({ ...range, background: true })}
+                    onManage={canManageArtistAvailability ? (schedule) => {
+                      setScheduleDrawer({ schedule });
+                    } : undefined}
                   />
                 ) : tab.key === "gallery" ? (
-                  <ArtistGalleryTab state={resources.gallery} labels={labels} />
+                  <ArtistGalleryTab
+                    artistId={artistId}
+                    canManage={canManageArtistGallery}
+                    state={resources.gallery}
+                    labels={labels}
+                    onChanged={reloadGallery}
+                  />
                 ) : tab.key === "videos" ? (
                   <ArtistVideosSummary artistId={artistId} state={resources.videos} />
                 ) : tab.key === "comments" ? (
@@ -1282,12 +1477,14 @@ function ArtistDrawer({
                     labels={labels}
                     state={resources.comments}
                     onChanged={reloadComments}
+                    readOnly
                   />
                 ) : tab.key === "ratings" ? (
                   <ArtistRatingsTab
                     labels={labels}
                     state={resources.ratings}
                     onChanged={reloadRatings}
+                    readOnly
                   />
                 ) : (
                   <ResourcePanel
@@ -1301,12 +1498,28 @@ function ArtistDrawer({
         )}
       </div>
     </Drawer>
+    {serviceManagementOpen && canManageArtistServices ? (
+      <AdminDrawer
+        open
+        title={`${labels.manageServices} · ${artist.public_id ?? "—"}`}
+        size="min(100vw, 760px)"
+        onClose={() => setServiceManagementOpen(false)}
+      >
+        <div className="p-4">
+          <ArtistServicesTab
+            artistId={artistId}
+            state={resources.services}
+            labels={labels}
+            onChanged={reloadServices}
+          />
+        </div>
+      </AdminDrawer>
+    ) : null}
     <ScheduleManagementDrawer
       artist={artist}
       labels={labels}
-      mode={scheduleDrawer?.mode ?? "manage"}
       open={Boolean(scheduleDrawer)}
-      schedule={scheduleDrawer?.schedule ?? null}
+      schedule={managedSchedule}
       onClose={() => setScheduleDrawer(null)}
       onChanged={reloadAvailability}
     />
@@ -1340,12 +1553,17 @@ function CreateArtistDrawer({
   const [errors, setErrors] = useState<Partial<Record<keyof ReturnType<typeof initialCreateArtistValues>, string>>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [activeTab, setActiveTab] = useState<ArtistFormTab>("basic");
   const [regions, setRegions] = useState<Region[]>([]);
-  const [districts, setDistricts] = useState<District[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const toast = useToast();
   const selectedRegionId = values.region_id;
+  const { districts, loading: districtsLoading } = useArtistDistrictOptions(
+    selectedRegionId,
+    labels.resourceLoadFailed,
+    toast,
+  );
   const profilePhotoId = values.profile_photo_id;
   const profilePhotoUrl = values.profile_photo_url;
 
@@ -1353,25 +1571,22 @@ function CreateArtistDrawer({
     let ignore = false;
 
     async function loadOptions() {
-      try {
-        const [regionsResult, districtsResult, categoriesResult, servicesResult] = await Promise.all([
-          regionsApi.list({ page: 1, limit: 1000 }),
-          districtsApi.list({ page: 1, limit: 1000 }),
-          categoriesApi.list({ page: 1, limit: 1000 }),
-          servicesApi.list({ page: 1, limit: 1000 }),
-        ]);
-        if (ignore) return;
-        setRegions(regionsResult.items);
-        setDistricts(districtsResult.items);
-        setCategories(categoriesResult.items);
-        setServices(servicesResult.items);
-      } catch {
-        if (ignore) return;
-        setRegions([]);
-        setDistricts([]);
-        setCategories([]);
-        setServices([]);
-      }
+      const [regionsResult, categoriesResult, servicesResult] = await Promise.allSettled([
+        regionsApi.list({ page: 1, limit: 1000 }),
+        categoriesApi.list({ page: 1, limit: 1000 }),
+        servicesApi.list({ page: 1, limit: 1000 }),
+      ]);
+      if (ignore) return;
+
+      setRegions(regionsResult.status === "fulfilled" ? regionsResult.value.items : []);
+      setCategories(categoriesResult.status === "fulfilled" ? categoriesResult.value.items : []);
+      setServices(servicesResult.status === "fulfilled" ? servicesResult.value.items : []);
+
+      const resourceLoadError = getCatalogLoadError(
+        [regionsResult, categoriesResult, servicesResult],
+        labels.resourceLoadFailed,
+      );
+      if (resourceLoadError) toast.error(resourceLoadError);
     }
 
     void loadOptions();
@@ -1379,7 +1594,7 @@ function CreateArtistDrawer({
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [labels.resourceLoadFailed, toast]);
 
   const filteredDistricts = districts.filter((district) => {
     if (!selectedRegionId) return false;
@@ -1417,11 +1632,20 @@ function CreateArtistDrawer({
     if (!values.first_name.trim()) nextErrors.first_name = labels.requiredField(labels.firstName);
     if (!values.phone.trim()) nextErrors.phone = labels.requiredField(labels.phone);
     if (!values.password.trim()) nextErrors.password = labels.requiredField(labels.password);
-    if (!values.category_ids) nextErrors.category_ids = labels.requiredField(labels.category);
+    if (!parseIdList(values.category_ids).length) nextErrors.category_ids = labels.requiredField(labels.category);
     const servicesError = validateArtistServiceDrafts(values.services, labels);
     if (servicesError) nextErrors.services = servicesError;
+    const cardNumberError = validateArtistCardNumber(values.card_number, labels);
+    if (cardNumberError) nextErrors.card_number = cardNumberError;
+    const cardHolderNameError = validateArtistCardHolderName(values.card_holder_name, labels);
+    if (cardHolderNameError) nextErrors.card_holder_name = cardHolderNameError;
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) {
+      if (nextErrors.first_name || nextErrors.phone) setActiveTab("basic");
+      else if (nextErrors.category_ids) setActiveTab("profile");
+      else setActiveTab("account");
+      return;
+    }
 
     await onSubmit(buildCreateArtistPayload(values));
   };
@@ -1431,6 +1655,7 @@ function CreateArtistDrawer({
       open={open}
       title={labels.createTitle}
       onClose={onClose}
+      size="min(100vw, 800px)"
       footer={
         <div className="grid grid-cols-2 gap-2">
           <ArtistDrawerActionButton
@@ -1454,96 +1679,116 @@ function CreateArtistDrawer({
         onSubmit={submit}
         className="space-y-6 p-4"
       >
-        <ArtistFormSection title={labels.mainInfo}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
-            <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
-            <FormField compact label={labels.gender} type="select" value={values.gender} options={genderOptions(labels)} onChange={(gender) => setValues((current) => ({ ...current, gender }))} />
-            <FormField compact label={labels.birthDate} type="date" value={values.birth_date} onChange={(birth_date) => setValues((current) => ({ ...current, birth_date }))} />
-          </div>
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.contactInfo}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998 " })))} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
-            <FormField compact label={labels.extraPhone} type="tel" value={values.extra_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998 " })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone: formatPhoneInput(extra_phone) }))} />
-            <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
-          </div>
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.locationInfo}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField
-              compact
-              label={labels.region}
-              type="select"
-              value={values.region_id}
-              placeholder={labels.region}
-              options={regionOptions(regions, labels)}
-              onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))}
-            />
-            <FormField
-              compact
-              label={labels.district}
-              type="select"
-              value={values.district_id}
-              disabled={!selectedRegionId}
-              placeholder={selectedRegionId ? labels.district : labels.selectRegionFirst}
-              options={districtOptions(filteredDistricts, labels)}
-              onChange={(district_id) => setValues((current) => ({ ...current, district_id }))}
-            />
-          </div>
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.artistInfo}>
-          <div className="grid gap-4">
-            <FormField compact label={labels.category} type="select" required value={values.category_ids} error={errors.category_ids} placeholder={labels.categoryPlaceholder} options={categoryOptions(categories, labels)} onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))} />
-            <FormField compact label={labels.bio} type="textarea" rows={4} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
-            <ArtistPhotoField
-              disabled={uploading || loading}
-              error={uploadError}
-              labels={labels}
-              photoId={profilePhotoId}
-              photoUrl={profilePhotoUrl}
-              uploading={uploading}
-              onFile={uploadProfilePhoto}
-            />
-          </div>
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.services}>
-          <ArtistServiceDraftEditor
-            labels={labels}
-            regions={regions}
-            services={services}
-            value={values.services}
-            error={errors.services}
-            onChange={(servicesValue) => setValues((current) => ({ ...current, services: servicesValue }))}
-          />
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.adminInfo}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
-            <FormField compact label={labels.adminPhone} type="tel" value={values.administrator_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998 " })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone: formatPhoneInput(administrator_phone) }))} />
-          </div>
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.accountStatus}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField compact label={labels.password} type="password" required value={values.password} error={errors.password} placeholder={labels.password} autoComplete="new-password" onChange={(password) => setValues((current) => ({ ...current, password }))} />
-            <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
-            <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
-            <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
-          </div>
-        </ArtistFormSection>
-
-        <ArtistFormSection title={labels.statistics}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField compact label={labels.albumsCount} type="number" value={values.albums_count} placeholder={labels.albumsCount} onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
-            <FormField compact label={labels.fansCount} type="number" value={values.fans_count} placeholder={labels.fansCount} onChange={(fans_count) => setValues((current) => ({ ...current, fans_count }))} />
-          </div>
-        </ArtistFormSection>
+        <Tabs
+          activeKey={activeTab}
+          className="artistbor-drawer-tabs"
+          items={[
+            {
+              key: "basic",
+              label: labels.formTabBasic,
+              children: (
+                <div className="space-y-6 pt-1">
+                  <ArtistFormSection title={labels.mainInfo}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+                      <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+                      <FormField compact label={labels.gender} type="select" value={values.gender} options={genderOptions(labels)} onChange={(gender) => setValues((current) => ({ ...current, gender }))} />
+                      <FormField compact label={labels.birthDate} type="date" value={values.birth_date} onChange={(birth_date) => setValues((current) => ({ ...current, birth_date }))} />
+                    </div>
+                  </ArtistFormSection>
+                  <ArtistFormSection title={labels.contactInfo}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998 " })))} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
+                      <FormField compact label={labels.extraPhone} type="tel" value={values.extra_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998 " })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone: formatPhoneInput(extra_phone) }))} />
+                      <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
+                    </div>
+                  </ArtistFormSection>
+                  <ArtistFormSection title={labels.adminInfo}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
+                      <FormField compact label={labels.adminPhone} type="tel" value={values.administrator_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998 " })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone: formatPhoneInput(administrator_phone) }))} />
+                    </div>
+                  </ArtistFormSection>
+                  <ArtistFormSection title={labels.locationInfo}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.region} type="select" value={values.region_id} placeholder={labels.region} options={regionOptions(regions, labels)} onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))} />
+                      <FormField compact label={labels.district} type="select" value={values.district_id} disabled={!selectedRegionId || districtsLoading} placeholder={districtsLoading ? labels.loadingTitle(labels.district) : selectedRegionId ? labels.district : labels.selectRegionFirst} options={districtOptions(filteredDistricts, labels)} onChange={(district_id) => setValues((current) => ({ ...current, district_id }))} />
+                    </div>
+                  </ArtistFormSection>
+                </div>
+              ),
+            },
+            {
+              key: "profile",
+              label: labels.formTabProfile,
+              children: (
+                <div className="pt-1">
+                  <ArtistFormSection title={labels.artistInfo}>
+                    <div className="grid gap-4">
+                      <ArtistCategoryField
+                        categories={categories}
+                        error={errors.category_ids}
+                        labels={labels}
+                        required
+                        value={values.category_ids}
+                        onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))}
+                      />
+                      <FormField compact label={labels.bio} type="textarea" rows={5} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
+                      <FormField compact label={labels.artistBio} type="textarea" rows={5} value={values.artist_bio} placeholder={labels.artistBio} onChange={(artist_bio) => setValues((current) => ({ ...current, artist_bio }))} />
+                      <ArtistPhotoField disabled={uploading || loading} error={uploadError} labels={labels} photoId={profilePhotoId} photoUrl={profilePhotoUrl} uploading={uploading} onFile={uploadProfilePhoto} />
+                    </div>
+                  </ArtistFormSection>
+                </div>
+              ),
+            },
+            {
+              key: "services",
+              label: labels.formTabServices,
+              children: (
+                <div className="space-y-6 pt-1">
+                  <ArtistFormSection title={labels.services}>
+                    <ArtistServiceDraftEditor labels={labels} regions={regions} services={services} value={values.services} error={errors.services} onChange={(servicesValue) => setValues((current) => ({ ...current, services: servicesValue }))} />
+                  </ArtistFormSection>
+                </div>
+              ),
+            },
+            {
+              key: "account",
+              label: labels.formTabAccount,
+              children: (
+                <div className="space-y-6 pt-1">
+                  <ArtistFormSection title={labels.cardDetails}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.cardNumber} value={values.card_number} error={errors.card_number} inputMode="numeric" maxLength={32} autoComplete="off" placeholder="8600 1234 5678 4567" onChange={(card_number) => {
+                        setValues((current) => ({ ...current, card_number }));
+                        setErrors((current) => ({ ...current, card_number: undefined }));
+                      }} />
+                      <FormField compact label={labels.cardHolderName} value={values.card_holder_name} error={errors.card_holder_name} maxLength={255} autoComplete="off" placeholder="ALISHER USMONOV" onChange={(card_holder_name) => {
+                        setValues((current) => ({ ...current, card_holder_name }));
+                        setErrors((current) => ({ ...current, card_holder_name: undefined }));
+                      }} />
+                    </div>
+                  </ArtistFormSection>
+                  <ArtistFormSection title={labels.accountStatus}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.password} type="password" required value={values.password} error={errors.password} placeholder={labels.password} autoComplete="new-password" onChange={(password) => setValues((current) => ({ ...current, password }))} />
+                      <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
+                      <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
+                      <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
+                    </div>
+                  </ArtistFormSection>
+                  <ArtistFormSection title={labels.statistics}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.albumsCount} type="number" value={values.albums_count} placeholder={labels.albumsCount} onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
+                      <FormField compact label={labels.fansCount} type="number" value={values.fans_count} placeholder={labels.fansCount} onChange={(fans_count) => setValues((current) => ({ ...current, fans_count }))} />
+                    </div>
+                  </ArtistFormSection>
+                </div>
+              ),
+            },
+          ]}
+          onChange={(key) => setActiveTab(key as ArtistFormTab)}
+        />
       </form>
     </AdminDrawer>
   );
@@ -1591,10 +1836,10 @@ function ArtistDrawerProfile({
             {artistName}
           </h3>
           <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {labels.id}: {toDisplay(getArtistId(artist))}
+            {labels.id}: {artist.public_id ?? "—"}
           </p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {formatPhone(artist.phone ?? artist.extra_phone) || "—"}
+            {formatPhone(artist.phone) || "—"}
           </p>
         </div>
       </div>
@@ -1614,7 +1859,7 @@ function ArtistDrawerProfile({
               event.stopPropagation();
               setPreviewOpen(false);
             }}
-            aria-label="Close image preview"
+            aria-label={labels.closeImagePreview}
           >
             <X className="size-5" />
           </button>
@@ -1696,10 +1941,8 @@ function LocalizedStatusBadge({
   labels: ArtistsLabels;
   value: unknown;
 }) {
-  const rawLabel = value === null || value === undefined || value === "" ? "—" : String(value);
-  const normalized = normalizeEnumToken(rawLabel);
-  const label = formatEnumValue(fieldKey, value, labels);
-  const tone = statusTone(fieldKey, normalized, label, rawLabel, labels);
+  const status = getDashboardStatus(getDashboardStatusDomain(fieldKey), value, labels.locale);
+  const tone = toArtistStatusTone(status.tone);
   const toneClass = {
     danger: "border-rose-400/30 bg-rose-50 text-rose-600 dark:bg-rose-400/10 dark:text-rose-300",
     neutral: "border-slate-400/30 bg-slate-50 text-slate-600 dark:bg-white/10 dark:text-slate-300",
@@ -1709,7 +1952,7 @@ function LocalizedStatusBadge({
 
   return (
     <span className={cn("inline-flex h-6 max-w-full items-center rounded-full border px-2 text-[10px] font-bold uppercase leading-3 tracking-[0.08em]", toneClass)}>
-      {label}
+      {status.label}
     </span>
   );
 }
@@ -1926,8 +2169,10 @@ function ArtistInfoGrid({
   labels: ArtistsLabels;
 }) {
   const cells = [
-    { icon: <User className="size-4" />, label: labels.fullName, value: getArtistName(artist, labels), always: true },
-    { icon: <Phone className="size-4" />, label: labels.phone, value: formatPhone(artist.phone ?? artist.extra_phone), always: true },
+    { icon: <User className="size-4" />, label: labels.fullName, value: [artist.first_name, artist.last_name].filter(Boolean).join(" ") || getArtistName(artist, labels), always: true },
+    { icon: <Star className="size-4" />, label: labels.stageName, value: artist.stage_name },
+    { icon: <Clock className="size-4" />, label: labels.experienceYears, value: artist.experience_years === undefined ? undefined : `${artist.experience_years} ${labels.years}` },
+    { icon: <Phone className="size-4" />, label: labels.phone, value: formatPhone(artist.phone), always: true },
     { icon: <Mail className="size-4" />, label: labels.email, value: artist.email },
     { icon: <Languages className="size-4" />, label: labels.language, value: artist.badges?.join(", ") },
     {
@@ -1998,9 +2243,12 @@ function ArtistProfileTab({
   artist: ArtistProfile;
   labels: ArtistsLabels;
 }) {
-  const hasAdmin = hasMeaningfulValue(artist.administrator_name) || hasMeaningfulValue(artist.administrator_phone || artist.extra_phone);
+  const hasAdmin = hasMeaningfulValue(artist.administrator_name) || hasMeaningfulValue(artist.administrator_phone);
   const hasBio = hasMeaningfulValue(artist.bio);
+  const hasShortDescription = hasMeaningfulValue(artist.short_description);
+  const hasHighlights = Boolean(artist.titles?.length || artist.achievements?.length);
   const additionalEntries = additionalArtistEntries(artist);
+  const hasAdditionalInfo = additionalEntries.length > 0 || hasStructuredAdditionalInfo(artist);
 
   return (
     <div className="space-y-3">
@@ -2008,14 +2256,31 @@ function ArtistProfileTab({
         <ArtistInfoGrid artist={artist} labels={labels} />
       </ArtistSection>
       <ArtistStatsSection artist={artist} labels={labels} />
+      {hasShortDescription ? (
+        <ArtistSection title={labels.shortDescription}>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 dark:border-white/10 dark:bg-[#121a2a]">
+            <p className="whitespace-pre-wrap break-words text-sm font-medium leading-5 text-slate-800 dark:text-slate-100">
+              {artist.short_description}
+            </p>
+          </div>
+        </ArtistSection>
+      ) : null}
+      {hasHighlights ? (
+        <ArtistSection title={labels.titlesAndAchievements}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ArtistTextList title={labels.titles} items={artist.titles ?? []} />
+            <ArtistTextList title={labels.achievements} items={artist.achievements ?? []} />
+          </div>
+        </ArtistSection>
+      ) : null}
       {hasAdmin ? (
         <ArtistSection title={labels.administrator}>
           <div className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-2">
             {hasMeaningfulValue(artist.administrator_name) ? (
               <ArtistInfoCell icon={<User className="size-4" />} label={labels.adminName} value={artist.administrator_name} />
             ) : null}
-            {hasMeaningfulValue(artist.administrator_phone || artist.extra_phone) ? (
-              <ArtistInfoCell icon={<Phone className="size-4" />} label={labels.adminPhone} value={formatPhone(artist.administrator_phone || artist.extra_phone)} />
+            {hasMeaningfulValue(artist.administrator_phone) ? (
+              <ArtistInfoCell icon={<Phone className="size-4" />} label={labels.adminPhone} value={formatPhone(artist.administrator_phone)} />
             ) : null}
           </div>
         </ArtistSection>
@@ -2029,11 +2294,142 @@ function ArtistProfileTab({
           </div>
         </ArtistSection>
       ) : null}
-      {additionalEntries.length ? (
+      {hasAdditionalInfo ? (
         <ArtistSection title={labels.additionalInfo}>
-          <ProfileData entries={additionalEntries} labels={labels} />
+          <ArtistAdditionalInfo artist={artist} labels={labels} entries={additionalEntries} />
         </ArtistSection>
       ) : null}
+    </div>
+  );
+}
+
+function ArtistAdditionalInfo({
+  artist,
+  entries,
+  labels,
+}: {
+  artist: ArtistProfile;
+  entries: readonly (readonly [string, unknown])[];
+  labels: ArtistsLabels;
+}) {
+  const sources = artistAdditionalSources(artist);
+  const findRecord = (keys: string[]) => {
+    for (const source of sources) {
+      const value = firstRecordValue(source, keys);
+      if (value) return value;
+    }
+    return undefined;
+  };
+
+  const profileGaps = sources.reduce<unknown>((found, source) => {
+    if (found !== undefined) return found;
+    return firstMeaningfulValue(source, ["profile_gaps", "profileGaps", "missing_fields", "missingFields"]);
+  }, undefined);
+  const quota = findRecord(["quota", "limits", "profile_quota", "profileQuota"]);
+  const remainingEntries = entries.filter(([key]) => key !== "public_id");
+
+  if (!hasMeaningfulValue(profileGaps) && !quota && !remainingEntries.length) return null;
+
+  return (
+    <div className="space-y-3">
+      {hasMeaningfulValue(profileGaps) ? (
+        <AdditionalInfoGroup title={labels.profileCompleteness}>
+          <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-400/[0.08]">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-300">{labels.profileGaps}</p>
+            <ul className="mt-2 space-y-1.5">
+              {(Array.isArray(profileGaps) ? profileGaps : [profileGaps]).map((item, index) => (
+                <li key={`${String(item)}-${index}`} className="flex gap-2 text-sm font-medium leading-5 text-amber-950 dark:text-amber-100">
+                  <span aria-hidden="true" className="mt-0.5 text-amber-500">•</span>
+                  <span>{isRecord(item) ? <ValueBlock fieldKey="profile_gaps" value={item} /> : formatDisplayValue("profile_gaps", item, labels)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </AdditionalInfoGroup>
+      ) : null}
+
+      {quota ? (
+        <AdditionalInfoGroup title={labels.quota}>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(["period", "limit", "used", "unlimited", "enforced", "total_all_time"] as const)
+              .map((key) => [key, quota[key]] as const)
+              .filter(([, value]) => hasMeaningfulValue(value))
+              .map(([key, value]) => (
+                <AdditionalInfoTile key={key} fieldKey={key} label={humanizeKey(key, labels)} value={value} />
+              ))}
+          </div>
+        </AdditionalInfoGroup>
+      ) : null}
+
+      {remainingEntries.length ? (
+        <AdditionalInfoGroup title={labels.otherDetails}>
+          <ProfileData entries={remainingEntries} labels={labels} />
+        </AdditionalInfoGroup>
+      ) : null}
+    </div>
+  );
+}
+
+function hasStructuredAdditionalInfo(artist: ArtistProfile) {
+  return artistAdditionalSources(artist).some((source) =>
+    [
+      "profile_gaps",
+      "profileGaps",
+      "missing_fields",
+      "missingFields",
+      "quota",
+      "limits",
+      "profile_quota",
+      "profileQuota",
+    ].some((key) => hasMeaningfulValue(source[key])),
+  );
+}
+
+function artistAdditionalSources(artist: ArtistProfile) {
+  const record = artist as UnknownRecord;
+  return [
+    record,
+    firstRecordValue(record, ["profile"]),
+    firstRecordValue(record, ["artistProfile", "artist_profile"]),
+  ].filter((source): source is UnknownRecord => Boolean(source));
+}
+
+function AdditionalInfoGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function AdditionalInfoTile({ fieldKey, label, value }: { fieldKey: string; label: string; value: unknown }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-white/[0.04]">
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">{label}</p>
+      <div className="mt-1 break-words text-sm font-semibold leading-5 text-slate-950 dark:text-white">
+        <ValueBlock fieldKey={fieldKey} value={value} />
+      </div>
+    </div>
+  );
+}
+
+function ArtistTextList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 dark:border-white/10 dark:bg-[#121a2a]">
+      <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">{title}</p>
+      {items.length ? (
+        <ul className="mt-2 space-y-1.5">
+          {items.map((item) => (
+            <li key={item} className="flex gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+              <span aria-hidden="true" className="text-amber-500">•</span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm font-medium text-slate-400">—</p>
+      )}
     </div>
   );
 }
@@ -2119,11 +2515,16 @@ function EditArtistForm({
   const [errors, setErrors] = useState<Partial<Record<keyof ReturnType<typeof initialArtistFormValues>, string>>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [activeTab, setActiveTab] = useState<ArtistFormTab>("basic");
   const [regions, setRegions] = useState<Region[]>([]);
-  const [districts, setDistricts] = useState<District[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const toast = useToast();
   const selectedRegionId = values.region_id;
+  const { districts, loading: districtsLoading } = useArtistDistrictOptions(
+    selectedRegionId,
+    labels.resourceLoadFailed,
+    toast,
+  );
   const profilePhotoId = values.profile_photo_id;
   const profilePhotoUrl = values.profile_photo_url;
 
@@ -2131,32 +2532,32 @@ function EditArtistForm({
     let ignore = false;
 
     async function loadOptions() {
-      try {
-        const [regionsResult, districtsResult, categoriesResult, artistServicesResult, servicesResult] = await Promise.all([
-          regionsApi.list({ page: 1, limit: 1000 }),
-          districtsApi.list({ page: 1, limit: 1000 }),
-          categoriesApi.list({ page: 1, limit: 1000 }),
-          artistServiceLookupId ? artistServicesApi.list({ artist_id: artistServiceLookupId }) : Promise.resolve({ items: [] }),
-          servicesApi.list({ page: 1, limit: 1000 }),
-        ]);
-        if (ignore) return;
-        setRegions(regionsResult.items);
-        setDistricts(districtsResult.items);
-        setCategories(categoriesResult.items);
+      const [regionsResult, categoriesResult, artistServicesResult, servicesResult] = await Promise.allSettled([
+        regionsApi.list({ page: 1, limit: 1000 }),
+        categoriesApi.list({ page: 1, limit: 1000 }),
+        artistServiceLookupId ? artistServicesApi.list({ artist_id: artistServiceLookupId }) : Promise.resolve({ items: [] }),
+        servicesApi.list({ page: 1, limit: 1000 }),
+      ]);
+      if (ignore) return;
+
+      setRegions(regionsResult.status === "fulfilled" ? regionsResult.value.items : []);
+      setCategories(categoriesResult.status === "fulfilled" ? categoriesResult.value.items : []);
+      if (artistServicesResult.status === "fulfilled" && servicesResult.status === "fulfilled") {
         setValues((current) => {
           if (current.category_ids) return current;
           const categoryId = inferCategoryIdFromArtistServices(
-            artistServicesResult.items,
-            servicesResult.items,
+            artistServicesResult.value.items,
+            servicesResult.value.items,
           );
           return categoryId ? { ...current, category_ids: categoryId } : current;
         });
-      } catch {
-        if (ignore) return;
-        setRegions([]);
-        setDistricts([]);
-        setCategories([]);
       }
+
+      const resourceLoadError = getCatalogLoadError(
+        [regionsResult, categoriesResult, artistServicesResult, servicesResult],
+        labels.resourceLoadFailed,
+      );
+      if (resourceLoadError) toast.error(resourceLoadError);
     }
 
     void loadOptions();
@@ -2164,7 +2565,7 @@ function EditArtistForm({
     return () => {
       ignore = true;
     };
-  }, [artistServiceLookupId]);
+  }, [artistServiceLookupId, labels.resourceLoadFailed, toast]);
 
   const filteredDistricts = districts.filter((district) => {
     if (!selectedRegionId) return false;
@@ -2201,8 +2602,18 @@ function EditArtistForm({
     const nextErrors: Partial<Record<keyof ReturnType<typeof initialArtistFormValues>, string>> = {};
     if (!values.first_name.trim()) nextErrors.first_name = labels.requiredField(labels.firstName);
     if (!values.phone.trim()) nextErrors.phone = labels.requiredField(labels.phone);
+    if (!parseIdList(values.category_ids).length) nextErrors.category_ids = labels.requiredField(labels.category);
+    const cardNumberError = validateArtistCardNumber(values.card_number, labels);
+    if (cardNumberError) nextErrors.card_number = cardNumberError;
+    const cardHolderNameError = validateArtistCardHolderName(values.card_holder_name, labels);
+    if (cardHolderNameError) nextErrors.card_holder_name = cardHolderNameError;
+    const ratingError = validateArtistRating(values.rating, labels);
+    if (ratingError) nextErrors.rating = ratingError;
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) {
+      setActiveTab(nextErrors.first_name || nextErrors.phone ? "basic" : nextErrors.category_ids ? "profile" : "account");
+      return;
+    }
 
     await onSubmit(buildArtistPayload(values));
   };
@@ -2213,79 +2624,102 @@ function EditArtistForm({
       onSubmit={submit}
       className="space-y-6"
     >
-      <ArtistFormSection hideTitle title={labels.mainInfo}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
-          <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
-          <FormField compact label={labels.gender} type="select" value={values.gender} placeholder={labels.gender} options={genderOptions(labels)} onChange={(gender) => setValues((current) => ({ ...current, gender }))} />
-          <FormField compact label={labels.birthDate} type="date" value={values.birth_date} onChange={(birth_date) => setValues((current) => ({ ...current, birth_date }))} />
-        </div>
-      </ArtistFormSection>
-
-      <ArtistFormSection hideTitle title={labels.contactInfo}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998 " })))} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
-          <FormField compact label={labels.extraPhone} type="tel" value={values.extra_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998 " })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone: formatPhoneInput(extra_phone) }))} />
-          <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
-        </div>
-      </ArtistFormSection>
-
-      <ArtistFormSection hideTitle title={labels.locationInfo}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField
-            compact
-            label={labels.region}
-            type="select"
-            value={values.region_id}
-            placeholder={labels.region}
-            options={regionOptions(regions, labels)}
-            onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))}
-          />
-          <FormField
-            compact
-            label={labels.district}
-            type="select"
-            value={values.district_id}
-            disabled={!selectedRegionId}
-            placeholder={selectedRegionId ? labels.district : labels.selectRegionFirst}
-            options={districtOptions(filteredDistricts, labels)}
-            onChange={(district_id) => setValues((current) => ({ ...current, district_id }))}
-          />
-        </div>
-      </ArtistFormSection>
-
-      <ArtistFormSection hideTitle title={labels.artistInfo}>
-        <div className="grid gap-4">
-          <FormField compact label={labels.category} type="select" value={values.category_ids} placeholder={labels.categoryPlaceholder} options={categoryOptions(categories, labels)} onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))} />
-          <FormField compact label={labels.bio} type="textarea" rows={4} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
-          <ArtistPhotoField
-            disabled={uploading}
-            error={uploadError}
-            labels={labels}
-            photoId={profilePhotoId}
-            photoUrl={profilePhotoUrl}
-            uploading={uploading}
-            onFile={uploadProfilePhoto}
-          />
-        </div>
-      </ArtistFormSection>
-
-      <ArtistFormSection hideTitle title={labels.adminInfo}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
-          <FormField compact label={labels.adminPhone} type="tel" value={values.administrator_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998 " })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone: formatPhoneInput(administrator_phone) }))} />
-        </div>
-      </ArtistFormSection>
-
-      <ArtistFormSection hideTitle title={labels.accountStatus}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
-          <FormField compact label={labels.cardLastFour} value={values.card_last_four} placeholder="0000" onChange={(card_last_four) => setValues((current) => ({ ...current, card_last_four }))} />
-          <FormField compact className="md:col-span-2" label={labels.cardToken} value={values.card_token} placeholder={labels.cardToken} onChange={(card_token) => setValues((current) => ({ ...current, card_token }))} />
-          <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
-          <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
-        </div>
-      </ArtistFormSection>
+      <Tabs
+        activeKey={activeTab}
+        className="artistbor-drawer-tabs"
+        items={[
+          {
+            key: "basic",
+            label: labels.formTabBasic,
+            children: (
+              <div className="space-y-6 pt-1">
+                <ArtistFormSection title={labels.mainInfo}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField compact label={labels.firstName} required value={values.first_name} error={errors.first_name} onChange={(first_name) => setValues((current) => ({ ...current, first_name }))} />
+                    <FormField compact label={labels.lastName} value={values.last_name} onChange={(last_name) => setValues((current) => ({ ...current, last_name }))} />
+                    <FormField compact label={labels.gender} type="select" value={values.gender} placeholder={labels.gender} options={genderOptions(labels)} onChange={(gender) => setValues((current) => ({ ...current, gender }))} />
+                  </div>
+                </ArtistFormSection>
+                <ArtistFormSection title={labels.contactInfo}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField compact label={labels.phone} required type="tel" value={values.phone} error={errors.phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.phone, () => setValues((current) => ({ ...current, phone: "+998 " })))} onChange={(phone) => setValues((current) => ({ ...current, phone: formatPhoneInput(phone) }))} />
+                    <FormField compact label={labels.extraPhone} type="tel" value={values.extra_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.extra_phone, () => setValues((current) => ({ ...current, extra_phone: "+998 " })))} onChange={(extra_phone) => setValues((current) => ({ ...current, extra_phone: formatPhoneInput(extra_phone) }))} />
+                    <FormField compact className="md:col-span-2" label={labels.email} value={values.email} placeholder="name@example.com" onChange={(email) => setValues((current) => ({ ...current, email }))} />
+                  </div>
+                </ArtistFormSection>
+                <ArtistFormSection title={labels.adminInfo}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField compact label={labels.adminName} value={values.administrator_name} onChange={(administrator_name) => setValues((current) => ({ ...current, administrator_name }))} />
+                    <FormField compact label={labels.adminPhone} type="tel" value={values.administrator_phone} placeholder="+998 XX XXX XX XX" onFocus={() => applyPhonePrefix(values.administrator_phone, () => setValues((current) => ({ ...current, administrator_phone: "+998 " })))} onChange={(administrator_phone) => setValues((current) => ({ ...current, administrator_phone: formatPhoneInput(administrator_phone) }))} />
+                  </div>
+                </ArtistFormSection>
+                <ArtistFormSection title={labels.locationInfo}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField compact label={labels.region} type="select" value={values.region_id} placeholder={labels.region} options={regionOptions(regions, labels)} onChange={(region_id) => setValues((current) => ({ ...current, region_id, district_id: "" }))} />
+                    <FormField compact label={labels.district} type="select" value={values.district_id} disabled={!selectedRegionId || districtsLoading} placeholder={districtsLoading ? labels.loadingTitle(labels.district) : selectedRegionId ? labels.district : labels.selectRegionFirst} options={districtOptions(filteredDistricts, labels)} onChange={(district_id) => setValues((current) => ({ ...current, district_id }))} />
+                  </div>
+                </ArtistFormSection>
+              </div>
+            ),
+          },
+          {
+            key: "profile",
+            label: labels.formTabProfile,
+            children: (
+              <div className="pt-1">
+                <ArtistFormSection title={labels.artistInfo}>
+                  <div className="grid gap-4">
+                    <ArtistCategoryField
+                      categories={categories}
+                      error={errors.category_ids}
+                      labels={labels}
+                      required
+                      value={values.category_ids}
+                      onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))}
+                    />
+                    <FormField compact label={labels.bio} type="textarea" rows={5} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField compact label={labels.albumsCount} type="number" inputMode="numeric" value={values.albums_count} placeholder="0" onChange={(albums_count) => setValues((current) => ({ ...current, albums_count }))} />
+                      <FormField compact label={labels.rating} type="number" inputMode="decimal" value={values.rating} error={errors.rating} placeholder="0.0" onChange={(rating) => {
+                        setValues((current) => ({ ...current, rating }));
+                        setErrors((current) => ({ ...current, rating: undefined }));
+                      }} />
+                    </div>
+                    <ArtistPhotoField disabled={uploading} error={uploadError} labels={labels} photoId={profilePhotoId} photoUrl={profilePhotoUrl} uploading={uploading} onFile={uploadProfilePhoto} />
+                  </div>
+                </ArtistFormSection>
+              </div>
+            ),
+          },
+          {
+            key: "account",
+            label: labels.formTabAccount,
+            children: (
+              <div className="space-y-6 pt-1">
+                <ArtistFormSection title={labels.cardDetails}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField compact label={labels.cardNumber} value={values.card_number} error={errors.card_number} inputMode="numeric" maxLength={32} autoComplete="off" placeholder="8600 1234 5678 4567" onChange={(card_number) => {
+                      setValues((current) => ({ ...current, card_number }));
+                      setErrors((current) => ({ ...current, card_number: undefined }));
+                    }} />
+                    <FormField compact label={labels.cardHolderName} value={values.card_holder_name} error={errors.card_holder_name} maxLength={255} autoComplete="off" placeholder="ALISHER USMONOV" onChange={(card_holder_name) => {
+                      setValues((current) => ({ ...current, card_holder_name }));
+                      setErrors((current) => ({ ...current, card_holder_name: undefined }));
+                    }} />
+                  </div>
+                </ArtistFormSection>
+                <ArtistFormSection title={labels.accountStatus}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
+                    <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
+                  </div>
+                </ArtistFormSection>
+              </div>
+            ),
+          },
+        ]}
+        onChange={(key) => setActiveTab(key as ArtistFormTab)}
+      />
     </form>
   );
 }
@@ -2433,6 +2867,7 @@ function genderOptions(labels: ArtistsLabels): FormFieldOption[] {
   return [
     { label: labels.genderMale, value: "male" },
     { label: labels.genderFemale, value: "female" },
+    { label: labels.genderOther, value: "other" },
   ];
 }
 
@@ -2443,6 +2878,51 @@ function artistStatusOptions(labels: ArtistsLabels): FormFieldOption[] {
     { label: labels.statusValueLabels.active, value: "10" },
     { label: labels.statusValueLabels.blocked, value: "20" },
   ];
+}
+
+function getCatalogLoadError(results: readonly PromiseSettledResult<unknown>[], fallback: string) {
+  const failedResult = results.find((result) => result.status === "rejected");
+  if (!failedResult || failedResult.status !== "rejected") return null;
+  return failedResult.reason instanceof Error && failedResult.reason.message
+    ? failedResult.reason.message
+    : fallback;
+}
+
+function useArtistDistrictOptions(regionIdValue: string, fallback: string, toast: ReturnType<typeof useToast>) {
+  const [state, setState] = useState<{ districts: District[]; loading: boolean }>({
+    districts: [],
+    loading: false,
+  });
+
+  useEffect(() => {
+    let active = true;
+    const regionId = Number(regionIdValue);
+
+    const timer = window.setTimeout(() => {
+      if (!Number.isFinite(regionId) || regionId <= 0) {
+        if (active) setState({ districts: [], loading: false });
+        return;
+      }
+
+      setState({ districts: [], loading: true });
+      void districtsApi.list({ region_id: String(regionId), page: 1, limit: 100 })
+        .then((result) => {
+          if (active) setState({ districts: result.items, loading: false });
+        })
+        .catch((caught) => {
+          if (!active) return;
+          setState({ districts: [], loading: false });
+          toast.error(caught instanceof Error ? caught.message : fallback);
+        });
+    }, 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [fallback, regionIdValue, toast]);
+
+  return state;
 }
 
 function regionOptions(regions: Region[], labels: ArtistsLabels): FormFieldOption[] {
@@ -2460,10 +2940,66 @@ function districtOptions(districts: District[], labels: ArtistsLabels): FormFiel
 }
 
 function categoryOptions(categories: Category[], labels: ArtistsLabels): FormFieldOption[] {
-  return categories.map((category) => ({
-    label: getLocalizedEntityName(category, labels.locale),
-    value: String(category.id ?? ""),
-  }));
+  const options = new Map<string, FormFieldOption>();
+
+  const visit = (value: unknown, parentLabel?: string) => {
+    if (!isRecord(value)) return;
+
+    const id = value.id;
+    const categoryId = typeof id === "number" || typeof id === "string" ? String(id) : "";
+    const name = getLocalizedEntityName(value as Category, labels.locale);
+    if (categoryId) {
+      options.set(categoryId, {
+        label: parentLabel ? `${parentLabel} — ${name}` : name,
+        value: categoryId,
+      });
+    }
+
+    const childLabel = parentLabel ? `${parentLabel} — ${name}` : name;
+    for (const key of ["sub_categories", "subCategories", "children"]) {
+      const children = value[key];
+      if (Array.isArray(children)) children.forEach((child) => visit(child, childLabel));
+    }
+  };
+
+  categories.forEach((category) => visit(category));
+  return [...options.values()];
+}
+
+function ArtistCategoryField({
+  categories,
+  error,
+  labels,
+  required = false,
+  value,
+  onChange,
+}: {
+  categories: Category[];
+  error?: string;
+  labels: ArtistsLabels;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+        {labels.category}
+        {required ? <span className="text-rose-500"> *</span> : null}
+      </span>
+      <Select
+        mode="multiple"
+        allowClear
+        className={cn("artistbor-drawer-select w-full", error && "artistbor-field-error")}
+        value={parseIdList(value).map(String)}
+        placeholder={labels.categoryPlaceholder}
+        options={categoryOptions(categories, labels)}
+        status={error ? "error" : undefined}
+        onChange={(nextValue: Array<string | number>) => onChange(nextValue.map(String).join(","))}
+      />
+      {error ? <span className="mt-1 block text-xs font-semibold text-rose-600 dark:text-rose-300">{error}</span> : null}
+    </label>
+  );
 }
 
 function serviceOptions(services: Service[], labels: ArtistsLabels): FormFieldOption[] {
@@ -2493,18 +3029,22 @@ function initialArtistFormValues(artist: ArtistProfile) {
     status: artist.status === undefined || artist.status === null ? "10" : String(artist.status),
     region_id: artist.region_id === undefined || artist.region_id === null ? "" : String(artist.region_id),
     district_id: artist.district_id === undefined || artist.district_id === null ? "" : String(artist.district_id),
-    birth_date: stringRecordValue(profile, "birth_date") ?? artist.birth_date ?? "",
-    gender: normalizedGender(stringRecordValue(profile, "gender") ?? artist.gender),
+    gender: normalizedGender(
+      stringRecordValue(profile, "gender")
+      ?? stringRecordValue(artistProfile, "gender")
+      ?? artist.gender,
+    ),
     category_ids: artistCategoryValue(artist),
     bio: stringRecordValue(artistProfile, "bio") ?? artist.bio ?? stringRecordValue(profile, "bio") ?? "",
+    albums_count: String(numberRecordValue(artistProfile, "albums_count") ?? artist.albums_count ?? ""),
+    rating: String(numberRecordValue(artistProfile, "rating") ?? artist.rating ?? ""),
     extra_phone: formatPhoneInput(stringRecordValue(artistProfile, "extra_phone") ?? artist.extra_phone),
     administrator_name: stringRecordValue(artistProfile, "administrator_name") ?? artist.administrator_name ?? "",
     administrator_phone: formatPhoneInput(stringRecordValue(artistProfile, "administrator_phone") ?? artist.administrator_phone),
-    card_last_four: stringRecordValue(artistProfile, "card_last_four") ?? artist.card_last_four ?? "",
-    card_token: stringRecordValue(artistProfile, "card_token") ?? artist.card_token ?? "",
+    card_number: stringRecordValue(artistProfile, "card_number") ?? artist.card_number ?? "",
+    card_holder_name: stringRecordValue(artistProfile, "card_holder_name") ?? artist.card_holder_name ?? "",
     profile_photo_id: profilePhotoId === undefined ? "" : String(profilePhotoId),
     profile_photo_url: getArtistPhotoUrl(artist) ?? "",
-    is_verified: booleanRecordValue(artistProfile, "is_verified") ?? Boolean(artist.is_verified),
     is_top: booleanRecordValue(artistProfile, "is_top") ?? Boolean(artist.is_top),
   };
 }
@@ -2545,15 +3085,19 @@ function artistCategoryValue(artist: ArtistProfile) {
     record.category,
     record.category_ids,
     record.category_id,
+    record.artistCategories,
+    record.artist_categories,
     artistProfile?.categories,
     artistProfile?.category,
     artistProfile?.category_ids,
     artistProfile?.category_id,
+    artistProfile?.artistCategories,
+    artistProfile?.artist_categories,
   ];
 
   for (const candidate of candidates) {
-    const value = firstCategoryId(candidate);
-    if (value) return value;
+    const values = categoryIdsFromValue(candidate);
+    if (values.length) return values.join(",");
   }
 
   return "";
@@ -2608,6 +3152,24 @@ function categoryIdFromServiceLike(record: UnknownRecord | undefined) {
   return "";
 }
 
+function categoryIdsFromValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.flatMap(categoryIdsFromValue)));
+  }
+
+  if (isRecord(value)) {
+    const id = categoryId(value);
+    return id ? [id] : [];
+  }
+
+  if (typeof value === "number" || typeof value === "string") {
+    const normalized = String(value).trim();
+    return normalized ? [normalized] : [];
+  }
+
+  return [];
+}
+
 function firstCategoryId(value: unknown): string {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -2635,7 +3197,8 @@ function getLastNameFromArtist(artist: ArtistProfile) {
 }
 
 function normalizedGender(value: ArtistProfile["gender"]) {
-  return value === "male" || value === "female" ? value : "";
+  const normalized = typeof value === "string" ? value.toLowerCase() : "";
+  return normalized === "male" || normalized === "female" || normalized === "other" ? normalized : "";
 }
 
 function ArtistVideosSummary({
@@ -2659,12 +3222,16 @@ function ArtistVideosSummary({
 
   if (!videoItems.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
-        <PlayCircle className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
-        <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">{labels.videosEmptyTitle}</p>
-        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+      <div className="rounded-2xl border border-dashed border-artistbor-border bg-artistbor-surface p-5 text-center">
+        <PlayCircle className="mx-auto size-8 text-artistbor-muted" />
+        <p className="mt-3 text-sm font-bold text-artistbor-primary">{labels.videosEmptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-artistbor-secondary">
           {labels.noVideoHint}
         </p>
+        <Link href={href} className={cn(adminPrimaryActionButtonClass, "mt-4")}>
+          <Plus className="size-4" />
+          {labels.manageVideos}
+        </Link>
       </div>
     );
   }
@@ -2683,7 +3250,7 @@ function ArtistVideosSummary({
           className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/[0.05]"
         >
           <ExternalLink className="size-4" />
-          {labels.viewInTable}
+          {labels.manageVideos}
         </Link>
       </div>
 
@@ -2811,7 +3378,22 @@ function VideoPreviewImage({
   );
 }
 
-function ArtistGalleryTab({ state, labels }: { state: DetailResourceState; labels: ArtistsLabels }) {
+function ArtistGalleryTab({
+  artistId,
+  canManage,
+  labels,
+  onChanged,
+  state,
+}: {
+  artistId?: number;
+  canManage: boolean;
+  labels: ArtistsLabels;
+  onChanged: ResourceReloader;
+  state: DetailResourceState;
+}) {
+  const toast = useToast();
+  const [submitting, setSubmitting] = useState(false);
+
   if (state.loading) return <LoadingState label={labels.loadingTitle(labels.gallery)} />;
   if (state.error) return <ErrorState message={state.error} />;
 
@@ -2820,14 +3402,88 @@ function ArtistGalleryTab({ state, labels }: { state: DetailResourceState; label
     .map((row, index) => galleryItemFromRecord(row, index, labels))
     .filter((item) => item.imageUrl || item.linkUrl || item.title);
 
+  const uploadFiles = async (files: File[]) => {
+    if (!artistId || !files.length) return;
+    if (files.length > MAX_GALLERY_FILES) {
+      toast.error(labels.galleryTooManyFiles);
+      return;
+    }
+    const invalidType = files.find((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type));
+    if (invalidType) {
+      toast.error(labels.galleryInvalidFileType);
+      return;
+    }
+    const oversized = files.find((file) => file.size > MAX_GALLERY_FILE_SIZE);
+    if (oversized) {
+      toast.error(labels.galleryFileTooLarge);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await artistGalleryApi.upload(artistId, files);
+      toast.success(labels.galleryUploaded);
+      await onChanged({ background: true });
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.galleryUploadFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteItem = (item: GalleryItemView) => {
+    if (!item.id) {
+      toast.error(labels.galleryItemIdMissing);
+      return;
+    }
+    Modal.confirm({
+      title: labels.galleryDeleteTitle,
+      content: labels.galleryDeleteConfirm,
+      okText: labels.deleteSchedule,
+      okButtonProps: { danger: true },
+      cancelText: labels.cancel,
+      rootClassName: "artistbor-confirm-modal",
+      async onOk() {
+        try {
+          await artistGalleryApi.delete(item.id as number);
+          toast.success(labels.galleryDeleted);
+          await onChanged({ background: true });
+        } catch (caught) {
+          toast.error(caught instanceof Error ? caught.message : labels.galleryDeleteFailed);
+          throw caught;
+        }
+      },
+    });
+  };
+
+  const uploadControl = canManage ? (
+    <label className={cn(adminPrimaryActionButtonClass, submitting && "pointer-events-none opacity-60")}>
+      {submitting ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+      {submitting ? labels.uploading : labels.galleryUpload}
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        disabled={submitting}
+        className="sr-only"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          void uploadFiles(files);
+        }}
+      />
+    </label>
+  ) : null;
+
   if (!galleryItems.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
-        <ImagePlus className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
-        <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">{labels.galleryEmptyTitle}</p>
-        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+      <div className="rounded-2xl border border-dashed border-artistbor-border bg-artistbor-surface p-5 text-center">
+        <ImagePlus className="mx-auto size-8 text-artistbor-muted" />
+        <p className="mt-3 text-sm font-bold text-artistbor-primary">{labels.galleryEmptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs font-medium leading-5 text-artistbor-secondary">
           {labels.galleryEmptyDescription}
         </p>
+        {uploadControl ? <div className="mt-4 flex justify-center">{uploadControl}</div> : null}
       </div>
     );
   }
@@ -2841,16 +3497,24 @@ function ArtistGalleryTab({ state, labels }: { state: DetailResourceState; label
             {labels.galleryItemCount(galleryItems.length)}
           </p>
         </div>
-        {state.meta ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {uploadControl}
+          {state.meta ? (
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
             {labels.page} {state.meta.currentPage ?? state.meta.page ?? 1} / {state.meta.pageCount ?? "—"}
           </span>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {galleryItems.map((item) => (
-          <GalleryPreviewCard key={item.key} item={item} labels={labels} />
+          <GalleryPreviewCard
+            key={item.key}
+            item={item}
+            labels={labels}
+            onDelete={canManage ? () => deleteItem(item) : undefined}
+          />
         ))}
       </div>
     </div>
@@ -2861,10 +3525,12 @@ function ArtistCommentsTab({
   labels,
   onChanged,
   state,
+  readOnly = false,
 }: {
   labels: ArtistsLabels;
-  onChanged: () => Promise<void>;
+  onChanged: ResourceReloader;
   state: DetailResourceState;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const [dialog, setDialog] = useState<{ mode: "edit"; item: CommentItemView } | null>(null);
@@ -2926,7 +3592,7 @@ function ArtistCommentsTab({
         try {
           await config.request();
           toast.success(config.success);
-          await onChanged();
+          void onChanged({ background: true });
         } catch (caught) {
           toast.error(caught instanceof Error ? caught.message : config.failure);
           throw caught;
@@ -2956,7 +3622,7 @@ function ArtistCommentsTab({
       await commentsApi.update(dialog.item.id, payload);
       toast.success(labels.commentUpdated);
       setDialog(null);
-      await onChanged();
+      void onChanged({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.commentUpdateFailed);
     } finally {
@@ -2998,10 +3664,11 @@ function ArtistCommentsTab({
             key={item.key}
             item={item}
             labels={labels}
-            onDelete={() => void runCommentAction("delete", item)}
-            onEdit={() => setDialog({ mode: "edit", item })}
-            onPublish={() => void runCommentAction("publish", item)}
-            onUnpublish={() => void runCommentAction("unpublish", item)}
+            onDelete={readOnly ? undefined : () => void runCommentAction("delete", item)}
+            onEdit={readOnly ? undefined : () => setDialog({ mode: "edit", item })}
+            onPublish={readOnly ? undefined : () => void runCommentAction("publish", item)}
+            onUnpublish={readOnly ? undefined : () => void runCommentAction("unpublish", item)}
+            readOnly={readOnly}
           />
         ))}
       </div>
@@ -3042,13 +3709,15 @@ function CommentModerationCard({
   onEdit,
   onPublish,
   onUnpublish,
+  readOnly = false,
 }: {
   item: CommentItemView;
   labels: ArtistsLabels;
-  onDelete: () => void;
-  onEdit: () => void;
-  onPublish: () => void;
-  onUnpublish: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onPublish?: () => void;
+  onUnpublish?: () => void;
+  readOnly?: boolean;
 }) {
   const canPublish = item.publication.value !== "published";
 
@@ -3065,10 +3734,11 @@ function CommentModerationCard({
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
             {item.createdAt !== undefined ? <span>{formatDisplayValue("created_at", item.createdAt, labels)}</span> : null}
             {item.rating !== undefined ? <span>{labels.rating}: {toDisplay(item.rating)}</span> : null}
-            {item.id !== undefined ? <span>ID {toDisplay(item.id)}</span> : null}
           </div>
         </div>
-        <div className="flex shrink-0 gap-1.5">
+        {!readOnly && (onEdit || onPublish || onUnpublish || onDelete) ? (
+          <div className="flex shrink-0 gap-1.5">
+          {onEdit ? (
           <button
             type="button"
             onClick={onEdit}
@@ -3077,6 +3747,8 @@ function CommentModerationCard({
           >
             <Pencil className="size-4" />
           </button>
+          ) : null}
+          {onPublish || onUnpublish ? (
           <button
             type="button"
             onClick={canPublish ? onPublish : onUnpublish}
@@ -3085,6 +3757,8 @@ function CommentModerationCard({
           >
             {canPublish ? <CheckCircle2 className="size-4" /> : <X className="size-4" />}
           </button>
+          ) : null}
+          {onDelete ? (
           <button
             type="button"
             onClick={onDelete}
@@ -3093,7 +3767,9 @@ function CommentModerationCard({
           >
             <Trash2 className="size-4" />
           </button>
+          ) : null}
         </div>
+        ) : null}
       </div>
 
       <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium leading-6 text-slate-700 dark:bg-white/[0.04] dark:text-slate-200">
@@ -3139,6 +3815,7 @@ function CommentEditModal({
           compact
           required
           label={labels.comment}
+          placeholder={labels.commentPlaceholder}
           type="textarea"
           rows={5}
           value={values.comment}
@@ -3183,10 +3860,12 @@ function ArtistRatingsTab({
   labels,
   onChanged,
   state,
+  readOnly = false,
 }: {
   labels: ArtistsLabels;
-  onChanged: () => Promise<void>;
+  onChanged: ResourceReloader;
   state: DetailResourceState;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
 
@@ -3217,7 +3896,7 @@ function ArtistRatingsTab({
         try {
           await ratingsApi.delete(ratingId);
           toast.success(labels.ratingDeleted);
-          await onChanged();
+          void onChanged({ background: true });
         } catch (caught) {
           toast.error(caught instanceof Error ? caught.message : labels.ratingDeleteFailed);
           throw caught;
@@ -3267,7 +3946,8 @@ function ArtistRatingsTab({
               key={item.key}
               item={item}
               labels={labels}
-              onDelete={() => handleDelete(item)}
+              onDelete={readOnly ? undefined : () => handleDelete(item)}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -3312,10 +3992,12 @@ function RatingModerationCard({
   item,
   labels,
   onDelete,
+  readOnly = false,
 }: {
   item: RatingItemView;
   labels: ArtistsLabels;
-  onDelete: () => void;
+  onDelete?: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
@@ -3330,17 +4012,18 @@ function RatingModerationCard({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
             {item.createdAt !== undefined ? <span>{formatDisplayValue("created_at", item.createdAt, labels)}</span> : null}
-            {item.id !== undefined ? <span>ID {toDisplay(item.id)}</span> : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-          aria-label={labels.deleteRating}
-        >
-          <Trash2 className="size-4" />
-        </button>
+        {!readOnly && onDelete ? (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+            aria-label={labels.deleteRating}
+          >
+            <Trash2 className="size-4" />
+          </button>
+        ) : null}
       </div>
 
       {item.text ? (
@@ -3375,7 +4058,7 @@ function RatingStars({ value }: { value?: number }) {
 
 type GalleryItemView = {
   key: string;
-  id?: unknown;
+  id?: number;
   imageUrl: string;
   imageUrlCandidates: string[];
   linkUrl: string;
@@ -3385,7 +4068,15 @@ type GalleryItemView = {
   createdAt?: unknown;
 };
 
-function GalleryPreviewCard({ item, labels }: { item: GalleryItemView; labels: ArtistsLabels }) {
+function GalleryPreviewCard({
+  item,
+  labels,
+  onDelete,
+}: {
+  item: GalleryItemView;
+  labels: ArtistsLabels;
+  onDelete?: () => void;
+}) {
   const preview = item.imageUrlCandidates.length ? (
     <GalleryPreviewImage urls={item.imageUrlCandidates} title={item.title} />
   ) : (
@@ -3413,16 +4104,22 @@ function GalleryPreviewCard({ item, labels }: { item: GalleryItemView; labels: A
             ) : null}
           </div>
           {item.status !== undefined ? (
-            <LocalizedStatusBadge fieldKey="status" labels={labels} value={item.status} />
+            <LocalizedStatusBadge fieldKey="is_active" labels={labels} value={item.status} />
+          ) : null}
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="grid size-8 shrink-0 place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-300/40 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+              aria-label={labels.galleryDeleteTitle}
+              title={labels.galleryDeleteTitle}
+            >
+              <Trash2 className="size-4" />
+            </button>
           ) : null}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {item.id !== undefined ? (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
-              ID {toDisplay(item.id)}
-            </span>
-          ) : null}
           {item.createdAt !== undefined ? (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
               {formatDisplayValue("created_at", item.createdAt, labels)}
@@ -3472,21 +4169,29 @@ function ArtistServicesTab({
   state,
   labels,
   onChanged,
+  onManage,
+  readOnly = false,
 }: {
   artistId?: number;
   state: DetailResourceState;
   labels: ArtistsLabels;
-  onChanged: () => Promise<void>;
+  onChanged: ResourceReloader;
+  onManage?: () => void;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const [regions, setRegions] = useState<Region[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [regionsLoading, setRegionsLoading] = useState(true);
+  const [regionsLoading, setRegionsLoading] = useState(!readOnly);
   const [formMode, setFormMode] = useState<ArtistServiceFormMode | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UnknownRecord | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (readOnly) {
+      return;
+    }
+
     let ignore = false;
 
     Promise.all([
@@ -3512,7 +4217,7 @@ function ArtistServicesTab({
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [readOnly]);
 
   if (state.loading) return <LoadingState label={labels.loadingTitle(labels.services)} />;
   if (state.error) return <ErrorState message={state.error} />;
@@ -3535,7 +4240,7 @@ function ArtistServicesTab({
       }
       toast.success(labels.artistServiceSaved);
       setFormMode(null);
-      await onChanged();
+      void onChanged({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.artistServiceSaveFailed);
     } finally {
@@ -3555,7 +4260,7 @@ function ArtistServicesTab({
       await artistServicesApi.delete(serviceId);
       toast.success(labels.artistServiceDeleted);
       setDeleteTarget(null);
-      await onChanged();
+      void onChanged({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.artistServiceDeleteFailed);
     } finally {
@@ -3567,17 +4272,26 @@ function ArtistServicesTab({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.services}</h4>
-        <button
-          type="button"
-          onClick={() => setFormMode({ type: "assign" })}
-          className={adminPrimaryActionButtonClass}
-        >
-          <Plus className="size-4" />
-          {labels.assignService}
-        </button>
+        {readOnly ? (
+          onManage ? (
+            <button type="button" onClick={onManage} className={adminPrimaryActionButtonClass}>
+              <Pencil className="size-4" />
+              {labels.manageServices}
+            </button>
+          ) : null
+        ) : (
+          <button
+            type="button"
+            onClick={() => setFormMode({ type: "assign" })}
+            className={adminPrimaryActionButtonClass}
+          >
+            <Plus className="size-4" />
+            {labels.assignService}
+          </button>
+        )}
       </div>
 
-      {formMode ? (
+      {!readOnly && formMode ? (
         <ArtistServiceForm
           key={formMode.type === "edit" ? `edit-${getArtistServiceRecordId(formMode.service) ?? "new"}` : "assign"}
           labels={labels}
@@ -3599,8 +4313,9 @@ function ArtistServicesTab({
               regions={regions}
               regionsLoading={regionsLoading}
               service={service}
-              onDelete={() => setDeleteTarget(service)}
-              onEdit={() => setFormMode({ type: "edit", service })}
+              onDelete={readOnly ? undefined : () => setDeleteTarget(service)}
+              onEdit={readOnly ? undefined : () => setFormMode({ type: "edit", service })}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -3608,19 +4323,21 @@ function ArtistServicesTab({
         <EmptyState title={labels.notFoundTitle(labels.services)} />
       )}
 
-      <Modal
-        open={Boolean(deleteTarget)}
-        title={labels.deleteArtistServiceTitle}
-        okText={labels.deleteArtistService}
-        cancelText={labels.cancel}
-        okButtonProps={{ danger: true, loading: submitting }}
-        onCancel={() => setDeleteTarget(null)}
-        onOk={() => void deleteService()}
-      >
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          {labels.deleteArtistServiceConfirm}
-        </p>
-      </Modal>
+      {!readOnly ? (
+        <Modal
+          open={Boolean(deleteTarget)}
+          title={labels.deleteArtistServiceTitle}
+          okText={labels.deleteArtistService}
+          cancelText={labels.cancel}
+          okButtonProps={{ danger: true, loading: submitting }}
+          onCancel={() => setDeleteTarget(null)}
+          onOk={() => void deleteService()}
+        >
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {labels.deleteArtistServiceConfirm}
+          </p>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -3632,20 +4349,22 @@ function ArtistServiceCard({
   regionsLoading,
   onEdit,
   onDelete,
+  readOnly = false,
 }: {
   service: UnknownRecord;
   labels: ArtistsLabels;
   regions: Region[];
   regionsLoading: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  readOnly?: boolean;
 }) {
   const title = getArtistServiceTitle(service, labels);
   const description = getArtistServiceDescription(service);
   const chips = getArtistServiceChips(service, labels);
 
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:hover:border-amber-400/30 dark:hover:bg-white/[0.03]">
+    <article className="rounded-xl border border-slate-200/90 bg-white p-4 transition hover:border-amber-300/70 hover:bg-amber-50/20 dark:border-white/10 dark:bg-slate-950/30 dark:hover:border-amber-400/30 dark:hover:bg-white/[0.03]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h4 className="truncate text-[15px] font-semibold text-slate-950 dark:text-white">
@@ -3658,27 +4377,33 @@ function ArtistServiceCard({
           ) : null}
         </div>
         {hasMeaningfulValue(service.status) ? (
-          <LocalizedStatusBadge fieldKey="status" labels={labels} value={service.status} />
+          <LocalizedStatusBadge fieldKey="is_active" labels={labels} value={service.status} />
         ) : null}
       </div>
-      <div className="mt-3 flex flex-wrap justify-end gap-1.5">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
-        >
-          <Pencil className="size-3.5" />
-          {labels.editArtistService}
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#fecaca] bg-white px-2.5 text-xs font-bold text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
-        >
-          <Trash2 className="size-3.5" />
-          {labels.deleteArtistService}
-        </button>
-      </div>
+      {!readOnly && (onEdit || onDelete) ? (
+        <div className="mt-3 flex flex-wrap justify-end gap-1.5">
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+            >
+              <Pencil className="size-3.5" />
+              {labels.editArtistService}
+            </button>
+          ) : null}
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#fecaca] bg-white px-2.5 text-xs font-bold text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
+            >
+              <Trash2 className="size-3.5" />
+              {labels.deleteArtistService}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {chips.length ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {chips.map((chip) => (
@@ -3696,6 +4421,7 @@ function ArtistServiceCard({
         regions={regions}
         regionsLoading={regionsLoading}
         service={service}
+        readOnly={readOnly}
       />
     </article>
   );
@@ -3798,6 +4524,7 @@ function ArtistServiceForm({
           compact
           className="md:col-span-2"
           label={labels.reason}
+          placeholder={labels.commentPlaceholder}
           type="textarea"
           rows={3}
           value={values.note}
@@ -3908,11 +4635,7 @@ function ArtistServiceDraftEditor({
             </div>
           ))}
         </div>
-      ) : (
-        <p className="rounded-[10px] mt-3 border border-dashed border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
-          {labels.regionPricesEmpty}
-        </p>
-      )}
+      ) : null}
       {error ? <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">{error}</p> : null}
     </div>
   );
@@ -3936,7 +4659,7 @@ function ArtistServiceRegionPriceDraftFields({
   const removeRow = (localId: string) => onChange(value.filter((row) => row.localId !== localId));
 
   return (
-    <div className="mt-3 rounded-[10px] border border-[#e6ebf2] bg-[#f8fafc] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+    <div className="mt-4 border-t border-slate-200/80 pt-3 dark:border-white/10">
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4">
         <p className="min-w-0 text-[13px] font-bold text-[#0f172a] dark:text-white">{labels.regionPrices}</p>
         <button
@@ -3951,7 +4674,7 @@ function ArtistServiceRegionPriceDraftFields({
       {value.length ? (
         <div className="mt-3 space-y-2">
           {value.map((row) => (
-            <div key={row.localId} className="grid gap-2 rounded-[10px] border border-[#e6ebf2] bg-white p-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_auto] dark:border-white/10 dark:bg-slate-950">
+            <div key={row.localId} className="grid gap-2 rounded-[10px] border border-[#e6ebf2] bg-white p-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_minmax(140px,180px)_auto] dark:border-white/10 dark:bg-slate-950">
               <FormField
                 compact
                 hideLabel
@@ -3971,6 +4694,18 @@ function ArtistServiceRegionPriceDraftFields({
                 suffix={MONEY_CURRENCY_LABEL}
                 onChange={(price) => updateRow(row.localId, { price: parseMoneyInput(price) })}
               />
+              <div>
+                <FormField
+                  compact
+                  hideLabel
+                  label={labels.advanceAmount}
+                  value={formatMoneyInput(row.advance_amount, labels.locale)}
+                  placeholder={row.advance_effective ? formatMoneyWithCurrency(row.advance_effective, labels.locale) : labels.advanceAmount}
+                  suffix={MONEY_CURRENCY_LABEL}
+                  onChange={(advance_amount) => updateRow(row.localId, { advance_amount: parseMoneyInput(advance_amount) })}
+                />
+                {!row.advance_amount && row.advance_effective ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{labels.effectiveAdvance}: {formatMoneyWithCurrency(row.advance_effective, labels.locale)}</p> : null}
+              </div>
               <button
                 type="button"
                 onClick={() => removeRow(row.localId)}
@@ -3998,6 +4733,9 @@ type RegionPriceRow = {
   region_id: string;
   region_name?: string;
   price: string;
+  advance_amount: string;
+  advance_effective?: string;
+  is_advance_custom?: boolean;
   editing?: boolean;
 };
 
@@ -4006,11 +4744,13 @@ function ArtistServiceRegionPrices({
   regions,
   regionsLoading,
   service,
+  readOnly = false,
 }: {
   labels: ArtistsLabels;
   regions: Region[];
   regionsLoading: boolean;
   service: UnknownRecord;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const serviceId = getArtistServiceRecordId(service);
@@ -4052,6 +4792,7 @@ function ArtistServiceRegionPrices({
       ...current,
       {
         localId: `new-${Date.now()}`,
+        advance_amount: "",
         editing: true,
         price: "",
         region_id: "",
@@ -4078,6 +4819,7 @@ function ArtistServiceRegionPrices({
     }
     const regionId = Number(row.region_id);
     const price = Number(row.price);
+    const advanceAmount = row.advance_amount === "" ? null : Number(row.advance_amount);
     if (!Number.isFinite(regionId) || regionId <= 0) {
       setRowErrors((current) => ({ ...current, [row.localId]: labels.regionPriceRegionRequired }));
       return;
@@ -4086,10 +4828,19 @@ function ArtistServiceRegionPrices({
       setRowErrors((current) => ({ ...current, [row.localId]: labels.regionPricePriceRequired }));
       return;
     }
+    if (advanceAmount !== null && (!Number.isFinite(advanceAmount) || advanceAmount < 0)) {
+      setRowErrors((current) => ({ ...current, [row.localId]: labels.regionAdvanceInvalid }));
+      return;
+    }
+    if (advanceAmount !== null && advanceAmount > price) {
+      setRowErrors((current) => ({ ...current, [row.localId]: labels.regionAdvanceExceedsPrice }));
+      return;
+    }
 
     setSavingRow(row.localId);
     try {
       const savedRecord = await artistServicesApi.upsertRegionPrice(serviceId, {
+        advance_amount: advanceAmount,
         price,
         region_id: regionId,
       });
@@ -4138,14 +4889,16 @@ function ArtistServiceRegionPrices({
         <div className="min-w-0">
           <p className="text-[13px] font-bold text-[#0f172a] dark:text-white">{labels.regionPrices}</p>
         </div>
-        <button
-          type="button"
-          onClick={addRow}
-          className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
-        >
-          <Plus className="size-3.5" />
-          {labels.add}
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#e6ebf2] bg-white px-2.5 text-xs font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
+          >
+            <Plus className="size-3.5" />
+            {labels.add}
+          </button>
+        ) : null}
       </div>
 
       {rows.length ? (
@@ -4154,28 +4907,46 @@ function ArtistServiceRegionPrices({
             const saved = savedRow === row.localId;
             const saving = savingRow === row.localId;
             const deleting = deletingRow === row.localId;
-            const editing = row.editing || !row.id;
+            const editing = !readOnly && (row.editing || !row.id);
             const disabled = saving || deleting || saved;
             const options = regionPriceOptions(regions, row, labels);
             return (
-              <div key={row.localId} className="rounded-[10px] border border-[#e6ebf2] bg-white p-2 dark:border-white/10 dark:bg-slate-950">
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_auto]">
+              <div key={row.localId} className="rounded-lg bg-slate-50 p-2 dark:bg-white/[0.04]">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_minmax(140px,180px)_auto]">
                   <label className="block">
                     <span className="sr-only">{labels.region}</span>
-                    <select
+                    <Select
+                      className={cn(
+                        "artistbor-region-price-select w-full",
+                        readOnly && "artistbor-region-price-select-readonly",
+                      )}
+                      size="large"
                       disabled={disabled || regionsLoading || !editing}
-                      value={row.region_id}
-                      onChange={(event) => updateRow(row.localId, { region_id: event.target.value })}
-                      className="artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200"
-                    >
-                      <option value="">{labels.region}</option>
-                      {options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      value={row.region_id || undefined}
+                      placeholder={labels.region}
+                      onChange={(value) => updateRow(row.localId, { region_id: value ? String(value) : "" })}
+                      options={options.map((option) => ({ value: String(option.value), label: option.label }))}
+                    />
                   </label>
+                  <div>
+                    <label className="relative block">
+                      <span className="sr-only">{labels.advanceAmount}</span>
+                      <input
+                        disabled={disabled || !editing}
+                        type="text"
+                        inputMode="numeric"
+                        value={formatMoneyInput(row.advance_amount, labels.locale)}
+                        placeholder={row.advance_effective ? formatMoneyWithCurrency(row.advance_effective, labels.locale) : labels.advanceAmount}
+                        onChange={(event) => updateRow(row.localId, { advance_amount: parseMoneyInput(event.target.value) })}
+                        className={cn(
+                          "artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 pr-14 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200",
+                          readOnly && "border-transparent bg-transparent px-0 dark:border-transparent dark:bg-transparent",
+                        )}
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#94a3b8] dark:text-slate-500">{MONEY_CURRENCY_LABEL}</span>
+                    </label>
+                    {!row.advance_amount && row.advance_effective ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{labels.effectiveAdvance}: {formatMoneyWithCurrency(row.advance_effective, labels.locale)}</p> : null}
+                  </div>
                   <label className="relative block">
                     <span className="sr-only">{labels.price}</span>
                     <input
@@ -4185,14 +4956,18 @@ function ArtistServiceRegionPrices({
                       value={formatMoneyInput(row.price, labels.locale)}
                       placeholder={labels.price}
                       onChange={(event) => updateRow(row.localId, { price: parseMoneyInput(event.target.value) })}
-                      className="artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 pr-14 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200"
+                      className={cn(
+                        "artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 pr-14 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200",
+                        readOnly && "border-transparent bg-transparent px-0 dark:border-transparent dark:bg-transparent",
+                      )}
                     />
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#94a3b8] dark:text-slate-500">
                       {MONEY_CURRENCY_LABEL}
                     </span>
                   </label>
-                  <div className="flex justify-end gap-1.5">
-                    {editing || saving || saved ? (
+                  {!readOnly ? (
+                    <div className="flex justify-end gap-1.5">
+                      {editing || saving || saved ? (
                       <button
                         type="button"
                         onClick={() => void saveRow(row)}
@@ -4209,7 +4984,7 @@ function ArtistServiceRegionPrices({
                           <Save className="size-4" />
                         )}
                       </button>
-                    ) : (
+                      ) : (
                       <button
                         type="button"
                         onClick={() => editRow(row.localId)}
@@ -4220,18 +4995,19 @@ function ArtistServiceRegionPrices({
                       >
                         <Pencil className="size-4" />
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void deleteRow(row)}
-                      disabled={disabled}
-                      className="grid size-9 cursor-pointer place-items-center rounded-[10px] border border-[#fecaca] bg-white text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
-                      aria-label={labels.deleteRegionPrice}
-                      title={labels.deleteRegionPrice}
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void deleteRow(row)}
+                        disabled={disabled}
+                        className="grid size-9 cursor-pointer place-items-center rounded-[10px] border border-[#fecaca] bg-white text-[#f43f5e] transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-white/[0.03] dark:text-rose-300 dark:hover:bg-rose-500/10"
+                        aria-label={labels.deleteRegionPrice}
+                        title={labels.deleteRegionPrice}
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 {rowErrors[row.localId] ? (
                   <p className="mt-1.5 text-xs font-semibold text-rose-600 dark:text-rose-300">{rowErrors[row.localId]}</p>
@@ -4411,14 +5187,14 @@ function ArtistScheduleSummaryTab({
   artist,
   state,
   labels,
-  onCreate,
-  onOpen,
+  onManage,
+  onRangeChange,
 }: {
   artist: ArtistProfile;
   state: DetailResourceState;
   labels: ArtistsLabels;
-  onCreate: () => void;
-  onOpen: (schedule: UnknownRecord) => void;
+  onManage?: (schedule: UnknownRecord) => void;
+  onRangeChange?: AvailabilityRangeReloader;
 }) {
   const { locale } = useI18n();
 
@@ -4426,99 +5202,269 @@ function ArtistScheduleSummaryTab({
   if (state.error) return <ErrorState message={state.error} />;
 
   const schedules = scheduleRecordsFromState(state, artist);
+  const schedule = schedules[0] ?? getDefaultScheduleRecord(artist);
+  const availabilityRows = schedules.flatMap((item) => availabilityRowsFromSchedule(item, labels));
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <h4 className="text-sm font-bold text-slate-950 dark:text-white">{labels.availability}</h4>
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">
-            {labels.scheduleRecordCount(schedules.length)}
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
+            {labels.busyDaysCount(countBusyDays(availabilityRows))}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onCreate}
-          className={adminPrimaryActionButtonClass}
-        >
-          <Plus className="size-4" />
-          {labels.add}
-        </button>
+        {onManage ? (
+          <button
+            type="button"
+            className={adminPrimaryActionButtonClass}
+            onClick={() => onManage(schedule)}
+          >
+            <CalendarDays className="size-4" />
+            {labels.manageAvailability}
+          </button>
+        ) : null}
       </div>
-
-      {schedules.length ? (
-        <div className="space-y-3">
-          {schedules.map((schedule, index) => (
-            <ScheduleCompactCard
-              key={String(resourceRowKey(schedule, index))}
-              labels={labels}
-              locale={locale}
-              schedule={schedule}
-              onOpen={() => onOpen(schedule)}
-            />
-          ))}
-        </div>
-      ) : (
-        <ScheduleEmptyState labels={labels} onAdd={onCreate} />
-      )}
+      <ArtistAvailabilityCalendar
+        labels={labels}
+        locale={locale}
+        rows={availabilityRows}
+        schedule={schedule}
+        onRangeChange={onRangeChange}
+      />
     </div>
   );
 }
 
-function ScheduleCompactCard({
-  schedule,
+function ArtistAvailabilityCalendar({
   labels,
   locale,
-  onOpen,
+  onRangeChange,
+  rows,
+  schedule,
 }: {
-  schedule: UnknownRecord;
   labels: ArtistsLabels;
   locale: Locale;
-  onOpen: () => void;
+  onRangeChange?: AvailabilityRangeReloader;
+  rows: AvailabilityRow[];
+  schedule: UnknownRecord;
 }) {
-  const availabilityRows = availabilityRowsFromSchedule(schedule, labels);
-  const status = getScheduleStatus(schedule, labels);
+  const initialMonth = startOfCalendarMonth(parseDateOnly(schedule.date_from) ?? new Date());
+  const [visibleMonth, setVisibleMonth] = useState(initialMonth);
+  const [selectedDate, setSelectedDate] = useState(() => dateKey(initialMonth));
+  const [monthLoading, setMonthLoading] = useState(false);
+  const committedMonthRef = useRef(initialMonth);
+  const committedSelectedDateRef = useRef(dateKey(initialMonth));
+  const monthRequestIdRef = useRef(0);
+  const monthNames = calendarMonthNames(locale);
+  const rowsByDate = new Map<string, AvailabilityRow[]>();
+
+  rows.forEach((row) => {
+    const key = normalizeDateInput(row.date) || row.date;
+    if (!key || key === "—") return;
+    const current = rowsByDate.get(key) ?? [];
+    current.push(row);
+    rowsByDate.set(key, current);
+  });
+
+  const days = calendarDaysForMonth(visibleMonth);
+  const scheduleStart = parseDateOnly(schedule.date_from);
+  const scheduleEnd = parseDateOnly(schedule.date_to);
+  const isInScheduleRange = (day: Date) =>
+    (!scheduleStart || day >= scheduleStart) && (!scheduleEnd || day <= scheduleEnd);
+  const inRangeDays = days.filter((day) => day.getMonth() === visibleMonth.getMonth() && isInScheduleRange(day));
+  const busyDayKeys = new Set(
+    inRangeDays
+      .map(dateKey)
+      .filter((key) => (rowsByDate.get(key) ?? []).some((row) => row.tone !== "success")),
+  );
+  const selectedRows = rowsByDate.get(selectedDate) ?? [];
+  const selectedBusy = selectedRows.some((row) => row.tone !== "success");
+  const years = calendarYearOptions(schedule, visibleMonth);
+
+  const changeMonth = (nextMonth: Date) => {
+    const normalized = startOfCalendarMonth(nextMonth);
+    const normalizedDateKey = dateKey(normalized);
+    setVisibleMonth(normalized);
+    setSelectedDate(normalizedDateKey);
+
+    if (!onRangeChange) {
+      committedMonthRef.current = normalized;
+      committedSelectedDateRef.current = normalizedDateKey;
+      return;
+    }
+
+    const requestId = ++monthRequestIdRef.current;
+    setMonthLoading(true);
+
+    void onRangeChange(calendarMonthRange(normalized))
+      .then((loaded) => {
+        if (monthRequestIdRef.current !== requestId) return;
+        if (loaded) {
+          committedMonthRef.current = normalized;
+          committedSelectedDateRef.current = normalizedDateKey;
+          return;
+        }
+
+        setVisibleMonth(committedMonthRef.current);
+        setSelectedDate(committedSelectedDateRef.current);
+      })
+      .catch(() => {
+        if (monthRequestIdRef.current !== requestId) return;
+        setVisibleMonth(committedMonthRef.current);
+        setSelectedDate(committedSelectedDateRef.current);
+      })
+      .finally(() => {
+        if (monthRequestIdRef.current === requestId) setMonthLoading(false);
+      });
+  };
 
   return (
-    <article className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-transparent">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-slate-950 dark:text-white">
-            {formatScheduleRange(schedule, locale)}
-          </p>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.calendarPreview}</h3>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {availabilityRows.length
-              ? labels.busyDaysCount(countBusyDays(availabilityRows))
-              : scheduleAvailabilitySummary(schedule, labels)}
+            {monthLoading ? (
+              <span
+                aria-hidden="true"
+                className="inline-block h-3 w-36 animate-pulse rounded bg-slate-200 align-middle dark:bg-white/10 motion-reduce:animate-none"
+              />
+            ) : (
+              <>{labels.availableDaysCount(inRangeDays.length - busyDayKeys.size)} · {labels.busyDaysCount(busyDayKeys.size)}</>
+            )}
           </p>
         </div>
-        <ArtistHeaderBadge label={status.label} tone={status.tone} />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => changeMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}
+            className="grid size-10 place-items-center rounded-xl border border-[#e6ebf2] bg-[#f8fafc] text-slate-500 transition hover:border-orange-500/45 hover:text-slate-900 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:border-amber-300/50 dark:hover:bg-white/[0.05] dark:hover:text-white"
+            aria-label={labels.previousMonth}
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <Select
+            className="artistbor-calendar-select"
+            value={visibleMonth.getMonth()}
+            onChange={(value) => changeMonth(new Date(visibleMonth.getFullYear(), Number(value), 1))}
+            options={monthNames.map((month, index) => ({ value: index, label: month }))}
+            aria-label={labels.selectMonth}
+          />
+          <button
+            type="button"
+            onClick={() => changeMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}
+            className="grid size-10 place-items-center rounded-xl border border-[#e6ebf2] bg-[#f8fafc] text-slate-500 transition hover:border-orange-500/45 hover:text-slate-900 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:border-amber-300/50 dark:hover:bg-white/[0.05] dark:hover:text-white"
+            aria-label={labels.nextMonth}
+          >
+            <ChevronRight className="size-4" />
+          </button>
+          <Select
+            className="artistbor-calendar-year-select"
+            value={visibleMonth.getFullYear()}
+            onChange={(value) => changeMonth(new Date(Number(value), visibleMonth.getMonth(), 1))}
+            options={years.map((year) => ({ value: year, label: year }))}
+            aria-label={labels.selectYear}
+          />
+        </div>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
-        >
-          <CalendarPlus className="size-4" />
-          {labels.manage}
-        </button>
-        <button
-          type="button"
-          className="grid size-9 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
-          aria-label={labels.moreActions}
-        >
-          <MoreHorizontal className="size-4" />
-        </button>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-500" />{labels.availableStatus}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500" />{labels.busyStatus}</span>
       </div>
-    </article>
+
+      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400">
+        {labels.weekdays.map((day) => <span key={day}>{day}</span>)}
+      </div>
+      {monthLoading ? (
+        <p className="sr-only" role="status" aria-live="polite">
+          {labels.calendarLoading}
+        </p>
+      ) : null}
+      <div className="mt-2 grid grid-cols-7 gap-1" aria-busy={monthLoading}>
+        {monthLoading
+          ? days.map((day) => (
+              <div
+                key={`calendar-skeleton-${dateKey(day)}`}
+                aria-hidden="true"
+                className="grid min-h-12 animate-pulse place-items-center rounded-lg border border-slate-200 bg-slate-50 dark:border-white/[0.06] dark:bg-white/[0.04] motion-reduce:animate-none"
+              >
+                <span className="h-3 w-4 rounded bg-slate-200 dark:bg-white/10" />
+              </div>
+            ))
+          : days.map((day) => {
+              const key = dateKey(day);
+              const dayRows = rowsByDate.get(key) ?? [];
+              const busy = dayRows.some((row) => row.tone !== "success");
+              const inCurrentMonth = day.getMonth() === visibleMonth.getMonth();
+              const inRange = inCurrentMonth && isInScheduleRange(day);
+              const selected = key === selectedDate;
+              const statusLabel = !inRange ? labels.outsideSchedule : busy ? labels.busyStatus : labels.availableStatus;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={!inRange}
+                  onClick={() => setSelectedDate(key)}
+                  aria-label={`${formatHumanDate(key, locale)} · ${statusLabel}`}
+                  className={cn(
+                    "relative grid min-h-12 place-items-center rounded-lg border text-xs font-bold transition",
+                    !inCurrentMonth && "border-transparent text-slate-300 dark:text-slate-700",
+                    inCurrentMonth && !inRange && "cursor-not-allowed border-transparent text-slate-300 dark:text-slate-600",
+                    inRange && !busy && "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:hover:bg-emerald-400/15",
+                    inRange && busy && "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300 dark:hover:bg-rose-400/15",
+                    selected && "ring-2 ring-amber-400 ring-offset-1 ring-offset-white dark:ring-offset-[#111827]",
+                  )}
+                >
+                  <span>{day.getDate()}</span>
+                  {inRange ? <span className={cn("absolute bottom-1 size-1 rounded-full", busy ? "bg-rose-500" : "bg-emerald-500")} /> : null}
+                </button>
+              );
+            })}
+      </div>
+
+      {monthLoading ? (
+        <div
+          aria-hidden="true"
+          className="mt-4 animate-pulse rounded-xl bg-slate-50 p-3 dark:bg-white/[0.04] motion-reduce:animate-none"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="h-4 w-32 rounded bg-slate-200 dark:bg-white/10" />
+            <span className="h-5 w-14 rounded-full bg-slate-200 dark:bg-white/10" />
+          </div>
+          <span className="mt-3 block h-3 w-16 rounded bg-slate-200 dark:bg-white/10" />
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.04]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-slate-900 dark:text-white">
+              {formatHumanDate(selectedDate, locale)}
+            </p>
+            <ArtistHeaderBadge label={selectedBusy ? labels.busyStatus : labels.availableStatus} tone={selectedBusy ? "warning" : "success"} />
+          </div>
+          {selectedRows.length ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {selectedRows.map((row, index) => (
+                <div key={`${row.date}-${row.time}-${index}`} className="rounded-lg bg-white px-3 py-2 dark:bg-[#111827]">
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{row.time}</p>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">{row.sourceLabel}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{labels.availableStatus}</p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
 function ScheduleManagementDrawer({
   artist,
   labels,
-  mode,
   open,
   schedule,
   onClose,
@@ -4526,22 +5472,26 @@ function ScheduleManagementDrawer({
 }: {
   artist: ArtistProfile;
   labels: ArtistsLabels;
-  mode: "manage" | "create";
   open: boolean;
   schedule: UnknownRecord | null;
   onClose: () => void;
-  onChanged: () => Promise<void>;
+  onChanged: (options?: AvailabilityReloadOptions) => Promise<boolean>;
 }) {
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
   const toast = useToast();
   const [busySlotDialog, setBusySlotDialog] = useState<BusySlotDialogState>(null);
   const [submitting, setSubmitting] = useState(false);
   const selectedSchedule = schedule ?? getDefaultScheduleRecord(artist);
   const availabilityRows = availabilityRowsFromSchedule(selectedSchedule, labels);
-  const status = getScheduleStatus(selectedSchedule, labels, mode);
   const rawAvailability = getRawAvailabilityPreview(selectedSchedule, labels);
-  const dirty = false;
   const artistId = getArtistId(artist);
+  const refreshSchedule = () => {
+    void onChanged({
+      background: true,
+      date_from: normalizeDateInput(selectedSchedule.date_from) || undefined,
+      date_to: normalizeDateInput(selectedSchedule.date_to) || undefined,
+    });
+  };
 
   const handleDeleteBusySlot = async (row: AvailabilityRow) => {
     const slotId = getAvailabilityRowId(row);
@@ -4561,7 +5511,7 @@ function ScheduleManagementDrawer({
         try {
           await artistAvailabilityApi.deleteBusySlot(slotId);
           toast.success(labels.busySlotDeleted);
-          await onChanged();
+          refreshSchedule();
         } catch (caught) {
           toast.error(caught instanceof Error ? caught.message : labels.busySlotDeleteFailed);
           throw caught;
@@ -4585,7 +5535,34 @@ function ScheduleManagementDrawer({
       return;
     }
 
-    const payload = buildBusySlotPayload(values);
+    const editingSlotId = currentDialog.mode === "edit"
+      ? getAvailabilityRowId(currentDialog.row)
+      : undefined;
+    if (currentDialog.mode === "edit" && !editingSlotId) {
+      toast.error(labels.busySlotIdMissing);
+      return;
+    }
+
+    const overlappingRow = findOverlappingArtistAvailabilityInterval(
+      {
+        date: values.date,
+        startTime: values.start_time,
+        endTime: values.end_time,
+      },
+      availabilityRows,
+      editingSlotId,
+    );
+    if (overlappingRow) {
+      toast.error(labels.busySlotOverlap(overlappingRow.time, overlappingRow.sourceLabel));
+      return;
+    }
+
+    const payload = buildArtistBusySlotPayload({
+      date: values.date,
+      startTime: values.start_time,
+      endTime: values.end_time,
+      note: values.note,
+    });
     setSubmitting(true);
     try {
       if (currentDialog.mode === "edit") {
@@ -4594,8 +5571,24 @@ function ScheduleManagementDrawer({
           toast.error(labels.busySlotIdMissing);
           return;
         }
+        const rollbackValues = initialBusySlotValues(currentDialog);
+        const rollbackPayload = buildArtistBusySlotPayload({
+          date: rollbackValues.date,
+          startTime: rollbackValues.start_time,
+          endTime: rollbackValues.end_time,
+          note: rollbackValues.note,
+        });
         await artistAvailabilityApi.deleteBusySlot(slotId);
-        await artistAvailabilityApi.createBusySlot(artistId, payload);
+        try {
+          await artistAvailabilityApi.createBusySlot(artistId, payload);
+        } catch {
+          try {
+            await artistAvailabilityApi.createBusySlot(artistId, rollbackPayload);
+          } catch {
+            throw new Error(labels.busySlotUpdateFailedRestoreFailed);
+          }
+          throw new Error(labels.busySlotUpdateFailedRestored);
+        }
         toast.success(labels.busySlotUpdated);
       } else {
         await artistAvailabilityApi.createBusySlot(artistId, payload);
@@ -4603,7 +5596,7 @@ function ScheduleManagementDrawer({
       }
 
       setBusySlotDialog(null);
-      await onChanged();
+      refreshSchedule();
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.busySlotSaveFailed);
     } finally {
@@ -4615,84 +5608,85 @@ function ScheduleManagementDrawer({
     <>
       <Drawer
         destroyOnClose
-        maskClosable={!dirty}
+        maskClosable
         open={open}
         onClose={onClose}
         placement="right"
-        size="min(100vw, 1180px)"
+        size="min(100vw, 1040px)"
         closeIcon={<X className="size-5" />}
         rootClassName="artistbor-application-drawer"
         classNames={adminDrawerClassNames}
         title={
           <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
-                {labels.scheduleManagementTitle}
-              </span>
-              <ArtistHeaderBadge label={status.label} tone={status.tone} />
-            </div>
+            <span className="block truncate text-lg font-bold text-slate-950 dark:text-white">
+              {labels.scheduleManagementTitle}
+            </span>
             <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-              {getArtistName(artist, labels)} · {formatPhone(artist.phone ?? artist.extra_phone) || "—"}
+              {getArtistName(artist, labels)} · {formatPhone(artist.phone) || "—"}
             </p>
           </div>
         }
-        footer={
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
-            >
-              <X className="size-4" />
-              {t("actions.close")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setBusySlotDialog({ mode: "create" })}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
-            >
-              <Save className="size-4" />
-              {labels.addAvailability}
-            </button>
-          </div>
-        }
+        footer={null}
         styles={adminDrawerSubtitleStyles}
       >
-        <div className="bg-slate-50/60 p-4 dark:bg-[#0f172a]">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="min-w-0 space-y-4">
-              <ScheduleDetailsCard labels={labels} locale={locale} schedule={selectedSchedule} />
-              <AvailabilityRows
-                labels={labels}
-                rows={availabilityRows}
-                onAdd={() => setBusySlotDialog({ mode: "create" })}
-                onDelete={handleDeleteBusySlot}
-                onEdit={(row) => setBusySlotDialog({ mode: "edit", row })}
-              />
-              {rawAvailability ? (
-                <details className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-                  <summary className="cursor-pointer text-sm font-bold text-slate-950 dark:text-white">
-                    {labels.rawAvailability}
-                  </summary>
-                  <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-100">
-                    {rawAvailability}
-                  </pre>
-                </details>
-              ) : null}
+        <div className="min-h-full bg-slate-50/60 p-4 dark:bg-[#0f172a] sm:p-5">
+          <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827] sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="flex items-center gap-2 text-base font-bold text-slate-950 dark:text-white">
+                  <CalendarDays className="size-5 text-amber-500" />
+                  {labels.availabilityList}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500 dark:text-slate-400">
+                  {labels.scheduleManagementHint}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBusySlotDialog({ mode: "create" })}
+                className={cn(adminPrimaryActionButtonClass, "h-10 shrink-0 justify-center sm:min-w-48")}
+              >
+                <Plus className="size-4" />
+                {labels.addAvailability}
+              </button>
             </div>
+          </section>
 
-            <aside className="min-w-0 space-y-4">
-              <ScheduleCalendarPreview
-                labels={labels}
-                locale={locale}
-                rows={availabilityRows}
-                schedule={selectedSchedule}
-                onAddDate={(date) => setBusySlotDialog({ mode: "create", date })}
-                onEditRow={(row) => setBusySlotDialog({ mode: "edit", row })}
-              />
-              <ScheduleQuickInfoCard labels={labels} rows={availabilityRows} schedule={selectedSchedule} />
-            </aside>
+          <ScheduleSummaryStrip
+            labels={labels}
+            locale={locale}
+            rows={availabilityRows}
+            schedule={selectedSchedule}
+          />
+
+          <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <ScheduleCalendarPreview
+              key={`${toDisplay(selectedSchedule.date_from)}-${toDisplay(selectedSchedule.date_to)}`}
+              labels={labels}
+              locale={locale}
+              rows={availabilityRows}
+              schedule={selectedSchedule}
+              onAddDate={(date) => setBusySlotDialog({ mode: "create", date })}
+            />
+            <AvailabilityRows
+              labels={labels}
+              locale={locale}
+              rows={availabilityRows}
+              onDelete={handleDeleteBusySlot}
+              onEdit={(row) => setBusySlotDialog({ mode: "edit", row })}
+            />
           </div>
+
+          {rawAvailability ? (
+            <details className="mt-4 rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
+              <summary className="cursor-pointer text-sm font-bold text-slate-950 dark:text-white">
+                {labels.rawAvailability}
+              </summary>
+              <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                {rawAvailability}
+              </pre>
+            </details>
+          ) : null}
         </div>
       </Drawer>
       <BusySlotModal
@@ -4756,14 +5750,13 @@ function BusySlotModal({
             <h2 className="artistbor-busy-slot-modal__title">
               {state?.mode === "edit" ? labels.editBusySlot : labels.addAvailability}
             </h2>
-            <p className="artistbor-busy-slot-modal__subtitle">Kuni va vaqt oralig&apos;ini belgilang</p>
+            <p className="artistbor-busy-slot-modal__subtitle">{labels.busySlotSubtitle}</p>
           </div>
         </div>
       }
       footer={null}
       styles={{
         body: { padding: 0 },
-        mask: { backgroundColor: "rgba(2, 6, 23, 0.76)" },
       }}
     >
       <form className="grid gap-4" onSubmit={handleSubmit}>
@@ -4812,15 +5805,15 @@ function BusySlotModal({
         <FormField
           compact
           label={labels.reason}
+          placeholder={labels.commentPlaceholder}
           type="textarea"
           rows={4}
           maxLength={200}
           showCount
-          placeholder="Masalan: Zal band, texnik ish yoki xususiy tadbir..."
           className="artistbor-busy-slot-field"
           inputClassName="artistbor-busy-slot-textarea"
-          value={values.reason}
-          onChange={(reason) => setValues((current) => ({ ...current, reason }))}
+          value={values.note}
+          onChange={(note) => setValues((current) => ({ ...current, note }))}
         />
         <div className={cn("mt-2 grid gap-3", state?.mode === "edit" ? "sm:grid-cols-[1fr_1fr_1fr]" : "sm:grid-cols-2")}>
           {state?.mode === "edit" ? (
@@ -4857,121 +5850,156 @@ function BusySlotModal({
   );
 }
 
-function ScheduleDetailsCard({
+function ScheduleSummaryStrip({
   labels,
   locale,
+  rows,
   schedule,
 }: {
   labels: ArtistsLabels;
   locale: Locale;
+  rows: AvailabilityRow[];
   schedule: UnknownRecord;
 }) {
-  const rows: [string, unknown][] = [
-    [labels.dateFrom, toDisplay(schedule.date_from)],
-    [labels.dateTo, toDisplay(schedule.date_to)],
-    [labels.busyDays, scheduleAvailabilitySummary(schedule, labels)],
+  const items = [
+    { label: labels.schedulePeriod, value: formatScheduleRange(schedule, locale) },
+    { label: labels.totalDays, value: countTotalDays(schedule) || "—" },
+    { label: labels.busyDays, value: countBusyDays(rows) },
   ];
 
   return (
-    <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.scheduleDetails}</h3>
-          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {formatScheduleRange(schedule, locale)}
+    <section className="mt-4 grid overflow-hidden rounded-2xl border border-[#E5EAF2] bg-white dark:border-white/10 dark:bg-[#111827] sm:grid-cols-3">
+      {items.map(({ label, value }, index) => (
+        <div
+          key={label}
+          className={cn(
+            "min-w-0 px-4 py-3.5",
+            index > 0 && "border-t border-[#E5EAF2] dark:border-white/10 sm:border-l sm:border-t-0",
+          )}
+        >
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{label}</p>
+          <p className="mt-1 truncate text-sm font-bold text-slate-950 dark:text-white" title={String(value)}>
+            {toDisplay(value)}
           </p>
         </div>
-      </div>
-      <div className="mt-4 grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-3">
-        {rows.map(([label, value]) => (
-          <div key={label} className="bg-slate-50 p-3 dark:bg-[#121a2a]">
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
-            <p className="mt-1 break-words text-sm font-semibold text-slate-950 dark:text-white">
-              {toDisplay(value)}
-            </p>
-          </div>
-        ))}
-      </div>
+      ))}
     </section>
   );
 }
 
 function AvailabilityRows({
   labels,
-  onAdd,
+  locale,
   onDelete,
   onEdit,
   rows,
 }: {
   labels: ArtistsLabels;
-  onAdd: () => void;
+  locale: Locale;
   onDelete: (row: AvailabilityRow) => void;
   onEdit: (row: AvailabilityRow) => void;
   rows: AvailabilityRow[];
 }) {
   return (
     <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.availabilityList}</h3>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-bold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
-        >
-          <Plus className="size-4" />
-          {labels.addAvailability}
-        </button>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-bold text-slate-950 dark:text-white">{labels.availabilityList}</h3>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {labels.busySlotCount(rows.length)}
+          </p>
+        </div>
+        <ListChecks className="size-5 shrink-0 text-amber-500" />
       </div>
 
       {rows.length ? (
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-          <div className="hidden grid-cols-[1.1fr_1fr_0.9fr_auto] gap-3 bg-slate-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-slate-400 dark:bg-white/[0.04] sm:grid">
-            <span>{labels.date}</span>
-            <span>{labels.time}</span>
-            <span>{labels.status}</span>
-            <span>{labels.actions}</span>
-          </div>
-          <div className="divide-y divide-slate-200 dark:divide-white/10">
-            {rows.map((row, index) => (
-              <div
-                key={`${row.date}-${row.time}-${index}`}
-                className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1.1fr_1fr_0.9fr_auto] sm:items-center sm:gap-3"
+        <div className="mt-4 grid max-h-[560px] gap-2 overflow-y-auto pr-1">
+          {rows.map((row, index) => {
+            const editable = isEditableArtistAvailabilitySource(row.source);
+            const lockDescription = row.source === "order" ? labels.orderBusyLocked : labels.holdBusyLocked;
+            const orderPublicId = getArtistAvailabilityOrderPublicId(row.raw);
+
+            return (
+              <article
+                key={`${row.id ?? "slot"}-${row.date}-${row.time}-${index}`}
+                className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/[0.035]"
               >
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 sm:hidden">{labels.date}</p>
-                  <p className="font-semibold text-slate-950 dark:text-white">{row.date}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-950 dark:text-white">
+                      {formatHumanDate(row.date, locale)}
+                    </p>
+                    <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      <Clock className="size-3.5 shrink-0 text-slate-400" />
+                      {row.time}
+                    </p>
+                  </div>
+                  {editable ? (
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(row)}
+                        className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-amber-300 hover:text-amber-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:border-amber-400/40 dark:hover:text-amber-300"
+                        aria-label={labels.editBusySlot}
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(row)}
+                        className="grid size-8 cursor-pointer place-items-center rounded-lg border border-rose-200 bg-white text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:bg-white/[0.04] dark:text-rose-300 dark:hover:bg-rose-500/10"
+                        aria-label={labels.deleteBusySlotTitle}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <span
+                      className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 dark:border-white/10 dark:text-slate-500"
+                      title={lockDescription}
+                    >
+                      <LockKeyhole className="size-3.5" />
+                    </span>
+                  )}
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 sm:hidden">{labels.time}</p>
-                  <p className="font-semibold text-slate-700 dark:text-slate-200">{row.time}</p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <ArtistHeaderBadge
+                    label={row.sourceLabel}
+                    tone={row.source === "hold" ? "warning" : row.source === "order" ? "success" : "neutral"}
+                  />
+                  {row.expiresAt ? (
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      {labels.busySlotExpiresAt}: {normalizeDate(row.expiresAt)}
+                    </span>
+                  ) : null}
                 </div>
-                <div>
-                  <ArtistHeaderBadge label={row.statusLabel} tone={row.tone} />
-                </div>
-                <div className="flex gap-1.5 sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => onEdit(row)}
-                    className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-white"
-                    aria-label={labels.editBusySlot}
+
+                <p className="mt-2 text-xs leading-4 text-slate-500 dark:text-slate-400">
+                  {editable ? labels.manualBusyStatus : lockDescription}
+                </p>
+                {row.note ? (
+                  <p className="mt-2 line-clamp-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                    {row.note}
+                  </p>
+                ) : null}
+                {orderPublicId ? (
+                  <Link
+                    href={`/admin/orders?q=${encodeURIComponent(orderPublicId)}`}
+                    aria-label={`${labels.openOrder}: ${orderPublicId}`}
+                    className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold !text-artistbor-secondary transition hover:border-amber-300 hover:bg-amber-50 hover:!text-artistbor-accent active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 dark:border-white/10 dark:bg-white/[0.04] dark:!text-slate-200 dark:hover:border-amber-400/35 dark:hover:bg-amber-400/10 dark:hover:!text-amber-300"
                   >
-                    <Pencil className="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(row)}
-                    className="grid size-8 cursor-pointer place-items-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                    aria-label={labels.deleteBusySlotTitle}
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                    {labels.openOrder}
+                    <span className="font-black">{orderPublicId}</span>
+                    <ExternalLink className="size-3.5" />
+                  </Link>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
-        <ScheduleEmptyState labels={labels} onAdd={onAdd} />
+        <ScheduleEmptyState labels={labels} />
       )}
     </section>
   );
@@ -4981,27 +6009,30 @@ function ScheduleCalendarPreview({
   labels,
   locale,
   onAddDate,
-  onEditRow,
   rows,
   schedule,
 }: {
   labels: ArtistsLabels;
   locale: Locale;
   onAddDate: (date: string) => void;
-  onEditRow: (row: AvailabilityRow) => void;
   rows: AvailabilityRow[];
   schedule: UnknownRecord;
 }) {
   const start = parseDateOnly(schedule.date_from);
-  const end = parseDateOnly(schedule.date_to);
-  const busyRowsByDate = new Map<string, AvailabilityRow>();
+  const rangeEnd = parseDateOnly(schedule.date_to) ?? start;
+  const [visibleMonth, setVisibleMonth] = useState(() => startOfCalendarMonth(start ?? new Date()));
+  const busyRowsByDate = new Map<string, AvailabilityRow[]>();
+
   rows
     .filter((row) => row.tone !== "success")
     .forEach((row) => {
-      if (!busyRowsByDate.has(row.date)) busyRowsByDate.set(row.date, row);
+      const key = normalizeDateInput(row.date) || row.date;
+      const current = busyRowsByDate.get(key) ?? [];
+      current.push(row);
+      busyRowsByDate.set(key, current);
     });
 
-  if (!start) {
+  if (!start || !rangeEnd) {
     return (
       <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
         <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.calendarPreview}</h3>
@@ -5010,114 +6041,137 @@ function ScheduleCalendarPreview({
     );
   }
 
-  const days = calendarDaysForMonth(start);
-  const rangeEnd = end ?? start;
+  const days = calendarDaysForMonth(visibleMonth);
+  const previousMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1);
+  const nextMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1);
+  const canGoPrevious = endOfCalendarMonth(previousMonth) >= start;
+  const canGoNext = startOfCalendarMonth(nextMonth) <= rangeEnd;
 
   return (
-    <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-      <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.calendarPreview}</h3>
-      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{monthTitle(start, locale)}</p>
-      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400">
+    <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827] sm:p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.calendarPreview}</h3>
+          <p className="mt-1 text-xs leading-4 text-slate-500 dark:text-slate-400">{labels.calendarHint}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            disabled={!canGoPrevious}
+            onClick={() => setVisibleMonth(previousMonth)}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-white"
+            aria-label={labels.previousMonth}
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            disabled={!canGoNext}
+            onClick={() => setVisibleMonth(nextMonth)}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-white"
+            aria-label={labels.nextMonth}
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-4 text-sm font-bold text-slate-950 dark:text-white">
+        {formatArtistAvailabilityMonth(visibleMonth, locale)}
+      </p>
+      <div className="mt-3 grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-slate-400">
         {labels.weekdays.map((day) => (
           <span key={day}>{day}</span>
         ))}
       </div>
-      <div className="mt-2 grid grid-cols-7 gap-1">
+      <div className="mt-2 grid grid-cols-7 gap-1.5">
         {days.map((day) => {
           const key = dateKey(day);
           const inRange = day >= start && day <= rangeEnd;
-          const busyRow = busyRowsByDate.get(key);
-          const busy = Boolean(busyRow);
+          const busyRows = busyRowsByDate.get(key) ?? [];
+          const hasBusy = busyRows.length > 0;
+          const hasManualBusy = busyRows.some((row) => isEditableArtistAvailabilitySource(row.source));
+          const hasLockedBusy = busyRows.some((row) => !isEditableArtistAvailabilitySource(row.source));
+          const inVisibleMonth = day.getMonth() === visibleMonth.getMonth();
+          const actionLabel = !inRange
+            ? labels.outsideSchedule
+            : hasLockedBusy
+              ? `${labels.lockedBusyStatus}. ${labels.busyDateAction}`
+              : hasManualBusy
+                ? `${labels.manualBusyStatus}. ${labels.busyDateAction}`
+                : labels.availableDayAction;
+
           return (
             <button
               key={key}
               type="button"
-              aria-disabled={busy || !inRange}
-              title={busy ? labels.editBusySlot : labels.addAvailability}
+              disabled={!inRange}
+              title={actionLabel}
+              aria-label={`${formatHumanDate(key, locale)}. ${actionLabel}`}
               onClick={() => {
                 if (!inRange) return;
-                if (busyRow) {
-                  onEditRow(busyRow);
-                  return;
-                }
                 onAddDate(key);
               }}
               className={cn(
-                "group relative grid aspect-square place-items-center rounded-lg text-xs font-semibold transition",
-                day.getMonth() !== start.getMonth() ? "text-slate-300 dark:text-slate-600" : "text-slate-700 dark:text-slate-200",
-                inRange && !busy && "cursor-pointer bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-300 dark:hover:bg-emerald-400/15",
-                !inRange && "cursor-not-allowed opacity-50",
-                busy && "cursor-not-allowed border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300 dark:hover:bg-rose-400/15",
+                "group relative grid min-h-12 place-items-center rounded-xl border text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70",
+                !inVisibleMonth && "text-slate-300 dark:text-slate-600",
+                inVisibleMonth && "text-slate-700 dark:text-slate-200",
+                inRange && "cursor-pointer border-slate-200 bg-slate-50 hover:border-amber-300 hover:bg-amber-50/70 hover:text-amber-800 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-amber-400/35 dark:hover:bg-amber-400/10 dark:hover:text-amber-300",
+                !inRange && "cursor-not-allowed border-transparent bg-transparent opacity-45",
+                hasManualBusy && !hasLockedBusy && "border-amber-300 text-amber-800 dark:border-amber-400/35 dark:text-amber-300",
+                hasLockedBusy && "border-rose-300 text-rose-700 dark:border-rose-400/30 dark:text-rose-300",
               )}
             >
-              <span className={cn(busy && "transition group-hover:opacity-0")}>{day.getDate()}</span>
-              {busy ? (
-                <Pencil className="absolute size-3.5 opacity-0 transition group-hover:opacity-100" />
+              <span>{day.getDate()}</span>
+              {inRange && !hasBusy ? (
+                <span className="absolute bottom-1 left-1 size-1 rounded-full bg-emerald-500" aria-hidden="true" />
+              ) : null}
+              {hasBusy ? (
+                <span
+                  className={cn(
+                    "absolute bottom-0.5 left-1 flex items-center gap-0.5 text-[9px] font-bold",
+                    hasLockedBusy ? "text-rose-500 dark:text-rose-300" : "text-amber-600 dark:text-amber-300",
+                  )}
+                  aria-hidden="true"
+                >
+                  <Clock className="size-2.5" />
+                  {busyRows.length}
+                </span>
+              ) : null}
+              {inRange ? (
+                <Plus className="absolute bottom-1 right-1 size-3 opacity-55 transition group-hover:opacity-100" aria-hidden="true" />
               ) : null}
             </button>
           );
         })}
       </div>
-    </section>
-  );
-}
 
-function ScheduleQuickInfoCard({
-  labels,
-  rows,
-  schedule,
-}: {
-  labels: ArtistsLabels;
-  rows: AvailabilityRow[];
-  schedule: UnknownRecord;
-}) {
-  const items: [string, unknown][] = [
-    [labels.totalDays, countTotalDays(schedule) || "—"],
-    [labels.busyDays, countBusyDays(rows)],
-  ];
-
-  if (hasMeaningfulValue(schedule.created_at)) {
-    items.push([labels.createdAt, formatDisplayValue("created_at", schedule.created_at, labels)]);
-  }
-
-  if (hasMeaningfulValue(schedule.updated_at)) {
-    items.push([labels.updatedAt, formatDisplayValue("updated_at", schedule.updated_at, labels)]);
-  }
-
-  return (
-    <section className="rounded-2xl border border-[#E5EAF2] bg-white p-4 dark:border-white/10 dark:bg-[#111827]">
-      <h3 className="text-base font-bold text-slate-950 dark:text-white">{labels.quickInfo}</h3>
-      <div className="mt-4 grid gap-2">
-        {items.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-white/[0.04]">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</span>
-            <span className="text-sm font-bold text-slate-950 dark:text-white">{toDisplay(value)}</span>
-          </div>
-        ))}
+      <div className="mt-4 grid gap-2 border-t border-slate-200 pt-4 text-xs font-medium text-slate-600 dark:border-white/10 dark:text-slate-300 sm:grid-cols-3">
+        <CalendarLegendItem className="bg-emerald-500" label={labels.availableDayAction} />
+        <CalendarLegendItem className="bg-amber-500" label={labels.busyDateAction} />
+        <CalendarLegendItem className="bg-rose-500" label={labels.lockedBusyStatus} />
       </div>
     </section>
   );
 }
 
-function ScheduleEmptyState({
-  labels,
-  onAdd,
-}: {
-  labels: ArtistsLabels;
-  onAdd: () => void;
-}) {
+function CalendarLegendItem({ className, label }: { className: string; label: string }) {
   return (
-    <div className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#E5EAF2] bg-white p-5 text-center dark:border-white/10 dark:bg-transparent">
+    <span className="flex items-start gap-2 leading-4">
+      <span className={cn("mt-1 size-2 shrink-0 rounded-full", className)} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+function ScheduleEmptyState({ labels }: { labels: ArtistsLabels }) {
+  return (
+    <div className="mt-4 flex min-h-44 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[#E5EAF2] bg-slate-50/70 p-5 text-center dark:border-white/10 dark:bg-white/[0.025]">
       <ListChecks className="size-8 text-amber-400" />
-      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{labels.noAvailabilityData}</p>
-      <button
-        type="button"
-        onClick={onAdd}
-        className={adminPrimaryActionButtonClass}
-      >
-        <Plus className="size-4" />
-        {labels.addAvailability}
-      </button>
+      <div>
+        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{labels.noAvailabilityData}</p>
+        <p className="mt-1 text-xs leading-4 text-slate-500 dark:text-slate-400">{labels.calendarHint}</p>
+      </div>
     </div>
   );
 }
@@ -5132,12 +6186,7 @@ function ProfileData({
   if (!entries.length) return <EmptyState title={labels.emptyArtistDetails} />;
 
   return (
-    <div
-      className={cn(
-        "grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10",
-        entries.length > 1 && "md:grid-cols-2",
-      )}
-    >
+    <div className={cn("grid gap-2", entries.length > 1 && "md:grid-cols-2")}>
       {entries.map(([key, value]) => (
         <DetailValue key={key} fieldKey={key} value={value} />
       ))}
@@ -5151,6 +6200,9 @@ const displayedArtistFields = new Set([
   "first_name",
   "last_name",
   "full_name",
+  "public_id",
+  "stage_name",
+  "stage_name",
   "phone",
   "extra_phone",
   "email",
@@ -5170,15 +6222,34 @@ const displayedArtistFields = new Set([
   "region",
   "district",
   "profile",
+  "artistProfile",
   "artist_profile",
+  "categories",
+  "category",
+  "category_id",
+  "category_ids",
   "is_top",
   "is_verified",
   "bio",
+  "short_description",
+  "experience_years",
+  "titles",
+  "achievements",
   "rating",
   "fans_count",
   "albums_count",
   "administrator_name",
   "administrator_phone",
+  "birth_date",
+  "gender",
+  "card_number",
+  "card_number_masked",
+  "card_holder_name",
+  "balance",
+  "debt",
+  "profile_gaps",
+  "profileGaps",
+  "quota",
 ]);
 
 const nestedDisplayedArtistFields = new Set([
@@ -5188,6 +6259,8 @@ const nestedDisplayedArtistFields = new Set([
   "first_name",
   "last_name",
   "full_name",
+  "public_id",
+  "stage_name",
   "phone",
   "extra_phone",
   "email",
@@ -5206,15 +6279,34 @@ const nestedDisplayedArtistFields = new Set([
   "region",
   "district",
   "profile",
+  "artistProfile",
   "artist_profile",
+  "categories",
+  "category",
+  "category_id",
+  "category_ids",
   "is_top",
   "is_verified",
   "bio",
+  "short_description",
+  "experience_years",
+  "titles",
+  "achievements",
   "rating",
   "fans_count",
   "albums_count",
   "administrator_name",
   "administrator_phone",
+  "birth_date",
+  "gender",
+  "card_number",
+  "card_number_masked",
+  "card_holder_name",
+  "balance",
+  "debt",
+  "profile_gaps",
+  "profileGaps",
+  "quota",
 ]);
 
 function additionalArtistEntries(artist: ArtistProfile) {
@@ -5298,12 +6390,10 @@ function getArtistServiceDescription(service: UnknownRecord) {
 
 function getArtistServiceChips(service: UnknownRecord, labels: ArtistsLabels) {
   const chips: string[] = [];
-  const serviceId = firstMeaningfulValue(service, ["service_id"]);
   const price = firstMeaningfulValue(service, ["price", "amount"]);
   const duration = firstMeaningfulValue(service, ["duration_minutes", "duration"]);
   const priceText = formatMoneyWithCurrency(price, labels.locale);
 
-  if (serviceId) chips.push(`ID ${toDisplay(serviceId)}`);
   if (priceText) chips.push(`${labels.price}: ${priceText}`);
   if (duration) chips.push(`${labels.duration}: ${toDisplay(duration)} ${labels.minutesShort}`);
 
@@ -5335,7 +6425,10 @@ function regionPriceRowsFromRecords(records: ArtistRegionPriceRecord[]): RegionP
     const regionId = numberFromUnknown(record.region_id);
     const price = record.price === undefined || record.price === null ? "" : String(record.price);
     return {
+      advance_amount: record.advance_amount === undefined || record.advance_amount === null ? "" : String(record.advance_amount),
+      advance_effective: record.advance_effective === undefined || record.advance_effective === null ? undefined : String(record.advance_effective),
       id,
+      is_advance_custom: record.is_advance_custom,
       localId: id ? `saved-${id}` : `loaded-${index}-${regionId ?? "unknown"}`,
       price,
       region_id: regionId ? String(regionId) : "",
@@ -5396,7 +6489,7 @@ function galleryItemFromRecord(record: UnknownRecord, index: number, labels: Art
   const linkUrl = mediaUrlCandidates(linkSource)[0] ?? imageUrl;
   const title =
     firstStringValue(source, ["title", "title_uz", "name", "caption", "alt", "file_name", "filename"]) ||
-    `${labels.galleryItem} #${toDisplay(record.id ?? index + 1)}`;
+    `${labels.galleryItem}`;
   const subtitle = [
     firstStringValue(source, ["type", "mime_type", "category"]),
     firstStringValue(source, ["description", "comment"]),
@@ -5404,7 +6497,7 @@ function galleryItemFromRecord(record: UnknownRecord, index: number, labels: Art
 
   return {
     key: String(resourceRowKey(record, index)),
-    id: record.id,
+    id: numberFromUnknown(record.id),
     imageUrl,
     imageUrlCandidates,
     linkUrl,
@@ -5432,7 +6525,7 @@ function videoItemFromRecord(record: UnknownRecord, index: number, labels: Artis
     youtubeThumbnailUrl(videoSource);
   const title =
     firstStringValue(source, ["title", "title_uz", "title_ru", "name", "caption"]) ||
-    `${labels.videoItem} #${toDisplay(record.id ?? record.video_id ?? index + 1)}`;
+    `${labels.videoItem}`;
   const subtitle = [
     videoSource ? videoSourceLabel(videoSource) : "",
     firstStringValue(source, ["type", "source", "platform"]),
@@ -5634,7 +6727,7 @@ function initialBusySlotValues(state: BusySlotDialogState): BusySlotFormValues {
       date: normalizeDateInput(state.row.date),
       start_time: state.row.startTime,
       end_time: state.row.endTime,
-      reason: state.row.reason,
+      note: state.row.note,
     };
   }
 
@@ -5642,7 +6735,7 @@ function initialBusySlotValues(state: BusySlotDialogState): BusySlotFormValues {
     date: normalizeDateInput(state?.date) || formatDateInputValue(new Date()),
     start_time: "09:00",
     end_time: "12:00",
-    reason: "",
+    note: "",
   };
 }
 
@@ -5679,17 +6772,6 @@ function parseTimeToMinutes(value: string) {
   const [hours, minutes] = value.split(":").map((part) => Number(part));
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
   return hours * 60 + minutes;
-}
-
-function buildBusySlotPayload(values: BusySlotFormValues): ArtistBusySlotPayload {
-  const payload: ArtistBusySlotPayload = {
-    date: values.date,
-    time_from: values.start_time,
-    time_to: values.end_time,
-  };
-  const reason = values.reason.trim();
-  if (reason) payload.reason = reason;
-  return payload;
 }
 
 function getAvailabilityRowId(row: AvailabilityRow) {
@@ -5733,7 +6815,10 @@ type AvailabilityRow = {
   date: string;
   endTime: string;
   id?: number;
-  reason: string;
+  source: string;
+  sourceLabel: string;
+  expiresAt?: number;
+  note: string;
   startTime: string;
   time: string;
   statusLabel: string;
@@ -5742,20 +6827,28 @@ type AvailabilityRow = {
 };
 
 function scheduleRecordsFromState(state: DetailResourceState, artist: ArtistProfile) {
-  if (isRecord(state.raw)) {
-    if (isScheduleRecord(state.raw)) return [state.raw];
-
-    const direct = firstResourceArray(state.raw);
-    if (direct.length) return direct;
+  const rawSchedule = isRecord(state.raw) && isScheduleRecord(state.raw) ? state.raw : null;
+  if (state.rows.length) {
+    if (state.rows.every(isScheduleRecord)) return state.rows;
+    return [{
+      ...(rawSchedule ?? {}),
+      artist_id: firstMeaningfulValue(rawSchedule ?? {}, ["artist_id"]) ?? getArtistId(artist),
+      availability: state.rows,
+    }];
   }
 
-  if (state.rows.length) return [{ artist_id: getArtistId(artist), availability: state.rows }];
+  if (rawSchedule) return [rawSchedule];
+
+  if (isRecord(state.raw)) {
+    const direct = firstResourceArray(state.raw);
+    if (direct.length) return [{ artist_id: getArtistId(artist), availability: direct }];
+  }
 
   return [];
 }
 
 function isScheduleRecord(record: UnknownRecord) {
-  return ["artist_id", "date_from", "date_to", "availability"].some((key) => key in record);
+  return ["date_from", "date_to", "availability", "busy_slots", "available_slots", "free_slots"].some((key) => key in record);
 }
 
 function firstResourceArray(record: UnknownRecord) {
@@ -5764,22 +6857,34 @@ function firstResourceArray(record: UnknownRecord) {
 }
 
 function availabilityRowsFromSchedule(schedule: UnknownRecord, labels: ArtistsLabels): AvailabilityRow[] {
-  const availability = schedule.availability;
+  const availability = schedule.availability ?? schedule.busy_slots ?? schedule.available_slots ?? schedule.free_slots;
 
   if (Array.isArray(availability)) {
-    return availability.flatMap((item) => (isRecord(item) ? [availabilityRowFromRecord(item, labels)] : []));
+    return availability.flatMap((item) =>
+      isRecord(item) && isVisibleArtistAvailabilityRecord(item)
+        ? [availabilityRowFromRecord(item, labels)]
+        : [],
+    );
   }
 
   if (isRecord(availability)) {
-    if (looksLikeAvailabilityRow(availability)) return [availabilityRowFromRecord(availability, labels)];
+    if (looksLikeAvailabilityRow(availability)) {
+      return isVisibleArtistAvailabilityRecord(availability)
+        ? [availabilityRowFromRecord(availability, labels)]
+        : [];
+    }
 
     return Object.entries(availability).flatMap(([group, value]) => {
       if (Array.isArray(value)) {
         return value.flatMap((item) =>
-          isRecord(item) ? [availabilityRowFromRecord({ ...item, group }, labels)] : [],
+          isRecord(item) && isVisibleArtistAvailabilityRecord(item)
+            ? [availabilityRowFromRecord({ ...item, group }, labels)]
+            : [],
         );
       }
-      if (isRecord(value)) return [availabilityRowFromRecord({ ...value, group }, labels)];
+      if (isRecord(value) && isVisibleArtistAvailabilityRecord(value)) {
+        return [availabilityRowFromRecord({ ...value, group }, labels)];
+      }
       return [];
     });
   }
@@ -5793,7 +6898,13 @@ function availabilityRowFromRecord(record: UnknownRecord, labels: ArtistsLabels)
   const group = firstMeaningfulValue(record, ["group"]);
   const start = firstMeaningfulValue(record, ["start_time", "time_from", "from"]);
   const end = firstMeaningfulValue(record, ["end_time", "time_to", "to"]);
-  const reason = firstMeaningfulValue(record, ["reason", "comment", "notes", "description"]);
+  const note = firstMeaningfulValue(record, ["note", "reason", "comment", "notes", "description"]);
+  const source = String(firstMeaningfulValue(record, ["source"]) ?? "manual").trim().toLowerCase();
+  const localizedSource = getDashboardStatus("availability_source", source, labels.locale);
+  const sourceLabel = localizedSource.key === "unknown"
+    ? String(firstMeaningfulValue(record, ["source_label"]) ?? source)
+    : localizedSource.label;
+  const expiresAt = numberFromUnknown(firstMeaningfulValue(record, ["expires_at"]));
   const status = availabilityStatus(record, labels);
   const startTime = start ? String(start) : "";
   const endTime = end ? String(end) : "";
@@ -5802,7 +6913,10 @@ function availabilityRowFromRecord(record: UnknownRecord, labels: ArtistsLabels)
     id,
     date: String(date ?? group ?? "—"),
     endTime,
-    reason: reason ? String(reason) : "",
+    note: note ? String(note) : "",
+    source,
+    sourceLabel,
+    expiresAt,
     startTime,
     time: start || end ? `${toDisplay(start)} — ${toDisplay(end)}` : "—",
     statusLabel: status.label,
@@ -5828,20 +6942,6 @@ function availabilityStatus(record: UnknownRecord, labels: ArtistsLabels) {
   return unavailable
     ? { label: labels.busyStatus, tone: "warning" as const }
     : { label: labels.availableStatus, tone: "success" as const };
-}
-
-function getScheduleStatus(schedule: UnknownRecord, labels: ArtistsLabels, mode: "manage" | "create" = "manage") {
-  if (mode === "create") return { label: labels.scheduleStatusDraft, tone: "warning" as const };
-  const normalized = String(schedule.status ?? schedule.status_label ?? "").toLowerCase();
-  if (normalized.includes("delete") || normalized.includes("deleted")) return { label: labels.deletedStatus, tone: "danger" as const };
-  return { label: labels.scheduleStatusActive, tone: "success" as const };
-}
-
-function scheduleAvailabilitySummary(schedule: UnknownRecord, labels: ArtistsLabels) {
-  const rows = availabilityRowsFromSchedule(schedule, labels);
-  if (rows.length) return labels.busyDaysCount(countBusyDays(rows));
-  if ("availability" in schedule) return labels.noAvailabilityData;
-  return "—";
 }
 
 function getRawAvailabilityPreview(schedule: UnknownRecord, labels: ArtistsLabels) {
@@ -5874,6 +6974,65 @@ function parseDateOnly(value: unknown) {
   return new Date(year, month - 1, day);
 }
 
+function startOfCalendarMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfCalendarMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function calendarMonthRange(date: Date) {
+  return {
+    date_from: dateKey(startOfCalendarMonth(date)),
+    date_to: dateKey(endOfCalendarMonth(date)),
+  };
+}
+
+function calendarMonthNames(locale: Locale) {
+  return locale === "ru"
+    ? [
+        "январь",
+        "февраль",
+        "март",
+        "апрель",
+        "май",
+        "июнь",
+        "июль",
+        "август",
+        "сентябрь",
+        "октябрь",
+        "ноябрь",
+        "декабрь",
+      ]
+    : [
+        "yanvar",
+        "fevral",
+        "mart",
+        "aprel",
+        "may",
+        "iyun",
+        "iyul",
+        "avgust",
+        "sentabr",
+        "oktabr",
+        "noyabr",
+        "dekabr",
+      ];
+}
+
+function calendarYearOptions(schedule: UnknownRecord, visibleMonth: Date) {
+  const years = new Set<number>();
+  const currentYear = new Date().getFullYear();
+  for (let year = currentYear - 5; year <= currentYear + 5; year += 1) years.add(year);
+  for (const key of ["date_from", "date_to"]) {
+    const value = parseDateOnly(schedule[key]);
+    if (value) years.add(value.getFullYear());
+  }
+  years.add(visibleMonth.getFullYear());
+  return Array.from(years).sort((a, b) => a - b);
+}
+
 function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -5898,11 +7057,6 @@ function calendarDaysForMonth(date: Date) {
     day.setDate(start.getDate() + index);
     return day;
   });
-}
-
-function monthTitle(date: Date, locale: Locale) {
-  const title = formatHumanDate(new Date(date.getFullYear(), date.getMonth(), 1).toISOString().slice(0, 10), locale);
-  return title.replace(/^01\s+/, "");
 }
 
 function countTotalDays(schedule: UnknownRecord) {
@@ -5977,6 +7131,8 @@ function TabStateBadge({ state }: { state: DetailResourceState }) {
     );
   }
 
+  if (state.loaded === false) return null;
+
   return (
     <span className="ml-2 inline-flex h-5 items-center rounded-full bg-current/10 px-1.5 text-[10px] font-bold leading-none">
       {count}
@@ -5999,9 +7155,9 @@ function ResourceCards({ rows }: { rows: UnknownRecord[] }) {
             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
               {labels.recordNumber(index + 1)}
             </p>
-            {row.id !== undefined ? (
+            {typeof row.public_id === "string" && row.public_id ? (
               <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-white/10 dark:text-slate-300">
-                ID {toDisplay(row.id)}
+                Public ID {row.public_id}
               </span>
             ) : null}
           </div>
@@ -6048,7 +7204,7 @@ function ValueBlock({
         {value.map((item, index) => (
           <div
             key={index}
-            className="overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10"
+            className="overflow-hidden rounded-lg bg-slate-50 dark:bg-white/[0.04]"
           >
             {isRecord(item) ? <ObjectDetails record={item} /> : <PrimitiveValue fieldKey={fieldKey} value={item} />}
           </div>
@@ -6075,13 +7231,13 @@ function ObjectDetails({ record }: { record: UnknownRecord }) {
   if (!entries.length) return <span>—</span>;
 
   return (
-    <div className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-2">
+    <div className="grid gap-2 sm:grid-cols-2">
       {entries.map(([key, value]) => (
         <div
           key={key}
           className={cn(
             "min-w-0 bg-slate-50 p-3 dark:bg-[#121a2a]",
-            isArtistProfileFinance && key === "balance" && "sm:col-span-2",
+            isArtistProfileFinance && (key === "balance" || key === "debt") && "sm:col-span-2",
           )}
         >
           <span className="block text-[10px] font-bold uppercase leading-4 tracking-[0.08em] text-slate-500 dark:text-slate-400">
@@ -6101,14 +7257,15 @@ function ObjectDetails({ record }: { record: UnknownRecord }) {
 }
 
 function isArtistProfileFinanceRecord(record: UnknownRecord) {
-  return "card_last_four" in record && "balance" in record && "debt" in record;
+  return ("card_number" in record || "card_number_masked" in record) && "balance" in record && "debt" in record;
 }
 
 function objectDetailSortWeight(key: string, isArtistProfileFinance: boolean) {
   if (!isArtistProfileFinance) return 100;
-  if (key === "card_last_four") return 10;
-  if (key === "debt") return 20;
-  if (key === "balance") return 30;
+  if (key === "balance") return 10;
+  if (key === "card_number" || key === "card_number_masked") return 20;
+  if (key === "card_holder_name") return 30;
+  if (key === "debt") return 40;
   return 100;
 }
 
@@ -6170,9 +7327,16 @@ function createDetailResources(
   return resourceTabs.reduce(
     (resources, tab) => ({
       ...resources,
-      [tab]: { loading, error, rows: [] },
+      [tab]: { loading, loaded: false, error, rows: [] },
     }),
     {} as Record<ResourceTab, DetailResourceState>,
+  );
+}
+
+function createResourceRequestIds(): Record<ResourceTab, number> {
+  return resourceTabs.reduce(
+    (requestIds, tab) => ({ ...requestIds, [tab]: 0 }),
+    {} as Record<ResourceTab, number>,
   );
 }
 
@@ -6275,11 +7439,7 @@ function formatEnumValue(fieldKey: string, value: unknown, labels: ArtistsLabels
   }
 
   if (fieldKey === "status" || fieldKey === "status_label" || fieldKey.endsWith("_status")) {
-    if (normalized === "0") return labels.deletedStatus;
-    if (normalized === "9") return labels.statusValueLabels.inactive;
-    if (normalized === "10") return labels.statusValueLabels.active;
-    if (normalized === "20") return labels.statusValueLabels.blocked;
-    if (normalized === "1") return labels.statusValueLabels.active;
+    return getDashboardStatus(getDashboardStatusDomain(fieldKey), value, labels.locale).label;
   }
 
   return labels.statusValueLabels[normalized] ?? raw;
@@ -6289,71 +7449,10 @@ function normalizeEnumToken(value: string) {
   return value.trim().toLowerCase().replace(/[_-]+/g, " ");
 }
 
-function statusTone(
-  fieldKey: string,
-  normalized: string,
-  label: string,
-  rawLabel: string,
-  labels: ArtistsLabels,
-): "danger" | "neutral" | "success" | "warning" {
-  if (rawLabel === "—") return "neutral";
-
-  if (fieldKey.startsWith("is_") || normalized === "true" || normalized === "false") {
-    return normalized === "true" || normalized === "1" ? "success" : "neutral";
-  }
-
-  const localized = normalizeEnumToken(label);
-  const successTokens = [
-    "active",
-    "approved",
-    "confirmed",
-    "completed",
-    "accepted",
-    "published",
-    "faol",
-    "tasdiqlangan",
-    "qabul qilingan",
-    "активно",
-    "активный",
-    "подтвержден",
-    "подтверждено",
-    "принято",
-    "опубликовано",
-    normalizeEnumToken(labels.yes),
-  ];
-  const dangerTokens = [
-    "reject",
-    "cancel",
-    "delete",
-    "deleted",
-    "blocked",
-    "rad etilgan",
-    "bekor qilingan",
-    "o'chirilgan",
-    "отклонено",
-    "отменено",
-    "удалено",
-    "заблокировано",
-  ];
-  const neutralTokens = [
-    "inactive",
-    "unknown",
-    "nofaol",
-    "noma'lum",
-    "неактивно",
-    "неизвестно",
-    normalizeEnumToken(labels.no),
-  ];
-
-  if (dangerTokens.some((token) => normalized.includes(token) || localized.includes(token)) || normalized === "0") {
-    return "danger";
-  }
-  if (successTokens.some((token) => normalized.includes(token) || localized.includes(token)) || normalized === "1" || normalized === "10" || normalized === "20") {
-    return "success";
-  }
-  if (neutralTokens.some((token) => normalized.includes(token) || localized.includes(token))) {
-    return "neutral";
-  }
+function toArtistStatusTone(tone: DashboardStatusTone): "danger" | "neutral" | "success" | "warning" {
+  if (tone === "danger") return "danger";
+  if (tone === "success") return "success";
+  if (tone === "neutral") return "neutral";
   return "warning";
 }
 
@@ -6379,7 +7478,7 @@ function getArtistProfileId(artist: ArtistProfile) {
 
 function getArtistName(artist: ArtistProfile, labels = getArtistsLabels("uz")) {
   const fromParts = [artist.first_name, artist.last_name].filter(Boolean).join(" ").trim();
-  return artist.full_name || fromParts || artist.administrator_name || `${labels.artist} #${getArtistId(artist) ?? "—"}`;
+  return artist.stage_name || artist.full_name || fromParts || artist.administrator_name || `${labels.artist} ${artist.public_id ?? "—"}`;
 }
 
 function getArtistInitials(artist: ArtistProfile, labels: ArtistsLabels) {
@@ -6410,17 +7509,17 @@ function buildArtistPayload(values: {
   status: string;
   region_id: string;
   district_id: string;
-  birth_date: string;
   gender: string;
   category_ids: string;
   bio: string;
+  albums_count: string;
+  rating: string;
   extra_phone: string;
   administrator_name: string;
   administrator_phone: string;
-  card_last_four: string;
-  card_token: string;
+  card_number: string;
+  card_holder_name: string;
   profile_photo_id: string;
-  is_verified: boolean;
   is_top: boolean;
 }) {
   const payload: UpdateArtistPayload = {};
@@ -6429,14 +7528,21 @@ function buildArtistPayload(values: {
   assignUpdatePhone(payload, "phone", values.phone);
   assignUpdateString(payload, "email", values.email);
   assignUpdateNumber(payload, "status", values.status);
+  assignUpdateNumber(payload, "region_id", values.region_id);
+  assignUpdateNumber(payload, "district_id", values.district_id);
   const categoryIds = parseIdList(values.category_ids);
   if (categoryIds.length) payload.category_ids = categoryIds;
+  if (values.gender === "male" || values.gender === "female" || values.gender === "other") {
+    payload.gender = values.gender;
+  }
   assignUpdateString(payload, "bio", values.bio);
+  assignUpdateNumber(payload, "albums_count", values.albums_count);
+  assignUpdateNumber(payload, "rating", values.rating);
   assignUpdatePhone(payload, "extra_phone", values.extra_phone);
   assignUpdateString(payload, "administrator_name", values.administrator_name);
   assignUpdatePhone(payload, "administrator_phone", values.administrator_phone);
-  assignUpdateString(payload, "card_last_four", values.card_last_four);
-  assignUpdateString(payload, "card_token", values.card_token);
+  assignUpdateString(payload, "card_number", values.card_number);
+  assignUpdateString(payload, "card_holder_name", values.card_holder_name);
   assignUpdateNumber(payload, "profile_photo_id", values.profile_photo_id);
   payload.is_top = Boolean(values.is_top);
   return payload;
@@ -6469,22 +7575,22 @@ function splitArtistUpdatePayload(payload: UpdateArtistPayload, artist: ArtistPr
   const lastName = String(payload.last_name ?? artist.last_name ?? getLastNameFromArtist(artist) ?? "").trim();
   const email = String(payload.email ?? artist.email ?? "").trim();
 
-  if (lastName) userPayload.last_name = lastName;
-  if (email) userPayload.email = email;
+  userPayload.last_name = lastName;
+  userPayload.email = email;
 
   return { userPayload, artistPayload };
 }
 
 function assignUpdateString(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: unknown) {
   const normalized = typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value).trim();
-  if (normalized) {
+  if (value !== null && value !== undefined) {
     (payload as Record<string, unknown>)[key] = normalized;
   }
 }
 
 function assignUpdatePhone(payload: UpdateArtistPayload, key: keyof UpdateArtistPayload, value: unknown) {
   const normalized = normalizePhoneForApi(value);
-  if (normalized) {
+  if (value !== null && value !== undefined) {
     (payload as Record<string, unknown>)[key] = normalized;
   }
 }
@@ -6508,11 +7614,14 @@ function initialCreateArtistValues() {
     region_id: "",
     district_id: "",
     bio: "",
+    artist_bio: "",
     birth_date: "",
     gender: "male",
     extra_phone: "",
     administrator_name: "",
     administrator_phone: "",
+    card_number: "",
+    card_holder_name: "",
     albums_count: "",
     fans_count: "",
     profile_photo_id: "",
@@ -6538,13 +7647,15 @@ function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistV
   assignNumber(payload, "district_id", values.district_id);
   assignString(payload, "bio", values.bio);
   assignString(payload, "birth_date", values.birth_date);
-  if (values.gender === "male" || values.gender === "female") {
+  if (values.gender === "male" || values.gender === "female" || values.gender === "other") {
     payload.gender = values.gender;
   }
-  assignString(payload, "artist_bio", values.bio);
+  assignString(payload, "artist_bio", values.artist_bio);
   assignPhone(payload, "extra_phone", values.extra_phone);
   assignString(payload, "administrator_name", values.administrator_name);
   assignPhone(payload, "administrator_phone", values.administrator_phone);
+  assignString(payload, "card_number", values.card_number);
+  assignString(payload, "card_holder_name", values.card_holder_name);
   assignNumber(payload, "albums_count", values.albums_count);
   assignNumber(payload, "fans_count", values.fans_count);
   assignNumber(payload, "profile_photo_id", values.profile_photo_id);
@@ -6573,6 +7684,7 @@ function createArtistServiceDraft(): ArtistServiceDraft {
 
 function createRegionPriceRow(): RegionPriceRow {
   return {
+    advance_amount: "",
     localId: `region-price-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     region_id: "",
     price: "",
@@ -6652,6 +7764,7 @@ function buildCreateArtistServices(values: ArtistServiceDraft[]): NonNullable<Cr
 function buildArtistServiceRegionPricePayload(rows: RegionPriceRow[]): ArtistServiceRegionPricePayload[] {
   return rows
     .map((row) => ({
+      advance_amount: row.advance_amount === "" ? null : Number(row.advance_amount),
       region_id: Number(row.region_id),
       price: Number(row.price),
     }))
@@ -6674,12 +7787,33 @@ function validateArtistServiceDrafts(values: ArtistServiceDraft[], labels: Artis
   return "";
 }
 
+function validateArtistCardNumber(value: string, labels: ArtistsLabels) {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  if (!/^[0-9 -]+$/.test(normalized)) return labels.cardNumberFormatError;
+  const digitCount = normalized.replace(/[^0-9]/g, "").length;
+  if (digitCount < 16 || digitCount > 19) return labels.cardNumberLengthError;
+  return "";
+}
+
+function validateArtistCardHolderName(value: string, labels: ArtistsLabels) {
+  return value.trim().length > 255 ? labels.cardHolderNameLengthError : "";
+}
+
+function validateArtistRating(value: string, labels: ArtistsLabels) {
+  if (!value.trim()) return "";
+  const rating = Number(value);
+  return Number.isFinite(rating) && rating >= 0 && rating <= 5 ? "" : labels.ratingRangeError;
+}
+
 function validateRegionPriceRows(rows: RegionPriceRow[], labels: ArtistsLabels) {
   for (const row of rows) {
-    const hasAnyValue = row.region_id || row.price;
+    const hasAnyValue = row.region_id || row.price || row.advance_amount;
     if (!hasAnyValue) continue;
     if (!Number.isFinite(Number(row.region_id)) || Number(row.region_id) <= 0) return labels.regionPriceRegionRequired;
     if (!Number.isFinite(Number(row.price)) || Number(row.price) <= 0) return labels.regionPricePriceRequired;
+    if (row.advance_amount !== "" && (!Number.isFinite(Number(row.advance_amount)) || Number(row.advance_amount) < 0)) return labels.regionAdvanceInvalid;
+    if (row.advance_amount !== "" && Number(row.advance_amount) > Number(row.price)) return labels.regionAdvanceExceedsPrice;
   }
   return "";
 }
@@ -6745,6 +7879,7 @@ function uploadedFileUrl(file: UploadedFileRecord | undefined) {
 
 type LocalizedEntity = {
   id?: number;
+  public_id?: string;
   name_uz?: string;
   name_ru?: string;
   name_en?: string;
@@ -6753,16 +7888,29 @@ type LocalizedEntity = {
 
 function getLocalizedEntityName(entity: LocalizedEntity, locale: Locale) {
   const localized = locale === "ru" ? entity.name_ru : entity.name_uz;
-  return localized || entity.name_uz || entity.name_ru || entity.name_en || entity.slug || `#${entity.id ?? ""}`;
+  return localized || entity.name_uz || entity.name_ru || entity.name_en || entity.slug || entity.public_id || "—";
 }
 
 function getArtistsLabels(locale: string) {
+  const language: Locale = locale === "ru" ? "ru" : "uz";
+  const notification = (key: Parameters<typeof getDashboardNotification>[0]) =>
+    getDashboardNotification(key, language);
+  const genericStatus = (value: string) => getDashboardStatus("generic", value, language).label;
+  const accountStatus = (value: number) => getDashboardStatus("account", value, language).label;
+  const publicationStatus = (value: number) => getDashboardStatus("publication", value, language).label;
+
   if (locale === "ru") {
     return {
       locale: "ru" as Locale,
       adminName: "Имя администратора",
       adminPhone: "Телефон администратора",
       additionalInfo: "Дополнительная информация",
+      profileCompleteness: "Заполнение профиля",
+      profileGaps: "Что нужно заполнить",
+      quota: "Лимиты и квоты",
+      otherDetails: "Другие данные",
+      noAdditionalInfo: "Дополнительных данных нет",
+      achievements: "Достижения",
       albumsCount: "Количество альбомов",
       albums: "Альбомы",
       artist: "Артист",
@@ -6786,24 +7934,54 @@ function getArtistsLabels(locale: string) {
       availabilityList: "Занятое время",
       availabilitySummary: "Сводка доступности",
       availabilityType: "Тип доступности",
-      availableStatus: "Доступно",
+      availableStatus: getDashboardStatus("availability", "available", language).label,
+      availableDayAction: "Свободно, можно добавить время",
       availableDays: "Доступные дни",
       availableDaysCount: (count: number) => `${count} доступных дней`,
-      busyStatus: "Занято",
+      busyStatus: getDashboardStatus("availability", "busy", language).label,
       busyDays: "Занятые дни",
       busyDaysCount: (count: number) => `${count} занятых дней`,
-      busySlotCreated: "Занятое время добавлено",
-      busySlotDeleted: "Занятое время удалено",
+      busyDateAction: "Есть занятое время, можно добавить другой интервал",
+      busySlotCount: (count: number) => count === 1
+        ? "1 занятый интервал"
+        : count >= 2 && count <= 4
+          ? `${count} занятых интервала`
+          : `${count} занятых интервалов`,
+      busySlotCreated: notification("busySlotCreated"),
+      busySlotDeleted: notification("busySlotDeleted"),
       busySlotDeleteFailed: "Не удалось удалить занятое время",
       busySlotIdMissing: "ID занятого времени не найден",
+      busySlotOverlap: (time: string, source: string) => `${source}: ${time}. Выберите другой интервал без пересечения с этим временем.`,
       busySlotSaveFailed: "Не удалось сохранить занятое время",
-	      busySlotUpdated: "Занятое время обновлено",
+      busySlotUpdateFailedRestored: "Изменения не сохранены. Исходное занятое время восстановлено.",
+      busySlotUpdateFailedRestoreFailed: "Изменения не сохранены, исходное время восстановить не удалось. Обновите расписание и проверьте данные.",
+      busySlotSubtitle: "Укажите день и временной интервал",
+      busySlotUpdated: notification("busySlotUpdated"),
+      busySlotSource: "Источник",
+      busySlotExpiresAt: "Истекает",
+      closeImagePreview: "Закрыть просмотр изображения",
 	      balance: "Баланс",
 	      balanceAfter: "Баланс после",
 	      balanceBefore: "Баланс до",
 	      calendarPreview: "Календарь",
-	      cardLastFour: "Последние 4 цифры карты",
-	      cardToken: "Токен карты",
+	      calendarHint: "Нажмите на любой день расписания, чтобы добавить время.",
+	      calendarLoading: "Календарь обновляется",
+	      holdBusyLocked: "Временное удержание изменяется через заказ.",
+	      lockedBusyStatus: "Время заказа или удержания нельзя изменить, но можно добавить другой интервал",
+	      manualBusyStatus: "Добавлено вручную, можно изменить",
+	      nextMonth: "Следующий месяц",
+	      orderBusyLocked: "Занято заказом. Изменение здесь недоступно.",
+	      openOrder: "Открыть заказ",
+	      outsideSchedule: "Вне расписания",
+	      previousMonth: "Предыдущий месяц",
+	      selectMonth: "Выбрать месяц",
+	      selectYear: "Выбрать год",
+	      cardDetails: "Данные банковской карты",
+	      cardHolderName: "Имя владельца карты",
+	      cardHolderNameLengthError: "Имя владельца карты не должно превышать 255 символов.",
+	      cardNumber: "Номер карты",
+	      cardNumberFormatError: "Номер карты может содержать только цифры, пробелы и дефисы.",
+	      cardNumberLengthError: "Номер карты должен содержать от 16 до 19 цифр.",
 	      artistBio: "Bio артиста",
       birthDate: "Дата рождения",
       cancel: "Закрыть",
@@ -6812,15 +7990,16 @@ function getArtistsLabels(locale: string) {
       categoryIds: "ID категорий",
       client: "Клиент",
       comment: "Комментарий",
-      commentDeleted: "Комментарий удален",
+      commentPlaceholder: "Введите комментарий...",
+      commentDeleted: notification("commentDeleted"),
       commentDeleteFailed: "Не удалось удалить комментарий",
       commentIdMissing: "ID комментария не найден",
       commentItemCount: (count: number) => `${count} ${count === 1 ? "комментарий" : "комментариев"}`,
-      commentPublished: "Комментарий опубликован",
+      commentPublished: notification("commentPublished"),
       commentPublishFailed: "Не удалось опубликовать комментарий",
-      commentUnpublished: "Комментарий скрыт",
+      commentUnpublished: notification("commentHidden"),
       commentUnpublishFailed: "Не удалось скрыть комментарий",
-      commentUpdated: "Комментарий обновлен",
+      commentUpdated: notification("commentUpdated"),
       commentUpdateFailed: "Не удалось обновить комментарий",
       comments: "Комментарии",
       commentsEmptyDescription: "Для этого артиста пока нет комментариев.",
@@ -6831,18 +8010,25 @@ function getArtistsLabels(locale: string) {
       createArtist: "Создать артиста",
       createFailed: "Не удалось создать артиста",
       createTitle: "Создание артиста",
-      created: "Артист создан",
+      created: notification("artistCreated"),
       creating: "Создается...",
       createdAt: "Создано",
+      formTabBasic: "Основные данные",
+      formTabProfile: "Профиль и описание",
+      formTabSettings: "Услуги и аккаунт",
+      formTabServices: "Услуги и цены",
+      formTabAccount: "Аккаунт и безопасность",
+      lineSeparatedPlaceholder: "Каждое значение с новой строки",
       custom: "Настроить",
       date: "Дата",
       dateFilter: "Дата",
       dateFrom: "Дата с",
       dateTo: "Дата до",
-      deletedStatus: "Удалено",
+      deletedStatus: accountStatus(0),
       description: "Просмотр, фильтрация и обновление данных профилей артистов.",
       detailLoadFailed: "Не удалось загрузить детали артиста",
       detailTitle: "Детали артиста",
+      experienceYears: "Опыт",
       district: "Район",
       duration: "Длительность",
       duplicateSchedule: "Дублировать расписание",
@@ -6881,8 +8067,9 @@ function getArtistsLabels(locale: string) {
 	        balance: "Баланс",
 	        balance_after: "Баланс после",
 	        balance_before: "Баланс до",
-	        card_last_four: "Последние 4 цифры карты",
-	        card_token: "Токен карты",
+	        card_holder_name: "Имя владельца карты",
+	        card_number: "Номер карты",
+	        card_number_masked: "Маскированный номер карты",
 	        category_ids: "ID категорий",
 	        client_id: "ID клиента",
 	        created_at: "Создано",
@@ -6897,8 +8084,16 @@ function getArtistsLabels(locale: string) {
         first_name: "Имя",
         full_name: "Полное имя",
         id: "ID",
+        public_id: "Public ID",
         is_top: "Top",
         is_verified: "Подтвержден",
+        profile_gaps: "Незаполненные данные",
+        period: "Период",
+        limit: "Лимит",
+        used: "Использовано",
+        total_all_time: "За все время",
+        unlimited: "Без ограничений",
+        enforced: "Проверка включена",
         last_name: "Фамилия",
 	        message: "Сообщение",
 	        note: "Примечание",
@@ -6921,8 +8116,19 @@ function getArtistsLabels(locale: string) {
 	      gallery: "Галерея",
       galleryEmptyDescription: "Для этого артиста пока нет загруженных изображений.",
       galleryEmptyTitle: "Галерея пуста",
+      galleryDeleteConfirm: "Изображение будет удалено из галереи артиста.",
+      galleryDeleteFailed: "Не удалось удалить изображение галереи",
+      galleryDeleteTitle: "Удалить изображение?",
+      galleryDeleted: notification("artistGalleryDeleted"),
+      galleryFileTooLarge: "Размер каждого изображения не должен превышать 5 МБ.",
+      galleryInvalidFileType: "Разрешены только изображения JPG, PNG и WebP.",
       galleryItem: "Изображение",
+      galleryItemIdMissing: "ID изображения галереи не найден",
       galleryItemCount: (count: number) => `${count} ${count === 1 ? "изображение" : "изображений"}`,
+      galleryTooManyFiles: "За один раз можно загрузить не более 10 изображений.",
+      galleryUpload: "Загрузить изображения",
+      galleryUploadFailed: "Не удалось загрузить изображения галереи",
+      galleryUploaded: notification("artistGalleryUploaded"),
       gender: "Пол",
       genderFemale: "Женский",
       genderMale: "Мужской",
@@ -6931,7 +8137,8 @@ function getArtistsLabels(locale: string) {
       loadingTitle: (title: string) => `${title} загружается...`,
       fullName: "Полное имя",
       language: "Язык",
-      id: "ID",
+      id: "Public ID",
+      public_id: "Public ID",
       bio: "Bio",
       mainInfo: "Основная информация",
       manage: "Управлять",
@@ -6957,29 +8164,33 @@ function getArtistsLabels(locale: string) {
       passwordMismatch: "Пароли не совпадают",
       passwordMinLength: "Пароль должен быть не меньше 6 символов",
       resetPasswordAction: "Сбросить пароль",
-      resetPasswordTitle: "Сброс пароля артиста",
+      resetPasswordTitle: "Сбросить пароль артиста",
       resetPasswordDescription: (name: string) => `Новый пароль будет установлен для ${name}.`,
-      passwordResetSuccess: "Пароль артиста обновлен",
+      passwordResetSuccess: notification("artistPasswordReset"),
       passwordResetFailed: "Не удалось обновить пароль артиста",
       phone: "Телефон",
-      pendingStatus: "Ожидает",
+      pendingStatus: genericStatus("pending"),
       price: "Цена",
       profile: "Профиль",
-      regionPriceDeleted: "Региональная цена удалена",
+      regionPriceDeleted: notification("regionPriceDeleted"),
+      advanceAmount: "Аванс",
+      effectiveAdvance: "Действующий аванс",
+      regionAdvanceInvalid: "Аванс должен быть неотрицательным числом.",
+      regionAdvanceExceedsPrice: "Аванс не может превышать цену региона.",
       regionPriceDeleteFailed: "Не удалось удалить региональную цену",
       regionPricePriceRequired: "Укажите цену",
       regionPrices: "Цены по регионам",
       regionPricesEmpty: "Для этого сервиса региональные цены не указаны.",
-      regionPriceSaved: "Региональная цена сохранена",
+      regionPriceSaved: notification("regionPriceSaved"),
       regionPriceSaveFailed: "Не удалось сохранить региональную цену",
       regionPriceRegionRequired: "Выберите регион",
       regionPriceServiceMissing: "ID сервиса артиста не найден",
       publicationStatus: "Статус публикации",
-      publishedRatings: "Опубликовано",
+      publishedRatings: publicationStatus(1),
       publishComment: "Опубликовать",
       publishCommentConfirm: "Комментарий станет видимым в профиле артиста.",
       publishCommentTitle: "Опубликовать комментарий?",
-      publishedStatus: "Опубликовано",
+      publishedStatus: publicationStatus(1),
       districtId: "ID района",
       lastName: "Фамилия",
       noProfilePhoto: "Фото не выбрано",
@@ -6987,10 +8198,11 @@ function getArtistsLabels(locale: string) {
       profilePhoto: "Фото профиля",
       profilePhotoHint: "JPG или PNG, до 5 MB.",
       rating: "Рейтинг",
-      ratingDeleted: "Рейтинг удален",
+      ratingDeleted: notification("ratingDeleted"),
       ratingDeleteFailed: "Не удалось удалить рейтинг",
       ratingIdMissing: "ID рейтинга не найден",
       ratingItemCount: (count: number) => `${count} ${count === 1 ? "рейтинг" : "рейтингов"}`,
+      ratingRangeError: "Рейтинг должен быть от 0 до 5.",
       ratings: "Рейтинги",
       ratingsEmptyDescription: "Для этого артиста пока нет оценок.",
       ratingsEmptyTitle: "Рейтингов нет",
@@ -7005,42 +8217,46 @@ function getArtistsLabels(locale: string) {
       rawAvailability: "Сырые данные доступности",
       quickInfo: "Краткая информация",
       scheduleDetails: "Детали расписания",
-      scheduleManagementTitle: "Управление расписанием",
+      scheduleManagementHint: "Выберите любой день и добавьте свободный интервал. Время заказа доступно только для просмотра.",
+      scheduleManagementTitle: "Управление занятым временем",
+      schedulePeriod: "Период",
       scheduleRecordCount: (count: number) => `${count} ${count === 1 ? "запись" : "записей"}`,
-      scheduleStatusActive: "Активно",
+      scheduleStatusActive: getDashboardStatus("resource", 1, language).label,
 	      scheduleStatusDraft: "Черновик",
 	      search: "Поиск",
-	      searchPlaceholder: "Имя, фамилия или телефон",
-	      artistServiceDeleted: "Услуга артиста удалена",
+      searchPlaceholder: "ART-75 или имя, фамилия, телефон",
+      artistServiceDeleted: notification("artistServiceDeleted"),
 	      artistServiceDeleteFailed: "Не удалось удалить услугу артиста",
-	      artistServiceSaved: "Услуга артиста сохранена",
+      artistServiceSaved: notification("artistServiceSaved"),
 	      artistServiceSaveFailed: "Не удалось сохранить услугу артиста",
-	      services: "Услуги",
+      services: "Услуги",
+      manageServices: "Управлять услугами",
+      manageAvailability: "Управлять расписанием",
       sortOrder: "Порядок",
       status: "Статус",
       statusValueLabels: {
-        active: "Активно",
-        inactive: "Неактивно",
-        pending: "Ожидает",
-        "pending review": "На рассмотрении",
-        "payment pending": "Ожидает оплату",
-        "awaiting payment": "Ожидает оплату",
-        approved: "Подтверждено",
-        accepted: "Принято",
-        rejected: "Отклонено",
-        confirmed: "Подтверждено",
-        "in progress": "В процессе",
-        processing: "В процессе",
-        completed: "Завершено",
-        done: "Завершено",
-        cancelled: "Отменено",
-        canceled: "Отменено",
-        deleted: "Удалено",
-        expired: "Истекло",
+        active: accountStatus(10),
+        inactive: accountStatus(9),
+        pending: genericStatus("pending"),
+        "pending review": genericStatus("pending_review"),
+        "payment pending": getDashboardStatus("order", 20, language).label,
+        "awaiting payment": getDashboardStatus("order", 20, language).label,
+        approved: genericStatus("approved"),
+        accepted: genericStatus("accepted"),
+        rejected: genericStatus("rejected"),
+        confirmed: genericStatus("confirmed"),
+        "in progress": genericStatus("in_progress"),
+        processing: genericStatus("processing"),
+        completed: genericStatus("completed"),
+        done: genericStatus("done"),
+        cancelled: genericStatus("cancelled"),
+        canceled: genericStatus("canceled"),
+        deleted: accountStatus(0),
+        expired: genericStatus("expired"),
         unknown: "Неизвестно",
-        blocked: "Заблокировано",
-        published: "Опубликовано",
-        unpublished: "Скрыто",
+        blocked: accountStatus(20),
+        published: publicationStatus(1),
+        unpublished: publicationStatus(0),
         user: "Пользователь",
         admin: "Администратор",
         moderator: "Модератор",
@@ -7067,10 +8283,11 @@ function getArtistsLabels(locale: string) {
       unpublishCommentTitle: "Скрыть комментарий?",
       unpublishedStatus: "Скрыто",
       updateFailed: "Не удалось обновить",
-      updated: "Артист обновлен",
+      updated: notification("artistUpdated"),
       updatedAt: "Обновлено",
       endTime: "Время окончания",
       lastActivity: "Последняя активность",
+      tableRegionLabel: "Таблица артистов. Для просмотра скрытых столбцов используйте горизонтальную прокрутку.",
       reason: "Примечание",
       saveBusySlot: "Сохранить",
       saveComment: "Сохранить",
@@ -7085,10 +8302,18 @@ function getArtistsLabels(locale: string) {
       videosEmptyTitle: "Видео не найдены",
       videosLoading: "Видео загружаются...",
       viewInTable: "Посмотреть в таблице",
+      manageVideos: "Управлять видео",
       weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
       selectedPhoto: (id: number) => `Выбрано фото #${id}`,
       selectRegionFirst: "Сначала выберите регион",
-      adminInfo: "Данные администратора",
+      shortDescription: "Краткое описание",
+      shortDescriptionPlaceholder: "Короткий текст для карточки артиста",
+      stageName: "Сценическое имя",
+      stageNamePlaceholder: "Например, Shahzoda",
+      titles: "Звания",
+      titlesAndAchievements: "Звания и достижения",
+      years: "лет",
+      adminInfo: "Контакт администратора",
       accountStatus: "Аккаунт и статус",
       artistInfo: "Данные артиста",
       locationInfo: "Локация",
@@ -7102,6 +8327,12 @@ function getArtistsLabels(locale: string) {
     adminName: "Administrator ismi",
     adminPhone: "Administrator telefoni",
     additionalInfo: "Qo'shimcha ma'lumot",
+    profileCompleteness: "Profil to'liqligi",
+    profileGaps: "To'ldirilishi kerak",
+    quota: "Limitlar va quota",
+    otherDetails: "Boshqa ma'lumotlar",
+    noAdditionalInfo: "Qo'shimcha ma'lumot yo'q",
+    achievements: "Yutuqlari",
     albumsCount: "Albomlar soni",
     albums: "Albomlar",
     artist: "Sanatkor",
@@ -7125,24 +8356,50 @@ function getArtistsLabels(locale: string) {
     availabilityList: "Band vaqtlar",
       availabilitySummary: "Bo'sh vaqt xulosasi",
       availabilityType: "Bo'sh vaqt turi",
-      availableStatus: "Bo'sh",
+      availableStatus: getDashboardStatus("availability", "available", language).label,
+      availableDayAction: "Bo‘sh, band vaqt qo‘shish mumkin",
       availableDays: "Bo'sh kunlar",
       availableDaysCount: (count: number) => `${count} ta bo'sh kun`,
-      busyStatus: "Band",
+      busyStatus: getDashboardStatus("availability", "busy", language).label,
       busyDays: "Band kunlar",
       busyDaysCount: (count: number) => `${count} ta band kun`,
-      busySlotCreated: "Band vaqt qo'shildi",
-      busySlotDeleted: "Band vaqt o'chirildi",
+      busyDateAction: "Band vaqt bor, boshqa vaqt oralig‘ini qo‘shish mumkin",
+      busySlotCount: (count: number) => `${count} ta band vaqt oralig‘i`,
+      busySlotCreated: notification("busySlotCreated"),
+      busySlotDeleted: notification("busySlotDeleted"),
       busySlotDeleteFailed: "Band vaqtni o'chirish bajarilmadi",
       busySlotIdMissing: "Band vaqt ID topilmadi",
+      busySlotOverlap: (time: string, source: string) => `${source}: ${time}. Bu vaqt bilan ustma-ust tushmaydigan boshqa intervalni tanlang.`,
       busySlotSaveFailed: "Band vaqtni saqlash bajarilmadi",
-	    busySlotUpdated: "Band vaqt yangilandi",
+      busySlotUpdateFailedRestored: "O‘zgarish saqlanmadi. Avvalgi band vaqt qayta tiklandi.",
+      busySlotUpdateFailedRestoreFailed: "O‘zgarish saqlanmadi va avvalgi vaqtni tiklab bo‘lmadi. Jadvalni yangilab, ma’lumotni tekshiring.",
+      busySlotSubtitle: "Kun va vaqt oralig‘ini belgilang",
+      busySlotUpdated: notification("busySlotUpdated"),
+	    busySlotSource: "Manba",
+	    busySlotExpiresAt: "Tugash vaqti",
+      closeImagePreview: "Rasm ko‘rinishini yopish",
 	    balance: "Balans",
 	    balanceAfter: "Keyingi balans",
 	    balanceBefore: "Oldingi balans",
 	    calendarPreview: "Kalendar",
-	    cardLastFour: "Kartaning oxirgi 4 raqami",
-	    cardToken: "Karta tokeni",
+	    calendarHint: "Vaqt qo‘shish uchun jadval ichidagi istalgan kunni bosing.",
+	    calendarLoading: "Kalendar yangilanmoqda",
+	    holdBusyLocked: "Vaqtincha ushlab turilgan vaqt buyurtma jarayoni orqali boshqariladi.",
+	    lockedBusyStatus: "Buyurtma yoki vaqtincha band interval o‘zgartirilmaydi, ammo boshqa vaqt qo‘shish mumkin",
+	    manualBusyStatus: "Qo‘lda band qilingan, tahrirlash mumkin",
+	    nextMonth: "Keyingi oy",
+	    orderBusyLocked: "Buyurtma orqali band. Bu yerdan o‘zgartirilmaydi.",
+	    openOrder: "Buyurtmani ochish",
+	    outsideSchedule: "Jadvaldan tashqari",
+	    previousMonth: "Oldingi oy",
+	    selectMonth: "Oyni tanlash",
+	    selectYear: "Yilni tanlash",
+	    cardDetails: "Bank karta ma'lumotlari",
+	    cardHolderName: "Karta egasining ismi",
+	    cardHolderNameLengthError: "Karta egasining ismi 255 belgidan oshmasligi kerak.",
+	    cardNumber: "Karta raqami",
+	    cardNumberFormatError: "Karta raqamida faqat raqam, bo'sh joy va defis bo'lishi mumkin.",
+	    cardNumberLengthError: "Karta raqami 16–19 ta raqamdan iborat bo'lishi kerak.",
 	    artistBio: "Sanatkor bio",
     birthDate: "Tug'ilgan sana",
     cancel: "Yopish",
@@ -7151,15 +8408,16 @@ function getArtistsLabels(locale: string) {
     categoryIds: "Kategoriya IDlari",
     client: "Mijoz",
     comment: "Izoh",
-    commentDeleted: "Izoh o'chirildi",
+    commentPlaceholder: "Izoh yozing...",
+    commentDeleted: notification("commentDeleted"),
     commentDeleteFailed: "Izohni o'chirish bajarilmadi",
     commentIdMissing: "Izoh ID topilmadi",
     commentItemCount: (count: number) => `${count} ta izoh`,
-    commentPublished: "Izoh ko'rsatildi",
+    commentPublished: notification("commentPublished"),
     commentPublishFailed: "Izohni ko'rsatish bajarilmadi",
-    commentUnpublished: "Izoh yashirildi",
+    commentUnpublished: notification("commentHidden"),
     commentUnpublishFailed: "Izohni yashirish bajarilmadi",
-    commentUpdated: "Izoh yangilandi",
+    commentUpdated: notification("commentUpdated"),
     commentUpdateFailed: "Izohni yangilash bajarilmadi",
     comments: "Izohlar",
     commentsEmptyDescription: "Bu sanatkor uchun hali izoh yozilmagan.",
@@ -7170,18 +8428,25 @@ function getArtistsLabels(locale: string) {
     createArtist: "Sanatkor yaratish",
     createFailed: "Sanatkor yaratilmadi",
     createTitle: "Sanatkor yaratish",
-    created: "Sanatkor yaratildi",
+    created: notification("artistCreated"),
     creating: "Yaratilmoqda...",
     createdAt: "Yaratilgan",
+    formTabBasic: "Asosiy ma'lumotlar",
+    formTabProfile: "Profil va tavsif",
+    formTabSettings: "Xizmatlar va hisob",
+    formTabServices: "Xizmatlar va narxlar",
+    formTabAccount: "Hisob va xavfsizlik",
+    lineSeparatedPlaceholder: "Har bir qiymatni yangi qatordan kiriting",
     custom: "Sozlash",
     date: "Sana",
     dateFilter: "Sana",
     dateFrom: "Boshlanish sanasi",
     dateTo: "Tugash sanasi",
-    deletedStatus: "O'chirilgan",
+    deletedStatus: accountStatus(0),
     description: "Sanatkor profillarini ko'rish, filterlash va kerakli ma'lumotlarni yangilash.",
     detailLoadFailed: "Sanatkor tafsilotlari yuklanmadi",
     detailTitle: "Sanatkor tafsilotlari",
+    experienceYears: "Tajribasi",
     district: "Tuman",
     duration: "Davomiylik",
     duplicateSchedule: "Vaqtni nusxalash",
@@ -7220,8 +8485,9 @@ function getArtistsLabels(locale: string) {
 	      balance: "Balans",
 	      balance_after: "Keyingi balans",
 	      balance_before: "Oldingi balans",
-	      card_last_four: "Kartaning oxirgi 4 raqami",
-	      card_token: "Karta tokeni",
+	      card_holder_name: "Karta egasining ismi",
+	      card_number: "Karta raqami",
+	      card_number_masked: "Maskalangan karta raqami",
 	      category_ids: "Kategoriya IDlari",
 	      client_id: "Mijoz ID",
 	      created_at: "Yaratilgan",
@@ -7235,9 +8501,16 @@ function getArtistsLabels(locale: string) {
 	      extra_phone: "Qo'shimcha telefon",
       first_name: "Ism",
       full_name: "To'liq ism",
-      id: "ID",
+      id: "Public ID",
       is_top: "Top",
       is_verified: "Tasdiqlangan",
+      profile_gaps: "To'ldirilmagan ma'lumotlar",
+      period: "Davr",
+      limit: "Limit",
+      used: "Ishlatilgan",
+      total_all_time: "Barcha vaqt bo'yicha",
+      unlimited: "Cheklanmagan",
+      enforced: "Tekshiruv yoqilgan",
       last_name: "Familiya",
 	      message: "Xabar",
 	      note: "Izoh",
@@ -7260,8 +8533,19 @@ function getArtistsLabels(locale: string) {
 	    gallery: "Galereya",
     galleryEmptyDescription: "Bu sanatkor uchun hali rasm yuklanmagan.",
     galleryEmptyTitle: "Galereya bo'sh",
+    galleryDeleteConfirm: "Rasm sanatkor galereyasidan o‘chiriladi.",
+    galleryDeleteFailed: "Galereya rasmini o‘chirish bajarilmadi",
+    galleryDeleteTitle: "Rasm o‘chirilsinmi?",
+    galleryDeleted: notification("artistGalleryDeleted"),
+    galleryFileTooLarge: "Har bir rasm hajmi 5 MB dan oshmasligi kerak.",
+    galleryInvalidFileType: "Faqat JPG, PNG va WebP rasmlariga ruxsat beriladi.",
     galleryItem: "Rasm",
+    galleryItemIdMissing: "Galereya rasmi ID topilmadi",
     galleryItemCount: (count: number) => `${count} ta rasm`,
+    galleryTooManyFiles: "Bir martada 10 tagacha rasm yuklash mumkin.",
+    galleryUpload: "Rasmlar yuklash",
+    galleryUploadFailed: "Galereya rasmlarini yuklash bajarilmadi",
+    galleryUploaded: notification("artistGalleryUploaded"),
     gender: "Jinsi",
     genderFemale: "Ayol",
     genderMale: "Erkak",
@@ -7295,30 +8579,34 @@ function getArtistsLabels(locale: string) {
     confirmPassword: "Parolni tasdiqlash",
     passwordMismatch: "Parollar mos emas",
     passwordMinLength: "Parol kamida 6 belgidan iborat bo'lishi kerak",
-    resetPasswordAction: "Parol reset",
-    resetPasswordTitle: "Sanatkor parolini reset qilish",
-    resetPasswordDescription: (name: string) => `${name} uchun yangi parol o'rnatiladi.`,
-    passwordResetSuccess: "Sanatkor paroli yangilandi",
+    resetPasswordAction: "Parolni tiklash",
+    resetPasswordTitle: "San’atkor parolini tiklash",
+    resetPasswordDescription: (name: string) => `${name} uchun yangi parol o‘rnatiladi.`,
+    passwordResetSuccess: notification("artistPasswordReset"),
     passwordResetFailed: "Sanatkor parolini yangilash bajarilmadi",
     phone: "Telefon",
-    pendingStatus: "Kutilmoqda",
+    pendingStatus: genericStatus("pending"),
     price: "Narx",
     profile: "Profil",
-    regionPriceDeleted: "Viloyat narxi o'chirildi",
+    regionPriceDeleted: notification("regionPriceDeleted"),
+    advanceAmount: "Avans",
+    effectiveAdvance: "Amaldagi avans",
+    regionAdvanceInvalid: "Avans manfiy bo‘lmagan son bo‘lishi kerak.",
+    regionAdvanceExceedsPrice: "Avans viloyat narxidan katta bo‘lishi mumkin emas.",
     regionPriceDeleteFailed: "Viloyat narxini o'chirish bajarilmadi",
     regionPricePriceRequired: "Narx kiriting",
     regionPrices: "Viloyat narxlari",
     regionPricesEmpty: "Bu xizmat uchun viloyat narxlari kiritilmagan.",
-    regionPriceSaved: "Viloyat narxi saqlandi",
+    regionPriceSaved: notification("regionPriceSaved"),
     regionPriceSaveFailed: "Viloyat narxini saqlash bajarilmadi",
     regionPriceRegionRequired: "Viloyat tanlang",
     regionPriceServiceMissing: "Sanatkor xizmati ID topilmadi",
     publicationStatus: "Ko'rsatish holati",
-    publishedRatings: "Ko'rsatilgan",
+    publishedRatings: publicationStatus(1),
     publishComment: "Ko'rsatish",
     publishCommentConfirm: "Izoh sanatkor profilida ko'rinadi.",
     publishCommentTitle: "Izoh ko'rsatilsinmi?",
-    publishedStatus: "Ko'rsatilgan",
+    publishedStatus: publicationStatus(1),
     districtId: "Tuman ID",
     lastName: "Familiya",
     noProfilePhoto: "Rasm tanlanmagan",
@@ -7326,10 +8614,11 @@ function getArtistsLabels(locale: string) {
     profilePhoto: "Profil rasmi",
     profilePhotoHint: "JPG yoki PNG format, 5 MB gacha.",
     rating: "Reyting",
-    ratingDeleted: "Reyting o'chirildi",
+    ratingDeleted: notification("ratingDeleted"),
     ratingDeleteFailed: "Reytingni o'chirish bajarilmadi",
     ratingIdMissing: "Reyting ID topilmadi",
     ratingItemCount: (count: number) => `${count} ta reyting`,
+    ratingRangeError: "Reyting 0 dan 5 gacha bo'lishi kerak.",
     ratings: "Reytinglar",
     ratingsEmptyDescription: "Bu sanatkor uchun hali reyting berilmagan.",
     ratingsEmptyTitle: "Reytinglar yo'q",
@@ -7344,42 +8633,46 @@ function getArtistsLabels(locale: string) {
     rawAvailability: "Bo'sh vaqt raw ma'lumoti",
     quickInfo: "Qisqa ma'lumot",
     scheduleDetails: "Vaqt tafsilotlari",
-    scheduleManagementTitle: "Vaqtlarni boshqarish",
+    scheduleManagementHint: "Kalendardan istalgan kunni tanlab, bo‘sh vaqt oralig‘ini qo‘shing. Buyurtma vaqtlari faqat ko‘rish uchun.",
+    scheduleManagementTitle: "Band vaqtlarni boshqarish",
+    schedulePeriod: "Davr",
     scheduleRecordCount: (count: number) => `${count} ta yozuv`,
-    scheduleStatusActive: "Faol",
+    scheduleStatusActive: getDashboardStatus("resource", 1, language).label,
     scheduleStatusDraft: "Qoralama",
 	    search: "Qidiruv",
-	    searchPlaceholder: "Ism, familiya yoki telefon",
-	    artistServiceDeleted: "Sanatkor xizmati o'chirildi",
+	    searchPlaceholder: "ART-75 yoki ism, familiya, telefon",
+    artistServiceDeleted: notification("artistServiceDeleted"),
 	    artistServiceDeleteFailed: "Sanatkor xizmatini o'chirish bajarilmadi",
-	    artistServiceSaved: "Sanatkor xizmati saqlandi",
+    artistServiceSaved: notification("artistServiceSaved"),
 	    artistServiceSaveFailed: "Sanatkor xizmatini saqlash bajarilmadi",
-	    services: "Xizmatlar",
+    services: "Xizmatlar",
+    manageServices: "Xizmatlarni boshqarish",
+    manageAvailability: "Vaqtlarni boshqarish",
     sortOrder: "Tartib",
     status: "Holat",
     statusValueLabels: {
-      active: "Faol",
-      inactive: "Nofaol",
-      pending: "Kutilmoqda",
-      "pending review": "Ko'rib chiqilmoqda",
-      "payment pending": "To'lov kutilmoqda",
-      "awaiting payment": "To'lov kutilmoqda",
-      approved: "Tasdiqlangan",
-      accepted: "Qabul qilingan",
-      rejected: "Rad etilgan",
-      confirmed: "Tasdiqlangan",
-      "in progress": "Jarayonda",
-      processing: "Jarayonda",
-      completed: "Yakunlangan",
-      done: "Yakunlangan",
-      cancelled: "Bekor qilingan",
-      canceled: "Bekor qilingan",
-      deleted: "O'chirilgan",
-      expired: "Muddati o'tgan",
-      unknown: "Noma'lum",
-      blocked: "Bloklangan",
-      published: "Ko'rsatilgan",
-      unpublished: "Yashirilgan",
+      active: accountStatus(10),
+      inactive: accountStatus(9),
+      pending: genericStatus("pending"),
+      "pending review": genericStatus("pending_review"),
+      "payment pending": getDashboardStatus("order", 20, language).label,
+      "awaiting payment": getDashboardStatus("order", 20, language).label,
+      approved: genericStatus("approved"),
+      accepted: genericStatus("accepted"),
+      rejected: genericStatus("rejected"),
+      confirmed: genericStatus("confirmed"),
+      "in progress": genericStatus("in_progress"),
+      processing: genericStatus("processing"),
+      completed: genericStatus("completed"),
+      done: genericStatus("done"),
+      cancelled: genericStatus("cancelled"),
+      canceled: genericStatus("canceled"),
+      deleted: accountStatus(0),
+      expired: genericStatus("expired"),
+      unknown: "Noma’lum",
+      blocked: accountStatus(20),
+      published: publicationStatus(1),
+      unpublished: publicationStatus(0),
       user: "Foydalanuvchi",
       admin: "Administrator",
       moderator: "Moderator",
@@ -7406,10 +8699,11 @@ function getArtistsLabels(locale: string) {
     unpublishCommentTitle: "Izoh yashirilsinmi?",
     unpublishedStatus: "Yashirilgan",
     updateFailed: "Yangilash bajarilmadi",
-    updated: "Sanatkor yangilandi",
+    updated: notification("artistUpdated"),
     updatedAt: "Yangilangan",
     endTime: "Tugash vaqti",
     lastActivity: "Oxirgi faollik",
+    tableRegionLabel: "Sanatkorlar jadvali. Yashirin ustunlarni ko'rish uchun gorizontal aylantiring.",
     reason: "Izoh",
     saveBusySlot: "Saqlash",
     saveComment: "Saqlash",
@@ -7424,10 +8718,18 @@ function getArtistsLabels(locale: string) {
     videosEmptyTitle: "Videolar topilmadi",
     videosLoading: "Videolar yuklanmoqda...",
     viewInTable: "Jadvalda ko'rish",
+    manageVideos: "Videolarni boshqarish",
     weekdays: ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"],
     selectedPhoto: (id: number) => `Rasm #${id} tanlandi`,
     selectRegionFirst: "Avval viloyat tanlang",
-    adminInfo: "Administrator ma'lumotlari",
+    shortDescription: "Qisqa tavsif",
+    shortDescriptionPlaceholder: "Sanatkor kartasi uchun qisqa matn",
+    stageName: "Sahna nomi",
+    stageNamePlaceholder: "Masalan, Shahzoda",
+    titles: "Unvonlari",
+    titlesAndAchievements: "Unvon va yutuqlar",
+    years: "yil",
+    adminInfo: "Administrator kontakti",
     accountStatus: "Account va holat",
     artistInfo: "San'atkor ma'lumotlari",
     locationInfo: "Joylashuv",
@@ -7438,6 +8740,6 @@ function getArtistsLabels(locale: string) {
 
 function categoryId(category: unknown) {
   if (!isRecord(category)) return "";
-  const id = category.id ?? category.category_id;
+  const id = category.category_id ?? category.id;
   return typeof id === "number" || typeof id === "string" ? String(id) : "";
 }

@@ -9,6 +9,7 @@ import {
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
 import { adminDrawerClassNames, adminDrawerStyles } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import {
   DateFilterSelect,
   getDateFilterPatch,
@@ -27,8 +28,11 @@ import {
   type UpdateStaffPayload,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import type { Locale } from "@/lib/i18n/translations";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn } from "@/lib/utils";
 import type { ListResult, User } from "@/types/api";
 
@@ -71,21 +75,29 @@ export default function OperatorsPage() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
   const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
-  const fetchStaff = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchStaff = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await staffApi.list({ ...filters, role: operatorRole });
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : getOperatorLabels(locale).loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : getOperatorLabels(locale).loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, locale]);
+  }, [filters, locale, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -167,7 +179,7 @@ export default function OperatorsPage() {
         toast.success(labels.unblocked);
       }
       setDialog(null);
-      await fetchStaff();
+      void fetchStaff({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
     } finally {
@@ -181,7 +193,7 @@ export default function OperatorsPage() {
       await staffApi.create(payload);
       toast.success(labels.created);
       setDialog(null);
-      await fetchStaff();
+      void fetchStaff({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.createFailed);
     } finally {
@@ -199,7 +211,7 @@ export default function OperatorsPage() {
       }
       toast.success(password ? labels.updatedWithPassword : labels.updated);
       setDialog(null);
-      await fetchStaff();
+      void fetchStaff({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.updateFailed);
     } finally {
@@ -216,33 +228,27 @@ export default function OperatorsPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-            {labels.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDialog({ type: "create" })}
-          className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
-        >
-          <Plus className="size-4" />
-          {labels.createAction}
-        </button>
-      </div>
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.description}
+        actions={(
+          <button
+            type="button"
+            onClick={() => setDialog({ type: "create" })}
+            className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
+          >
+            <Plus className="size-4" />
+            {labels.createAction}
+          </button>
+        )}
+      />
 
       <form
         onSubmit={applyFilters}
-        className="artistbor-table-filter-shell overflow-x-auto"
+        className="artistbor-table-filter-shell artistbor-responsive-filter-shell"
       >
-        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
+        <div className="artistbor-table-filter-panel artistbor-responsive-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -378,9 +384,9 @@ function OperatorsTable({
   onUnblock: (row: User) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1156px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div className="admin-table-scroll artistbor-people-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
+        <table aria-label={labels.title} className="w-full min-w-[1156px] border-separate border-spacing-0">
           <colgroup>
             <col className="w-14" />
             <col className="w-[340px]" />
@@ -391,7 +397,7 @@ function OperatorsTable({
           </colgroup>
           <thead>
             <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
-              <OperatorsTableHead label="ID" sortable />
+              <OperatorsTableHead label="Public ID" sortable />
               <OperatorsTableHead label={labels.operator} sortable />
               <OperatorsTableHead label={labels.contact} />
               <OperatorsTableHead label={labels.status} />
@@ -402,8 +408,8 @@ function OperatorsTable({
           <tbody>
             {rows.map((row, index) => (
               <tr key={`${row.id ?? "operator"}-${index}`} className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
-                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
-                  {row.id ?? "—"}
+                <td className="whitespace-nowrap border-b border-artistbor-border px-3.5 py-[9px] align-middle text-[13px] font-semibold text-artistbor-secondary">
+                  {row.public_id ?? "—"}
                 </td>
                 <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <OperatorIdentityCell user={row} labels={labels} />
@@ -711,18 +717,13 @@ function isBlockedUser(user: User) {
 }
 
 function getOperatorStatusDisplay(user: User, labels: OperatorLabels) {
-  const status = String(user.status ?? user.status_label ?? "10").trim().toLowerCase();
-  if (status === "20" || status.includes("block")) return { label: labels.blockedStatus, tone: "danger" as const };
-  if (status === "9" || status.includes("inactive") || status.includes("nofaol")) return { label: labels.inactiveStatus, tone: "neutral" as const };
-  if (status === "0" || status.includes("delete") || status.includes("deleted") || status.includes("o'chiril")) {
-    return { label: labels.deletedStatus, tone: "danger" as const };
-  }
-  return { label: labels.activeStatus, tone: "success" as const };
+  const status = getDashboardStatus("account", user.status ?? user.status_label, labels.locale);
+  return { label: status.label, tone: status.tone };
 }
 
 function getOperatorName(user: User, labels: OperatorLabels) {
   const fromParts = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-  return fromParts || user.email || formatPhone(user.phone) || `${labels.operator} #${user.id ?? "—"}`;
+  return fromParts || user.email || formatPhone(user.phone) || `${labels.operator} ${user.public_id ?? "—"}`;
 }
 
 function getOperatorInitials(name: string) {
@@ -739,13 +740,13 @@ function getOperatorInitials(name: string) {
 
 function getOperatorAvatarTone(seed: unknown) {
   const tones = [
-    "bg-purple-50 text-purple-600 ring-purple-100 dark:bg-purple-500/10 dark:text-purple-300 dark:ring-purple-500/20",
-    "bg-sky-50 text-sky-600 ring-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20",
-    "bg-cyan-50 text-cyan-600 ring-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-300 dark:ring-cyan-500/20",
-    "bg-pink-50 text-pink-600 ring-pink-100 dark:bg-pink-500/10 dark:text-pink-300 dark:ring-pink-500/20",
+    "bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
+    "bg-orange-50 text-orange-600 ring-orange-100 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/20",
+    "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+    "bg-rose-50 text-rose-600 ring-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20",
     "bg-amber-50 text-amber-600 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
-    "bg-violet-50 text-violet-600 ring-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20",
-    "bg-teal-50 text-teal-600 ring-teal-100 dark:bg-teal-500/10 dark:text-teal-300 dark:ring-teal-500/20",
+    "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-500/10 dark:text-slate-300 dark:ring-slate-500/20",
+    "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
     "bg-orange-50 text-orange-600 ring-orange-100 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/20",
   ];
   const text = String(seed ?? "");
@@ -793,35 +794,41 @@ function getStaffStatusOptions(labels: OperatorLabels) {
 }
 
 function getOperatorLabels(locale: string) {
+  const language = locale === "ru" ? "ru" : "uz";
+  const accountStatus = (value: number) => getDashboardStatus("account", value, language).label;
+  const notification = (key: Parameters<typeof getDashboardNotification>[0]) =>
+    getDashboardNotification(key, language);
+
   if (locale === "ru") {
     return {
+      locale: language as Locale,
       actionFailed: "Не удалось выполнить действие",
       actions: "Действия",
-      activeStatus: "Активный",
+      activeStatus: accountStatus(10),
       all: "Все",
       blockAction: "Заблокировать",
       blockConfirm: "Подтвердите блокировку оператора.",
-      blocked: "Оператор заблокирован",
-      blockedStatus: "Заблокирован",
+      blocked: notification("operatorBlocked"),
+      blockedStatus: accountStatus(20),
       blockTitle: "Блокировка оператора",
       cancel: "Закрыть",
       clear: "Сбросить",
       contact: "Контакт",
       createAction: "Создать оператора",
       createFailed: "Не удалось создать оператора",
-      created: "Оператор создан",
+      created: notification("operatorCreated"),
       createdAt: "Создан",
       createTitle: "Создание оператора",
       custom: "Настроить",
       dateFilter: "Дата",
       dateFrom: "Дата с",
       dateTo: "Дата до",
-      deletedStatus: "Удален",
+      deletedStatus: accountStatus(0),
       description: "Просмотр, создание, редактирование и блокировка операторов.",
       editTitle: "Редактирование оператора",
       eyebrow: "Операторы",
       firstName: "Имя",
-      inactiveStatus: "Неактивный",
+      inactiveStatus: accountStatus(9),
       lastName: "Фамилия",
       loadFailed: "Не удалось загрузить операторов",
       newPassword: "Новый пароль",
@@ -839,42 +846,43 @@ function getOperatorLabels(locale: string) {
       title: "Операторы",
       unblockAction: "Разблокировать",
       unblockConfirm: "Подтвердите разблокировку оператора.",
-      unblocked: "Оператор разблокирован",
+      unblocked: notification("operatorUnblocked"),
       unblockTitle: "Разблокировка",
-      updated: "Оператор обновлен",
-      updatedWithPassword: "Оператор и пароль обновлены",
+      updated: notification("operatorUpdated"),
+      updatedWithPassword: notification("operatorUpdatedWithPassword"),
       updateFailed: "Не удалось обновить",
     };
   }
 
   return {
+    locale: language as Locale,
     actionFailed: "Amal bajarilmadi",
     actions: "Amallar",
-    activeStatus: "Faol",
+    activeStatus: accountStatus(10),
     all: "Barchasi",
     blockAction: "Bloklash",
     blockConfirm: "Operatorni bloklashni tasdiqlaysizmi?",
-    blocked: "Operator bloklandi",
-    blockedStatus: "Bloklangan",
+    blocked: notification("operatorBlocked"),
+    blockedStatus: accountStatus(20),
     blockTitle: "Operatorni bloklash",
     cancel: "Yopish",
     clear: "Tozalash",
     contact: "Aloqa",
     createAction: "Operator yaratish",
     createFailed: "Operator yaratilmadi",
-    created: "Operator yaratildi",
+    created: notification("operatorCreated"),
     createdAt: "Yaratilgan",
     createTitle: "Operator yaratish",
     custom: "Sozlash",
     dateFilter: "Sana",
     dateFrom: "Sanadan",
     dateTo: "Sanagacha",
-    deletedStatus: "O'chirilgan",
+    deletedStatus: accountStatus(0),
     description: "Operatorlarni ko'rish, yaratish, tahrirlash va bloklash.",
     editTitle: "Operatorni tahrirlash",
     eyebrow: "Operatorlar",
     firstName: "Ism",
-    inactiveStatus: "Nofaol",
+    inactiveStatus: accountStatus(9),
     lastName: "Familiya",
     loadFailed: "Operatorlar yuklanmadi",
     newPassword: "Yangi parol",
@@ -892,10 +900,10 @@ function getOperatorLabels(locale: string) {
     title: "Operatorlar",
     unblockAction: "Blokdan chiqarish",
     unblockConfirm: "Operatorni blokdan chiqarishni tasdiqlaysizmi?",
-    unblocked: "Operator blokdan chiqarildi",
+    unblocked: notification("operatorUnblocked"),
     unblockTitle: "Blokdan chiqarish",
-    updated: "Operator yangilandi",
-    updatedWithPassword: "Operator va parol yangilandi",
+    updated: notification("operatorUpdated"),
+    updatedWithPassword: notification("operatorUpdatedWithPassword"),
     updateFailed: "Yangilash bajarilmadi",
   };
 }

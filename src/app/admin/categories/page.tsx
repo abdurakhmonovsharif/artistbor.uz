@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import {
   adminActionButtonClass,
   adminActionButtonLargeClass,
@@ -29,6 +30,8 @@ import {
   type CategoryUpdatePayload,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn, toDisplay } from "@/lib/utils";
 import type { Category } from "@/types/api";
 
@@ -57,31 +60,50 @@ export default function CategoriesPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
+  const startAllCategoriesRequest = useLatestRequest();
 
-  const fetchRows = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRows = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await categoriesApi.list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed]);
+  }, [filters, labels.loadFailed, startListRequest, toast]);
 
-  const fetchAllCategories = useCallback(async () => {
+  const fetchAllCategories = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startAllCategoriesRequest();
     try {
       const result = await categoriesApi.list({});
+      if (!isLatestRequest()) return;
       setAllCategories(result.items);
-    } catch {
-      setAllCategories([]);
+    } catch (caught) {
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.loadFailed);
+      } else {
+        setAllCategories([]);
+      }
     }
-  }, []);
+  }, [labels.loadFailed, startAllCategoriesRequest, toast]);
 
-  const refetch = useCallback(async () => {
-    await Promise.all([fetchRows(), fetchAllCategories()]);
+  const refetch = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    await Promise.all([
+      fetchRows({ background }),
+      fetchAllCategories({ background }),
+    ]);
   }, [fetchAllCategories, fetchRows]);
 
   useEffect(() => {
@@ -133,9 +155,9 @@ export default function CategoriesPage() {
     setSubmitting(true);
     try {
       await categoriesApi.delete(dialog.category.id);
-      toast.success(t("crud.deleted"));
+      toast.success(getDashboardNotification("genericDeleted", locale));
       setDialog(null);
-      await refetch();
+      void refetch({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : t("crud.deleteFailed"));
     } finally {
@@ -148,9 +170,9 @@ export default function CategoriesPage() {
     setSubmitting(true);
     try {
       await categoriesApi.restore(dialog.category.id);
-      toast.success(t("crud.restored"));
+      toast.success(getDashboardNotification("genericRestored", locale));
       setDialog(null);
-      await refetch();
+      void refetch({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : t("crud.restoreFailed"));
     } finally {
@@ -169,31 +191,27 @@ export default function CategoriesPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{labels.title}</h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDialog({ type: "create" })}
-          className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
-        >
-          <Plus className="size-4" />
-          {t("actions.create")}
-        </button>
-      </div>
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.description}
+        actions={(
+          <button
+            type="button"
+            onClick={() => setDialog({ type: "create" })}
+            className={cn(adminActionButtonLargeClass, "w-full md:w-auto")}
+          >
+            <Plus className="size-4" />
+            {t("actions.create")}
+          </button>
+        )}
+      />
 
       <form
         onSubmit={(event) => event.preventDefault()}
-        className="artistbor-table-filter-shell overflow-x-auto"
+        className="artistbor-table-filter-shell artistbor-responsive-filter-shell"
       >
-        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto] md:items-center">
+        <div className="artistbor-table-filter-panel artistbor-responsive-filter-panel grid gap-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -257,9 +275,9 @@ export default function CategoriesPage() {
             setSubmitting(true);
             try {
               await categoriesApi.create(payload);
-              toast.success(t("crud.created"));
+              toast.success(getDashboardNotification("genericCreated", locale));
               setDialog(null);
-              await refetch();
+              void refetch({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.createFailed"));
             } finally {
@@ -281,9 +299,9 @@ export default function CategoriesPage() {
             setSubmitting(true);
             try {
               await categoriesApi.update(dialog.category.id, payload);
-              toast.success(t("crud.updated"));
+              toast.success(getDashboardNotification("genericUpdated", locale));
               setDialog(null);
-              await refetch();
+              void refetch({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.updateFailed"));
             } finally {
@@ -339,9 +357,9 @@ function CategoryHierarchyTable({
   onRestore: (category: Category) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div className="admin-table-scroll artistbor-hierarchy-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
+        <table aria-label={labels.title} className="w-full min-w-[1040px] border-separate border-spacing-0">
           <colgroup>
             <col className="w-12" />
             <col className="w-16" />
@@ -354,7 +372,7 @@ function CategoryHierarchyTable({
           <thead>
             <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
               <TableHead className="w-12" />
-              <TableHead>ID</TableHead>
+              <TableHead>Public ID</TableHead>
               <TableHead>{labels.name}</TableHead>
               <TableHead>Slug</TableHead>
               <TableHead>{labels.status}</TableHead>
@@ -513,7 +531,7 @@ function CategoryTableRow({
           <span className="ml-3 block h-px w-5 bg-[#cbd5e1] dark:bg-white/20" />
         ) : null}
       </TableCell>
-      <TableCell className="font-semibold text-[#64748b] dark:text-slate-400">{toDisplay(category.id)}</TableCell>
+      <TableCell className="whitespace-nowrap font-semibold text-artistbor-secondary">{toDisplay(category.public_id)}</TableCell>
       <TableCell>
         <div className="min-w-0">
           <div className="min-w-0">
@@ -820,10 +838,14 @@ function parentValue(value: number | null | undefined) {
 }
 
 function getLabels(locale: string) {
+  const language = locale === "ru" ? "ru" : "uz";
+  const active = getDashboardStatus("resource", 1, language).label;
+  const inactive = getDashboardStatus("resource", 0, language).label;
+
   if (locale === "ru") {
     return {
       actions: "Действия",
-      active: "Активная",
+      active,
       childrenCount: (count: number) => `${count} подкат.`,
       collapseSubcategories: "Свернуть подкатегории",
       createSubcategory: "Создать подкатегорию",
@@ -833,7 +855,7 @@ function getLabels(locale: string) {
       edit: "Редактировать",
       expandSubcategories: "Развернуть подкатегории",
       eyebrow: "Категории",
-      inactive: "Неактивная",
+      inactive,
       loadFailed: "Не удалось загрузить категории",
       locale: "ru",
       name: "Название",
@@ -855,7 +877,7 @@ function getLabels(locale: string) {
 
   return {
     actions: "Amallar",
-    active: "Faol",
+    active,
     childrenCount: (count: number) => `${count} ta subcategory`,
     collapseSubcategories: "Subcategorylarni yopish",
     createSubcategory: "Subcategory yaratish",
@@ -865,7 +887,7 @@ function getLabels(locale: string) {
     edit: "Tahrirlash",
     expandSubcategories: "Subcategorylarni ochish",
     eyebrow: "Kategoriyalar",
-    inactive: "Faol emas",
+    inactive,
     loadFailed: "Kategoriyalar yuklanmadi",
     locale: "uz",
     name: "Nomi",

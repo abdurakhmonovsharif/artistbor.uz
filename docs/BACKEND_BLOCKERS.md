@@ -1,92 +1,39 @@
-# Backend Blockers
+# Backend/runtime notes
 
-Date: 2026-05-02
+Date: 2026-08-26
 
-## Summary
+## Current verified contract state
 
-Live authenticated smoke testing confirmed that the frontend auth flow works with
-the corrected real admin credentials, but several admin resources are blocked by
-backend CORS / OPTIONS behavior or backend runtime errors.
+- `https://api.artistbor.uz/docs/api` is reachable and returns OpenAPI 3.0 YAML.
+- The current spec contains 99 `/v1/admin/*` paths and 129 admin operations.
+- The dashboard calls the backend through same-origin `/api/admin-proxy/*`; the
+  proxy attaches the httpOnly admin session token server-side.
+- `GET /v1/admin/notifications` documents only `type`, `date_from`, and
+  `date_to`; the frontend does not send invented pagination/sort parameters.
+- Availability, artist service, gallery, video, notification, balance and
+  transaction requests in the dashboard were matched to the current spec.
 
-## Swagger Verification
+## Historical issues — reproduction required
 
-- Swagger UI is available at `https://api.artistbor.uz/docs`.
-- Swagger UI is protected by Basic Auth. Access was verified with provided
-  Swagger credentials, but credentials are not stored in this repository.
-- Swagger UI loads the OpenAPI spec from `https://api.artistbor.uz/docs/api`.
-- The spec is OpenAPI `3.0.0` and contains 64 `/v1/admin/*` paths.
-- The spec does not define `OPTIONS` for admin paths: `0` `/v1/admin/*` paths
-  include an `options` operation.
-- Several Swagger response schemas are incomplete or differ from the live API
-  envelope. For example, live list responses use `data.list` and `data.meta`.
+The following failures were recorded on 2026-05-02 but were not reproduced with
+authenticated requests during this UI delivery:
 
-## Auth Status
+- Direct browser-to-backend CORS/OPTIONS failures.
+- `/v1/admin/regions` returning a missing `BaseAdminController` error.
+- `/v1/admin/artist-comments` returning a missing `artist_comment.deleted_at`
+  error.
 
-- `POST /v1/admin/auth/login` returns `200` with corrected credentials.
-- Frontend stores the backend token in an httpOnly admin session cookie through
-  `/api/admin-auth/login`; the token is not available to browser JavaScript.
-- `GET /v1/admin/auth/me` returns `200`.
-- Frontend auth flow is working.
+They must not be reported as current blockers without a new request/response and
+backend log from the active environment. Direct-backend CORS also does not block
+the current same-origin proxy flow.
 
-## Fixed Frontend Issue
+## Remaining backend contract risks
 
-- API list normalization now supports the live API response shape `data.list`.
-- Frontend verification commands currently pass:
-  - `npm run lint`
-  - `npm run build`
-
-## Browser CORS / OPTIONS Failures
-
-The following endpoints were previously blocked in the browser by
-CORS/preflight when the frontend called the backend directly:
-
-- `/v1/admin/categories`
-- `/v1/admin/regions`
-- `/v1/admin/artists`
-- `/v1/admin/order`
-- `/v1/admin/artist-comments`
-- Category lookup used by `/admin/services`
-
-Backend should allow `OPTIONS` preflight for `/v1/admin/*` and allow:
-
-- `Authorization` header
-- `Content-Type` header
-- `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS` methods
-- Frontend origin used by local and production dashboard environments
-
-The frontend now calls same-origin `/api/admin-proxy/*`; the Next.js route
-handler attaches `Authorization` server-side. Backend CORS should still be fixed
-for any non-BFF clients that call the API directly.
-
-## Backend 500 Errors
-
-- `/v1/admin/regions` returns backend `500`: missing `BaseAdminController`.
-- `/v1/admin/artist-comments` returns backend `500`: missing
-  `artist_comment.deleted_at`.
-
-## Routes Smoke Tested
-
-- `/login`
-- `/admin`
-- `/admin/categories`
-- `/admin/faq`
-- `/admin/regions`
-- `/admin/services`
-- `/admin/users`
-- `/admin/artists`
-- `/admin/applications`
-- `/admin/orders`
-- `/admin/comments`
-
-Implemented after the initial smoke test and pending full live verification
-after backend fixes:
-
-- `/admin/ratings`
-- `/admin/notifications`
-- `/admin/trash`
-
-## Remaining Manual Verification
-
-- Destructive actions were not submitted.
-- Most detail/edit flows need real rows.
-- Pagination needs data with multiple pages.
+- Several list/detail responses still omit concrete item schemas.
+- Stable machine-readable error `code` values should remain separate from
+  localized human messages.
+- New status values must define their domain and numeric/string aliases; a
+  numeric value cannot be mapped globally across account, order, payment and
+  application domains.
+- Mutating endpoints require staging/test-data verification; no production data
+  was changed as part of this implementation.

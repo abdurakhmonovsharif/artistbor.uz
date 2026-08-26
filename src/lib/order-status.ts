@@ -1,4 +1,15 @@
-export type OrderUiStatusKey = "pending" | "payment_pending" | "confirmed" | "completed" | "cancelled" | "unknown";
+import { getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import { defaultLocale, type Locale } from "@/lib/i18n/translations";
+
+export type OrderUiStatusKey =
+  | "pending"
+  | "payment_pending"
+  | "payment_verification"
+  | "confirmed"
+  | "rejected"
+  | "completed"
+  | "cancelled"
+  | "unknown";
 
 export type OrderUiStatusTone = "amber" | "emerald" | "blue" | "violet" | "red" | "slate" | "neutral";
 
@@ -17,58 +28,40 @@ export type OrderStatusInput = {
   payment_expires_at?: unknown;
 };
 
-const UI_STATUS: Record<OrderUiStatusKey, OrderUiStatus> = {
-  pending: { key: "pending", label: "Kutilmoqda", tone: "amber" },
-  payment_pending: { key: "payment_pending", label: "To'lov kutilmoqda", tone: "blue" },
-  confirmed: { key: "confirmed", label: "Tasdiqlangan", tone: "emerald" },
-  completed: { key: "completed", label: "Yakunlangan", tone: "violet" },
-  cancelled: { key: "cancelled", label: "Bekor qilingan", tone: "red" },
-  unknown: { key: "unknown", label: "Noma'lum", tone: "neutral" },
-};
+const orderStatusKeys = new Set<OrderUiStatusKey>([
+  "pending",
+  "payment_pending",
+  "payment_verification",
+  "confirmed",
+  "rejected",
+  "completed",
+  "cancelled",
+  "unknown",
+]);
 
-export function getOrderUiStatus(order: OrderStatusInput): OrderUiStatus {
-  const orderStatus = normalizeStatus(order.status ?? order.status_code, order.status_label);
+export function getOrderUiStatus(
+  order: OrderStatusInput,
+  locale: Locale = defaultLocale,
+): OrderUiStatus {
+  const primary = getDashboardStatus("order", order.status ?? order.status_code, locale);
+  const status = primary.key === "unknown" && order.status_label
+    ? getDashboardStatus("order", order.status_label, locale)
+    : primary;
+  const key = orderStatusKeys.has(status.key as OrderUiStatusKey)
+    ? status.key as OrderUiStatusKey
+    : "unknown";
 
-  if (orderStatus === "pending") return UI_STATUS.pending;
-  if (orderStatus === "payment_pending") return UI_STATUS.payment_pending;
-  if (orderStatus === "confirmed") return UI_STATUS.confirmed;
-  if (orderStatus === "completed") return UI_STATUS.completed;
-  if (orderStatus === "cancelled") return UI_STATUS.cancelled;
-
-  return UI_STATUS.unknown;
+  return {
+    key,
+    label: status.label,
+    tone: toOrderTone(status.tone),
+  };
 }
 
-function normalizeStatus(status: unknown, label: unknown) {
-  const numericStatus = numberValue(status);
-  if (numericStatus === 10) return "pending";
-  if (numericStatus === 20) return "payment_pending";
-  if (numericStatus === 30) return "confirmed";
-  if (numericStatus === 40) return "cancelled";
-  if (numericStatus === 50) return "completed";
-
-  const text = normalizeText([status, label]);
-  if (hasAny(text, ["cancel", "canceled", "cancelled", "reject", "bekor"])) return "cancelled";
-  if (hasAny(text, ["complete", "completed", "done", "finished", "yakun"])) return "completed";
-  if (hasAny(text, ["confirm", "confirmed", "approved", "accepted", "tasdiq"])) return "confirmed";
-  if (hasAny(text, ["payment pending", "awaiting payment", "unpaid", "to'lov kutil", "tolov kutil", "оплат"])) return "payment_pending";
-  if (hasAny(text, ["pending", "waiting", "review", "new", "kutil"])) return "pending";
-
-  return "unknown";
-}
-
-function normalizeText(values: unknown[]) {
-  return values
-    .map((value) => String(value ?? "").toLowerCase())
-    .join(" ")
-    .replace(/[_-]+/g, " ")
-    .trim();
-}
-
-function hasAny(value: string, needles: string[]) {
-  return needles.some((needle) => value.includes(needle));
-}
-
-function numberValue(value: unknown) {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? number : undefined;
+function toOrderTone(tone: ReturnType<typeof getDashboardStatus>["tone"]): OrderUiStatusTone {
+  if (tone === "success") return "emerald";
+  if (tone === "danger") return "red";
+  if (tone === "info") return "blue";
+  if (tone === "warning") return "amber";
+  return "neutral";
 }

@@ -5,8 +5,10 @@ import { Clock3, Percent, RefreshCw, RotateCcw, Save, Settings2 } from "lucide-r
 import type { LucideIcon } from "lucide-react";
 import { adminConfigApi, type AdminConfigItem } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
 import { cn, isRecord } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 
 type ConfigKey = "order.advance_percent" | "order.advance_deadline_minutes" | "commission.default_percent";
 
@@ -151,32 +153,26 @@ export default function AdminSettingsPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-            {labels.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void loadConfigs()}
-          disabled={loading || saving}
-          className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#e6ebf2] bg-white px-4 text-sm font-bold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
-        >
-          <RefreshCw className={cn("size-4", loading && "animate-spin")} />
-          {labels.refresh}
-        </button>
-      </header>
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.description}
+        actions={(
+          <button
+            type="button"
+            onClick={() => void loadConfigs()}
+            disabled={loading || saving}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-artistbor-border bg-artistbor-surface px-4 text-sm font-bold text-artistbor-secondary transition-colors duration-200 hover:border-artistbor-border-strong hover:bg-artistbor-surface-subtle hover:text-artistbor-primary disabled:cursor-not-allowed disabled:text-artistbor-muted"
+          >
+            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+            {labels.refresh}
+          </button>
+        )}
+      />
 
       <form
         onSubmit={submit}
-        className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950"
+        className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]"
       >
         <div className="border-b border-[#e6ebf2] bg-[#f8fafc] px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
           <div className="flex items-center gap-2">
@@ -378,7 +374,7 @@ function getSettingsLabels(locale: string) {
       reset: "Сбросить",
       save: "Сохранить",
       saveFailed: "Настройки не сохранены",
-      saved: "Настройки сохранены",
+      saved: getDashboardNotification("settingsSaved", "ru"),
       saving: "Сохранение...",
       title: "Настройки",
     };
@@ -408,7 +404,7 @@ function getSettingsLabels(locale: string) {
     reset: "Qaytarish",
     save: "Saqlash",
     saveFailed: "Sozlamalar saqlanmadi",
-    saved: "Sozlamalar saqlandi",
+    saved: getDashboardNotification("settingsSaved", "uz"),
     saving: "Saqlanmoqda...",
     title: "Sozlamalar",
   };

@@ -1,7 +1,15 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Eye, SendToBack, X } from "lucide-react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { CheckCircle2, Eye, Send, SendToBack, X } from "lucide-react";
 import {
   AdminFilterForm,
   adminFilterActionClass,
@@ -19,68 +27,79 @@ import {
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
-import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { FormField } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
   notificationsApi,
+  regionsApi,
   type NotificationFilters,
   type SendAllNotificationPayload,
+  type SendNotificationPayload,
 } from "@/lib/api/admin-content";
-import type { ListResult, NotificationRecord } from "@/types/api";
+import type { District, NotificationRecord, Region } from "@/types/api";
+import {
+  buildSendAllNotificationPayload,
+  buildTargetedNotificationPayload,
+  type NotificationPayloadError,
+} from "@/lib/admin-notification";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 
 type DialogState =
-  | { type: "view"; notification: NotificationRecord }
+  | { type: "view"; notification: NotificationRecord; detailLoading: boolean }
+  | { type: "send-filtered" }
   | { type: "send-all" }
   | null;
-
-const limit = 20;
 
 const initialFilters: NotificationFilters = {
   type: "",
   date_from: "",
   date_to: "",
-  sort: "-created_at",
-  page: 1,
-  limit,
 };
 
 export default function NotificationsPage() {
   const { locale } = useI18n();
   const labels = useMemo(() => getNotificationLabels(locale), [locale]);
-  const notificationTypes = useMemo(() => getNotificationTypes(labels), [labels]);
+  const notificationTypes = useMemo(() => getNotificationTypes(locale), [locale]);
   const columns = useMemo(() => getNotificationColumns(labels), [labels]);
   const notificationDetailFields = useMemo(() => getNotificationDetailFields(labels), [labels]);
   const [filters, setFilters] = useState<NotificationFilters>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<NotificationFilters>(initialFilters);
   const [rows, setRows] = useState<NotificationRecord[]>([]);
-  const [meta, setMeta] = useState<ListResult<NotificationRecord>["meta"]>();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
 
-  const fetchNotifications = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchNotifications = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await notificationsApi.list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
-      setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels]);
+  }, [filters, labels, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -94,21 +113,27 @@ export default function NotificationsPage() {
       toast.error(labels.idNotFound);
       return;
     }
-    setSubmitting(true);
+    setDialog({ type: "view", notification: row, detailLoading: true });
     try {
       const notification = await notificationsApi.detail(row.id);
-      setDialog({ type: "view", notification });
+      setDialog((current) =>
+        current?.type === "view" && current.notification.id === row.id
+          ? { type: "view", notification, detailLoading: false }
+          : current,
+      );
     } catch (caught) {
+      setDialog((current) =>
+        current?.type === "view" && current.notification.id === row.id
+          ? { ...current, detailLoading: false }
+          : current,
+      );
       toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
-    } finally {
-      setSubmitting(false);
     }
   };
 
   const changeFilters = (nextFilters: NotificationFilters) => {
-    const normalized = { ...nextFilters, page: 1, limit: Number(filters.limit) || limit };
-    setDraftFilters(normalized);
-    setFilters(normalized);
+    setDraftFilters(nextFilters);
+    setFilters(nextFilters);
   };
 
   const resetFilters = () => {
@@ -122,44 +147,33 @@ export default function NotificationsPage() {
     changeFilters({ ...draftFilters, ...getDateFilterPatch(value) });
   };
 
-  const changePage = (page: number) => {
-    setFilters((current) => ({ ...current, page, limit: Number(current.limit) || limit }));
-  };
-
-  const changePageSize = (nextLimit: number) => {
-    setDraftFilters((current) => ({ ...current, limit: nextLimit }));
-    setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
-  };
-
-  const page = Number(filters.page ?? 1);
-  const pageCount =
-    meta?.pageCount ?? (meta?.total && meta?.limit ? Math.ceil(meta.total / meta.limit) : undefined);
-
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-            {labels.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setDialog({ type: "send-all" })}
-            className={adminActionButtonLargeClass}
-          >
-            <SendToBack className="size-4" />
-            {labels.sendAllAction}
-          </button>
-        </div>
-      </div>
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.description}
+        actions={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDialog({ type: "send-filtered" })}
+              className={adminPrimaryActionButtonClass}
+            >
+              <Send className="size-4" />
+              {labels.sendFilteredAction}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDialog({ type: "send-all" })}
+              className={adminActionButtonLargeClass}
+            >
+              <SendToBack className="size-4" />
+              {labels.sendAllAction}
+            </button>
+          </div>
+        )}
+      />
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
@@ -223,27 +237,10 @@ export default function NotificationsPage() {
         />
       )}
 
-      {pageCount ? (
-        <Pagination
-          meta={meta}
-          page={page}
-          pageSize={Number(filters.limit) || limit}
-          onPageChange={changePage}
-          onPageSizeChange={changePageSize}
-        />
-      ) : (
-        <FallbackPagination
-          page={page}
-          rowsCount={rows.length}
-          pageSize={Number(filters.limit) || limit}
-          onPageChange={changePage}
-          onPageSizeChange={changePageSize}
-        />
-      )}
-
       {dialog?.type === "view" ? (
         <AdminDrawer title={labels.detailTitle} onClose={() => setDialog(null)} size="min(100vw, 720px)">
           <div className="p-4">
+            {dialog.detailLoading ? <InlineLoadingState /> : null}
             <DetailGrid record={dialog.notification} fields={notificationDetailFields} />
           </div>
         </AdminDrawer>
@@ -261,7 +258,30 @@ export default function NotificationsPage() {
               await notificationsApi.sendAll(payload);
               toast.success(labels.sentAll);
               setDialog(null);
-              await fetchNotifications();
+              void fetchNotifications({ background: true });
+            } catch (caught) {
+              toast.error(caught instanceof Error ? caught.message : labels.sendFailed);
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        />
+      ) : null}
+
+      {dialog?.type === "send-filtered" ? (
+        <TargetedNotificationModal
+          locale={locale}
+          labels={labels}
+          notificationTypes={notificationTypes}
+          loading={submitting}
+          onClose={() => setDialog(null)}
+          onSubmit={async (payload) => {
+            setSubmitting(true);
+            try {
+              const result = await notificationsApi.send(payload);
+              toast.success(labels.sentFiltered(result.recipient_count));
+              setDialog(null);
+              void fetchNotifications({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : labels.sendFailed);
             } finally {
@@ -271,6 +291,174 @@ export default function NotificationsPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+type NotificationBaseValues = {
+  title: string;
+  message: string;
+  type: string;
+  data: string;
+};
+
+type TargetedNotificationValues = NotificationBaseValues & {
+  role: string;
+  region_id: string;
+  district_id: string;
+};
+
+function TargetedNotificationModal({
+  locale,
+  labels,
+  notificationTypes,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  locale: "uz" | "ru";
+  labels: NotificationLabels;
+  notificationTypes: Array<{ label: string; value: string }>;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: (payload: SendNotificationPayload) => Promise<void>;
+}) {
+  const [values, setValues] = useState<TargetedNotificationValues>({
+    title: "",
+    message: "",
+    type: "system",
+    data: "",
+    role: "",
+    region_id: "",
+    district_id: "",
+  });
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    regionsApi
+      .list({ page: 1, limit: 1000 })
+      .then((result) => {
+        if (active) setRegions(result.items.filter((region) => region.id !== undefined));
+      })
+      .catch(() => {
+        if (active) setError(labels.locationsLoadFailed);
+      })
+      .finally(() => {
+        if (active) setLocationsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [labels.locationsLoadFailed]);
+
+  useEffect(() => {
+    let active = true;
+    const regionId = Number(values.region_id);
+    if (!regionId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    regionsApi
+      .districts(regionId)
+      .then((result) => {
+        if (active) setDistricts(result.items.filter((district) => district.id !== undefined));
+      })
+      .catch(() => {
+        if (active) setError(labels.locationsLoadFailed);
+      })
+      .finally(() => {
+        if (active) setLocationsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [labels.locationsLoadFailed, values.region_id]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    const result = buildTargetedNotificationPayload(values);
+    if (result.error) {
+      setError(notificationPayloadErrorMessage(result.error, labels));
+      return;
+    }
+    await onSubmit(result.payload);
+  };
+
+  const regionOptions = [
+    { label: labels.allRegions, value: "" },
+    ...regions.map((region) => ({
+      label: localizedLocationName(region, locale),
+      value: String(region.id),
+    })),
+  ];
+  const districtOptions = [
+    { label: labels.allDistricts, value: "" },
+    ...districts.map((district) => ({
+      label: localizedLocationName(district, locale),
+      value: String(district.id),
+    })),
+  ];
+
+  return (
+    <AdminDrawer title={labels.sendFilteredTitle} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-5 p-4">
+        <NotificationBaseFields
+          labels={labels}
+          notificationTypes={notificationTypes}
+          values={values}
+          setValues={setValues}
+        />
+        <div className="grid gap-4 md:grid-cols-3">
+          <FormField
+            compact
+            label={labels.role}
+            type="select"
+            value={values.role}
+            options={[
+              { label: labels.allRoles, value: "" },
+              { label: labels.clients, value: "client" },
+              { label: labels.artists, value: "artist" },
+            ]}
+            onChange={(role) => setValues((current) => ({ ...current, role }))}
+          />
+          <FormField
+            compact
+            label={labels.region}
+            type="select"
+            value={values.region_id}
+            options={regionOptions}
+            disabled={locationsLoading && regions.length === 0}
+            onChange={(region_id) => {
+              setDistricts([]);
+              setLocationsLoading(Boolean(region_id));
+              setValues((current) => ({ ...current, region_id, district_id: "" }))
+            }}
+          />
+          <FormField
+            compact
+            label={labels.district}
+            type="select"
+            value={values.district_id}
+            options={districtOptions}
+            disabled={!values.region_id || locationsLoading}
+            onChange={(district_id) =>
+              setValues((current) => ({ ...current, district_id }))
+            }
+          />
+        </div>
+        <p className="text-xs font-semibold leading-5 text-artistbor-secondary">
+          {labels.targetHint}
+        </p>
+        {error ? <p role="alert" className="text-sm font-semibold text-rose-500">{error}</p> : null}
+        <FormActions labels={labels} loading={loading} onClose={onClose} />
+      </form>
+    </AdminDrawer>
   );
 }
 
@@ -298,18 +486,12 @@ function SendAllModal({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    const payload: SendAllNotificationPayload = {
-      title: values.title,
-      message: values.message,
-    };
-    if (values.type) payload.type = values.type;
-    const data = parseData(values.data, labels);
-    if (data.error) {
-      setError(data.error);
+    const result = buildSendAllNotificationPayload(values);
+    if (result.error) {
+      setError(notificationPayloadErrorMessage(result.error, labels));
       return;
     }
-    if (data.value) payload.data = data.value;
-    await onSubmit(payload);
+    await onSubmit(result.payload);
   };
 
   return (
@@ -328,7 +510,7 @@ function SendAllModal({
   );
 }
 
-function NotificationBaseFields({
+function NotificationBaseFields<T extends NotificationBaseValues>({
   labels,
   notificationTypes,
   values,
@@ -336,13 +518,8 @@ function NotificationBaseFields({
 }: {
   labels: NotificationLabels;
   notificationTypes: Array<{ label: string; value: string }>;
-  values: {
-    title: string;
-    message: string;
-    type: string;
-    data: string;
-  };
-  setValues: React.Dispatch<React.SetStateAction<typeof values>>;
+  values: T;
+  setValues: Dispatch<SetStateAction<T>>;
 }) {
   return (
     <>
@@ -383,20 +560,15 @@ function NotificationBaseFields({
   );
 }
 
-function parseData(
-  value: string,
-  labels: NotificationLabels,
-): { value?: Record<string, unknown>; error?: string } {
-  if (!value.trim()) return {};
-  try {
-    const parsed = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { error: labels.dataJsonObject };
-    }
-    return { value: parsed as Record<string, unknown> };
-  } catch {
-    return { error: labels.dataJsonInvalid };
-  }
+function localizedLocationName(location: Region | District, locale: "uz" | "ru") {
+  if (locale === "ru") return location.name_ru || location.name_uz || location.name_en || `#${location.id}`;
+  return location.name_uz || location.name_ru || location.name_en || `#${location.id}`;
+}
+
+function notificationPayloadErrorMessage(error: NotificationPayloadError, labels: NotificationLabels) {
+  if (error === "target_required") return labels.targetRequired;
+  if (error === "data_json_object") return labels.dataJsonObject;
+  return labels.dataJsonInvalid;
 }
 
 function FormActions({
@@ -432,17 +604,17 @@ function FormActions({
 
 type NotificationLabels = ReturnType<typeof getNotificationLabels>;
 
-function getNotificationTypes(labels: NotificationLabels) {
+function getNotificationTypes(locale: "uz" | "ru") {
   return [
-    { label: labels.systemType, value: "system" },
-    { label: labels.orderType, value: "order" },
-    { label: labels.promoType, value: "promo" },
+    { label: getDashboardStatus("notification_type", "system", locale).label, value: "system" },
+    { label: getDashboardStatus("notification_type", "order", locale).label, value: "order" },
+    { label: getDashboardStatus("notification_type", "promo", locale).label, value: "promo" },
   ];
 }
 
 function getNotificationColumns(labels: NotificationLabels): DataTableColumn<NotificationRecord>[] {
   return [
-    { key: "id", label: "ID", kind: "number" },
+    { key: "public_id", label: "Public ID", render: (row) => toDisplay(row.public_id) },
     {
       key: "title",
       label: labels.titleField,
@@ -461,14 +633,14 @@ function getNotificationColumns(labels: NotificationLabels): DataTableColumn<Not
         </span>
       ),
     },
-    { key: "type", label: labels.type, render: (row) => <StatusBadge value={row.type} /> },
+    { key: "type", label: labels.type, render: (row) => <StatusBadge value={row.type} fieldKey="notification_type" /> },
     { key: "created_at", label: labels.createdAt, render: (row) => normalizeDate(row.created_at) },
   ];
 }
 
 function getNotificationDetailFields(labels: NotificationLabels): DetailField[] {
   return [
-    { key: "id", label: "ID" },
+    { key: "public_id", label: "Public ID" },
     { key: "title", label: labels.titleField },
     { key: "title_uz", label: labels.titleUz },
     { key: "message", label: labels.messageField },
@@ -481,7 +653,12 @@ function getNotificationDetailFields(labels: NotificationLabels): DetailField[] 
 function getNotificationLabels(locale: string) {
   if (locale === "ru") {
     return {
+      allDistricts: "Все районы",
+      allRegions: "Все регионы",
+      allRoles: "Все роли",
+      artists: "Артисты",
       body: "Текст",
+      clients: "Клиенты",
       clear: "Очистить",
       close: "Закрыть",
       createdAt: "Создано",
@@ -495,24 +672,36 @@ function getNotificationLabels(locale: string) {
       description: "Просмотр отправленных пользователям уведомлений и отправка нового сообщения.",
       detailLoadFailed: "Не удалось загрузить детали уведомления",
       detailTitle: "Детали уведомления",
+      district: "Район",
       empty: "Уведомления не найдены",
       eyebrow: "Уведомления",
       filter: "Фильтр",
       idNotFound: "ID уведомления не найден",
       loadFailed: "Не удалось загрузить уведомления",
       loading: "Загрузка уведомлений...",
+      locationsLoadFailed: "Не удалось загрузить регионы и районы",
       messageField: "Сообщение",
       newest: "Новые",
       oldest: "Старые",
       orderType: "Заказ",
       promoType: "Промо",
+      region: "Регион",
+      role: "Роль получателя",
       send: "Отправить",
       sendAllAction: "Отправить всем",
       sendAllTitle: "Отправить уведомление всем",
+      sendFilteredAction: "Отправить по фильтру",
+      sendFilteredTitle: "Отправить выбранной аудитории",
       sendFailed: "Не удалось отправить уведомление",
       sending: "Отправка...",
-      sentAll: "Уведомление отправлено всем пользователям",
+      sentAll: getDashboardNotification("notificationSentAll", "ru"),
+      sentFiltered: (recipientCount?: number) => {
+        const base = getDashboardNotification("notificationSentFiltered", "ru");
+        return recipientCount === undefined ? base : `${base}. Получателей: ${recipientCount}`;
+      },
       systemType: "Системное",
+      targetHint: "Выберите хотя бы одну роль, регион или район. Пустая аудитория не будет отправлена.",
+      targetRequired: "Выберите роль, регион или район получателей",
       title: "Уведомления",
       titleField: "Заголовок",
       titleUz: "Заголовок UZ",
@@ -522,7 +711,12 @@ function getNotificationLabels(locale: string) {
   }
 
   return {
+    allDistricts: "Barcha tumanlar",
+    allRegions: "Barcha viloyatlar",
+    allRoles: "Barcha rollar",
+    artists: "San’atkorlar",
     body: "Matn",
+    clients: "Mijozlar",
     clear: "Tozalash",
     close: "Yopish",
     createdAt: "Yaratilgan",
@@ -536,24 +730,36 @@ function getNotificationLabels(locale: string) {
     description: "Foydalanuvchilarga yuborilgan xabarnomalarni ko'rish va yangi xabar yuborish.",
     detailLoadFailed: "Xabarnoma tafsilotlari yuklanmadi",
     detailTitle: "Xabarnoma tafsilotlari",
+    district: "Tuman",
     empty: "Xabarnomalar topilmadi",
     eyebrow: "Xabarnomalar",
     filter: "Filtr",
     idNotFound: "Xabarnoma ID topilmadi",
     loadFailed: "Xabarnomalar yuklanmadi",
     loading: "Xabarnomalar yuklanmoqda...",
+    locationsLoadFailed: "Viloyat va tumanlar yuklanmadi",
     messageField: "Xabar",
     newest: "Yangilari",
     oldest: "Eng eskilari",
     orderType: "Buyurtma",
     promoType: "Promo",
+    region: "Viloyat",
+    role: "Qabul qiluvchi roli",
     send: "Yuborish",
     sendAllAction: "Barchaga yuborish",
     sendAllTitle: "Barchaga xabarnoma yuborish",
+    sendFilteredAction: "Filtr bo‘yicha yuborish",
+    sendFilteredTitle: "Tanlangan auditoriyaga yuborish",
     sendFailed: "Xabarnoma yuborilmadi",
     sending: "Yuborilmoqda...",
-    sentAll: "Xabarnoma barcha foydalanuvchilarga yuborildi",
+    sentAll: getDashboardNotification("notificationSentAll", "uz"),
+    sentFiltered: (recipientCount?: number) => {
+      const base = getDashboardNotification("notificationSentFiltered", "uz");
+      return recipientCount === undefined ? base : `${base}. Qabul qiluvchilar: ${recipientCount}`;
+    },
     systemType: "Tizim",
+    targetHint: "Kamida bitta rol, viloyat yoki tumanni tanlang. Bo‘sh auditoriyaga yuborilmaydi.",
+    targetRequired: "Qabul qiluvchilar roli, viloyati yoki tumanini tanlang",
     title: "Xabarnomalar",
     titleField: "Sarlavha",
     titleUz: "Sarlavha UZ",

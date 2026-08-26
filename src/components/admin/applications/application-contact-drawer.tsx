@@ -4,9 +4,9 @@ import { Drawer } from "antd";
 import { AtSign, Copy, MapPin, Phone, UserRound, X } from "lucide-react";
 import type { ArtistApplication } from "@/types/api";
 import { formatPhone } from "@/lib/phone-format";
-import { toDisplay } from "@/lib/utils";
 import { getApplicationLabels } from "@/components/admin/applications/application-labels";
 import { adminDrawerClassNames, adminDrawerSubtitleStyles } from "@/components/admin/admin-drawer";
+import { InlineLoadingState } from "@/components/ui/states";
 import {
   getApplicationTitle,
   getContactValue,
@@ -16,11 +16,13 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function ApplicationContactDrawer({
   application,
+  detailLoading,
   categoryMap,
   open,
   onClose,
 }: {
   application: ArtistApplication | null;
+  detailLoading: boolean;
   categoryMap: CategoryMap;
   open: boolean;
   onClose: () => void;
@@ -85,7 +87,7 @@ export function ApplicationContactDrawer({
         <div className="min-w-0">
           <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">{labels.contactTitle}</p>
           <p className="mt-1 truncate text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            {labels.drawerTitle(toDisplay(application.id))} · {getApplicationTitle(application, categoryMap, locale)}
+            {labels.drawerTitle(application.public_id ?? "—")} · {getApplicationTitle(application, categoryMap, locale)}
           </p>
         </div>
       }
@@ -101,6 +103,7 @@ export function ApplicationContactDrawer({
       styles={adminDrawerSubtitleStyles}
     >
       <div className="p-4">
+        {detailLoading ? <InlineLoadingState /> : null}
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#121a2a]">
           {rows.map((row) => (
             <div

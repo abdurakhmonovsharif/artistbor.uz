@@ -9,21 +9,24 @@ import {
   adminFilterControlClass,
 } from "@/components/admin/admin-filter-form";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { artistsApi, ratingsApi, type RatingFilters } from "@/lib/api/admin-content";
 import { getArtistSelectOptions } from "@/lib/artist-display";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { normalizeDate } from "@/lib/utils";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import { useLatestRequest } from "@/lib/use-latest-request";
+import { normalizeDate, toDisplay } from "@/lib/utils";
 import type { ArtistProfile, ListResult, RatingRecord } from "@/types/api";
 
 type DialogState =
-  | { type: "view"; rating: RatingRecord }
+  | { type: "view"; rating: RatingRecord; detailLoading: boolean }
   | { type: "delete"; rating: RatingRecord }
   | null;
 
@@ -32,9 +35,9 @@ const limit = 20;
 type RatingLabels = ReturnType<typeof getRatingLabels>;
 
 const getRatingColumns = (labels: RatingLabels): DataTableColumn<RatingRecord>[] => [
-  { key: "id", label: "ID", kind: "number" },
-  { key: "artist_id", label: labels.artistId, kind: "number" },
-  { key: "client_id", label: labels.clientId, kind: "number" },
+  { key: "public_id", label: "Public ID", render: (row) => toDisplay(row.public_id) },
+  { key: "artist_public_id", label: labels.artistId, render: (row) => toDisplay(row.artist_public_id) },
+  { key: "client_public_id", label: labels.clientId, render: (row) => toDisplay(row.client_public_id) },
   { key: "rating", label: labels.rating, kind: "number" },
   {
     key: "is_published",
@@ -49,9 +52,9 @@ const getRatingColumns = (labels: RatingLabels): DataTableColumn<RatingRecord>[]
 ];
 
 const getRatingDetailFields = (labels: RatingLabels): DetailField[] => [
-  { key: "id", label: "ID" },
-  { key: "artist_id", label: labels.artistId },
-  { key: "client_id", label: labels.clientId },
+  { key: "public_id", label: "Public ID" },
+  { key: "artist_public_id", label: labels.artistId },
+  { key: "client_public_id", label: labels.clientId },
   { key: "rating", label: labels.rating },
   { key: "is_published", label: labels.isPublished },
   { key: "created_at", label: labels.createdAt },
@@ -80,20 +83,28 @@ export default function RatingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
 
-  const fetchRatings = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRatings = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await ratingsApi.list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed]);
+  }, [filters, labels.loadFailed, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -122,14 +133,21 @@ export default function RatingsPage() {
       toast.error(labels.idNotFound);
       return;
     }
-    setSubmitting(true);
+    setDialog({ type: "view", rating: row, detailLoading: true });
     try {
       const rating = await ratingsApi.detail(row.id);
-      setDialog({ type: "view", rating });
+      setDialog((current) =>
+        current?.type === "view" && current.rating.id === row.id
+          ? { type: "view", rating, detailLoading: false }
+          : current,
+      );
     } catch (caught) {
+      setDialog((current) =>
+        current?.type === "view" && current.rating.id === row.id
+          ? { ...current, detailLoading: false }
+          : current,
+      );
       toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -169,7 +187,7 @@ export default function RatingsPage() {
       await ratingsApi.delete(dialog.rating.id);
       toast.success(labels.deleted);
       setDialog(null);
-      await fetchRatings();
+      void fetchRatings({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.deleteFailed);
     } finally {
@@ -183,17 +201,7 @@ export default function RatingsPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div>
-        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-          {labels.eyebrow}
-        </p>
-        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-          {labels.title}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-          {labels.description}
-        </p>
-      </div>
+      <AdminPageHeader eyebrow={labels.eyebrow} title={labels.title} description={labels.description} />
 
       <AdminFilterForm
         onSubmit={applyFilters}
@@ -275,6 +283,7 @@ export default function RatingsPage() {
       {dialog?.type === "view" ? (
         <AdminDrawer title={labels.detailTitle} onClose={() => setDialog(null)} size="min(100vw, 720px)">
           <div className="p-4">
+            {dialog.detailLoading ? <InlineLoadingState /> : null}
             <DetailGrid record={dialog.rating} fields={ratingDetailFields} />
           </div>
         </AdminDrawer>
@@ -325,14 +334,17 @@ function IconButton({
 }
 
 function getRatingLabels(locale: string) {
+  const language = locale === "ru" ? "ru" : "uz";
+  const publicationStatus = (value: number) => getDashboardStatus("publication", value, language).label;
+
   if (locale === "ru") {
     return {
       artistAll: "Артист: Все",
-      artistId: "ID артиста",
+      artistId: "Public ID артиста",
       artistLoading: "Артисты загружаются...",
-      clientId: "ID клиента",
+      clientId: "Public ID клиента",
       createdAt: "Создано",
-      deleted: "Рейтинг удален",
+      deleted: getDashboardNotification("ratingDeleted", language),
       deleteAction: "Удалить",
       deleteFailed: "Не удалось удалить рейтинг",
       deleteMessage: "Подтвердите удаление рейтинга.",
@@ -342,11 +354,11 @@ function getRatingLabels(locale: string) {
       detailTitle: "Детали рейтинга",
       eyebrow: "Рейтинги",
       idNotFound: "ID рейтинга не найден",
-      isPublished: "Показан",
+      isPublished: publicationStatus(1),
       loadFailed: "Не удалось загрузить рейтинги",
-      pending: "Ожидает",
+      pending: publicationStatus(0),
       publishedAll: "Показ: Все",
-      publishedStatus: "Показан",
+      publishedStatus: publicationStatus(1),
       rating: "Рейтинг",
       reset: "Сбросить",
       search: "Поиск",
@@ -357,11 +369,11 @@ function getRatingLabels(locale: string) {
 
   return {
     artistAll: "Sanatkor: Barchasi",
-    artistId: "Sanatkor ID",
+    artistId: "Sanatkor Public ID",
     artistLoading: "Sanatkorlar yuklanmoqda...",
-    clientId: "Mijoz ID",
+    clientId: "Mijoz Public ID",
     createdAt: "Yaratilgan",
-    deleted: "Reyting o'chirildi",
+    deleted: getDashboardNotification("ratingDeleted", language),
     deleteAction: "O'chirish",
     deleteFailed: "O'chirish bajarilmadi",
     deleteMessage: "Reytingni o'chirishni tasdiqlaysizmi?",
@@ -371,11 +383,11 @@ function getRatingLabels(locale: string) {
     detailTitle: "Reyting tafsilotlari",
     eyebrow: "Reytinglar",
     idNotFound: "Reyting ID topilmadi",
-    isPublished: "Ko'rsatilgan",
+    isPublished: publicationStatus(1),
     loadFailed: "Reytinglar yuklanmadi",
-    pending: "Kutilmoqda",
+    pending: publicationStatus(0),
     publishedAll: "Ko'rsatish: Barchasi",
-    publishedStatus: "Ko'rsatilgan",
+    publishedStatus: publicationStatus(1),
     rating: "Reyting",
     reset: "Tozalash",
     search: "Qidirish",

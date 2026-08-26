@@ -26,12 +26,12 @@ export function AdminFilterForm({
   return (
     <form
       onSubmit={onSubmit}
-      className={cn(adminFilterShellClass, "flex flex-col")}
+      className={cn(adminFilterShellClass, "artistbor-responsive-filter-shell flex flex-col")}
     >
       <div
         className={cn(
           adminFilterPanelClass,
-          "grid gap-3",
+          "artistbor-responsive-filter-panel grid gap-3",
           !mobileOpen && "admin-filter-collapsed",
           gridClassName,
         )}
@@ -64,11 +64,11 @@ export function AdminFilterCard({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className={cn(adminFilterShellClass, "flex flex-col")}>
+    <div className={cn(adminFilterShellClass, "artistbor-responsive-filter-shell flex flex-col")}>
       <div
         className={cn(
           adminFilterPanelClass,
-          "grid gap-3",
+          "artistbor-responsive-filter-panel grid gap-3",
           !mobileOpen && "admin-filter-collapsed",
           gridClassName,
         )}

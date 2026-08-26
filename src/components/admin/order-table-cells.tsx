@@ -9,13 +9,14 @@ import {
 } from "@/lib/order-format";
 import type { OrderUiStatus } from "@/lib/order-status";
 import { formatMoneyWithCurrency } from "@/lib/money-format";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function StatusBadge({ status }: { status: OrderUiStatus }) {
   const toneClass: Record<OrderUiStatus["tone"], string> = {
     amber: "border-amber-400/35 bg-amber-400/10 text-amber-700 dark:text-amber-300",
     emerald: "border-emerald-400/35 bg-emerald-400/10 text-emerald-700 dark:text-emerald-300",
-    blue: "border-blue-400/35 bg-blue-400/10 text-blue-700 dark:text-blue-300",
-    violet: "border-violet-400/35 bg-violet-400/10 text-violet-700 dark:text-violet-300",
+    blue: "border-artistbor-border-strong bg-artistbor-surface-subtle text-artistbor-secondary",
+    violet: "border-amber-400/35 bg-amber-400/10 text-amber-700 dark:text-amber-300",
     red: "border-rose-400/35 bg-rose-400/10 text-rose-700 dark:text-rose-300",
     slate: "border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300",
     neutral: "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400",
@@ -58,20 +59,24 @@ export function EntityName({
 
 export function MoneyText({
   value,
-  emptyLabel = "Narx belgilanmagan",
-  locale = "uz",
+  emptyLabel,
+  locale,
 }: {
   value: unknown;
   emptyLabel?: string;
   locale?: "uz" | "ru";
 }) {
+  const { locale: activeLocale, t } = useI18n();
+  const resolvedLocale = locale ?? activeLocale;
+  const resolvedEmptyLabel = emptyLabel ?? t("crud.priceNotSet");
+
   if (value === null || value === undefined || value === "") {
-    return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{emptyLabel}</span>;
+    return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{resolvedEmptyLabel}</span>;
   }
 
-  const amount = formatMoneyWithCurrency(value, locale);
+  const amount = formatMoneyWithCurrency(value, resolvedLocale);
   if (!amount) {
-    return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{emptyLabel}</span>;
+    return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{resolvedEmptyLabel}</span>;
   }
 
   return (
@@ -122,12 +127,13 @@ export function LocationCell({
   regionFallback?: string;
   districtFallback?: string;
 }) {
+  const { t } = useI18n();
   const note = address || comment;
 
   return (
     <div className="min-w-0">
       <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
-        {region || "Location not set"}
+        {region || t("common.locationNotSet")}
       </p>
       {district ? (
         <p className="mt-1 truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
@@ -145,16 +151,14 @@ export function LocationCell({
 }
 
 export function BookingCell({
-  id,
   createdAt,
 }: {
-  id: unknown;
   createdAt: unknown;
 }) {
   return (
     <div className="min-w-0">
       <p className="text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
-        #{formatBookingId(id)}
+        {"—"}
       </p>
       <p className="mt-1 text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
         {formatUnixDateTime(createdAt)}
@@ -172,6 +176,8 @@ export function ActionsCell({
   onPrimary?: () => void;
   onDetails: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="flex justify-end gap-2">
       {primaryLabel && onPrimary ? (
@@ -189,8 +195,8 @@ export function ActionsCell({
         type="button"
         onClick={onDetails}
         className="grid size-10 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
-        aria-label="View details"
-        title="View details"
+        aria-label={t("actions.view")}
+        title={t("actions.view")}
       >
         <Eye className="size-4" />
       </button>
@@ -198,17 +204,11 @@ export function ActionsCell({
         type="button"
         onClick={onDetails}
         className="grid size-10 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
-        aria-label="More actions"
-        title="More actions"
+        aria-label={t("actions.more")}
+        title={t("actions.more")}
       >
         <MoreHorizontal className="size-4" />
       </button>
     </div>
   );
-}
-
-function formatBookingId(value: unknown) {
-  const id = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(id)) return "----";
-  return String(id).padStart(4, "0");
 }

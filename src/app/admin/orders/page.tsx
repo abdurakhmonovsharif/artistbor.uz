@@ -1,10 +1,12 @@
 "use client";
 
-import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Drawer, Input, Modal, Tabs } from "antd";
 import {
   AtSign,
+  Bot,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -12,6 +14,7 @@ import {
   CreditCard,
   ExternalLink,
   Eye,
+  FileText,
   Flag,
   MapPin,
   Pencil,
@@ -25,7 +28,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
+import { ContractFileActions } from "@/components/admin/contracts/contract-file-actions";
 import { AdminDrawer, adminDrawerClassNames, adminDrawerStyles, adminDrawerSubtitleStyles } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { StatusTabRail } from "@/components/admin/status-tab-rail";
 import {
   DateFilterSelect,
   getDateFilterPatch,
@@ -39,7 +45,7 @@ import {
 } from "@/components/admin/admin-action-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { isLocationIdKey, LocationName } from "@/components/admin/location-name";
 import {
@@ -56,19 +62,31 @@ import {
   type ConfirmOrderPayload,
   regionsApi,
   type RejectOrderPaymentPayload,
+  type RescheduleOrderPayload,
   servicesApi,
-  usersApi,
-  type VerifyOrderPaymentPayload,
   type OrderFilters,
   type UpdateOrderPayload,
 } from "@/lib/api/admin-content";
 import { getArtistName } from "@/lib/artist-display";
+import { positiveInteger } from "@/lib/admin-action-validation";
 import { formatBookingDate, formatBookingTimeRange, formatUnixDateTime, isExpired } from "@/lib/order-format";
 import { getOrderUiStatus } from "@/lib/order-status";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { MONEY_CURRENCY_LABEL } from "@/lib/money-format";
+import {
+  formatMoneyWithCurrency,
+  formatSignedMoneyInput,
+  MONEY_CURRENCY_LABEL,
+  positiveMoneyAmount,
+} from "@/lib/money-format";
+import {
+  buildVerifyPaymentPayload,
+  canSubmitVerifyPayment,
+  isPartialPaymentApiError,
+} from "@/lib/order-payment-verification";
 import { formatPhone } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import type { Locale } from "@/lib/i18n/translations";
 import { cn, getValue, isRecord, normalizeDate, toDisplay } from "@/lib/utils";
 import type {
@@ -79,25 +97,39 @@ import type {
   Region,
   Service,
   OrderPaymentRecord,
+  OrderContract,
   UnknownRecord,
   User,
 } from "@/types/api";
 
 type DialogState =
-  | { type: "details"; order: OrderRecord }
+  | { type: "details"; order: OrderRecord; detailLoading: boolean }
   | { type: "contact"; order: OrderRecord }
   | { type: "edit"; order: OrderRecord }
   | { type: "confirm"; order: OrderRecord }
+  | { type: "reschedule"; order: OrderRecord }
   | { type: "complete"; order: OrderRecord }
   | { type: "cancel"; order: OrderRecord }
   | { type: "verify-payment"; order: OrderRecord; payment: OrderPaymentRecord }
+  | { type: "confirm-partial-payment"; order: OrderRecord; payment: OrderPaymentRecord }
   | { type: "reject-payment"; order: OrderRecord; payment: OrderPaymentRecord }
   | null;
 
-const limit = 20;
-const clientRole = 10;
+type ConfirmOrderFormPayload = {
+  total_price: number;
+  deadline_minutes: number;
+};
 
-type OrderStatusTabKey = "all" | "pending" | "payment_pending" | "confirmed" | "completed" | "cancelled";
+const limit = 20;
+type OrderStatusTabKey =
+  | "all"
+  | "pending"
+  | "payment_pending"
+  | "payment_verification"
+  | "confirmed"
+  | "rejected"
+  | "completed"
+  | "cancelled";
 
 type OrderStatusTab = {
   key: OrderStatusTabKey;
@@ -108,7 +140,9 @@ const orderStatusTabValues: OrderStatusTab[] = [
   { key: "all", value: "" },
   { key: "pending", value: "10" },
   { key: "payment_pending", value: "20" },
+  { key: "payment_verification", value: "25" },
   { key: "confirmed", value: "30" },
+  { key: "rejected", value: "35" },
   { key: "completed", value: "50" },
   { key: "cancelled", value: "40" },
 ];
@@ -117,12 +151,17 @@ const initialStatusCounts: Record<OrderStatusTabKey, number> = {
   all: 0,
   pending: 0,
   payment_pending: 0,
+  payment_verification: 0,
   confirmed: 0,
+  rejected: 0,
   completed: 0,
   cancelled: 0,
 };
 
+const CONFIRMED_ORDER_STATUS_CODE = 30;
+
 const initialFilters: OrderFilters = {
+  q: "",
   status: "",
   artist_id: "",
   date_from: "",
@@ -158,16 +197,16 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const orderStatusTabs = useMemo(() => getOrderStatusTabs(labels), [labels]);
   const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(initialOrderFilters);
-  const [searchDraft, setSearchDraft] = useState("");
+  const [searchDraft, setSearchDraft] = useState(String(initialOrderFilters.q ?? ""));
   const search = useDebouncedValue(searchDraft.trim(), 300);
   const [dateRange, setDateRange] = useState(() => inferDateFilterMode(initialOrderFilters));
   const [artistOptions, setArtistOptions] = useState<ArtistProfile[]>([]);
-  const [clients, setClients] = useState<User[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [rows, setRows] = useState<OrderRecord[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<OrderStatusTabKey, number>>(initialStatusCounts);
+  const [statusCountsLoaded, setStatusCountsLoaded] = useState(false);
   const [meta, setMeta] = useState<ListResult<OrderRecord>["meta"]>();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -175,26 +214,46 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   const [dialog, setDialog] = useState<DialogState>(null);
   const [dialogError, setDialogError] = useState("");
   const toast = useToast();
+  const formOptionsLoaded = useRef(false);
+  const formOptionsRequest = useRef<Promise<void> | null>(null);
+  const startListRequest = useLatestRequest(filters);
+  const startStatusCountRequest = useLatestRequest();
   const activeStatus = orderStatusTabFromValue(draftFilters.status);
+  const statusTabItems = useMemo(
+    () => orderStatusTabs.map((tab) => ({
+      key: tab.key,
+      label: tab.label,
+      count: statusCounts[tab.key] ?? 0,
+      countClassName: orderStatusCountClass(tab.key),
+    })),
+    [orderStatusTabs, statusCounts],
+  );
   const page = Number(filters.page ?? 1);
   const pageSize = Number(filters.limit) || limit;
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchOrders = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await ordersApi.list({
         ...filters,
         expand: "client,artist,service,subService",
       });
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed]);
+  }, [filters, labels.loadFailed, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -203,7 +262,8 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     return () => window.clearTimeout(timer);
   }, [fetchOrders]);
 
-  const fetchStatusCounts = useCallback(async () => {
+  const fetchStatusCounts = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startStatusCountRequest();
     try {
       const results = await Promise.all(
         orderStatusTabs.map((tab) =>
@@ -215,43 +275,64 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         ),
       );
 
+      if (!isLatestRequest()) return;
       setStatusCounts(
         orderStatusTabs.reduce<Record<OrderStatusTabKey, number>>((accumulator, tab, index) => {
           accumulator[tab.key] = getResultCount(results[index]);
           return accumulator;
         }, { ...initialStatusCounts }),
       );
-    } catch {
-      setStatusCounts(initialStatusCounts);
+      setStatusCountsLoaded(true);
+    } catch (caught) {
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.loadFailed);
+      } else {
+        setStatusCounts(initialStatusCounts);
+        setStatusCountsLoaded(false);
+      }
     }
-  }, [orderStatusTabs]);
+  }, [labels.loadFailed, orderStatusTabs, startStatusCountRequest, toast]);
+
+  const loadOrderFormOptions = useCallback(async () => {
+    if (formOptionsLoaded.current) return;
+    if (formOptionsRequest.current) return formOptionsRequest.current;
+
+    const request = Promise.all([
+      servicesApi.list({ page: 1, limit: 1000 }),
+      regionsApi.list({ page: 1, limit: 1000 }),
+      districtsApi.list({ page: 1, limit: 1000 }),
+    ]).then(([servicesResult, regionsResult, districtsResult]) => {
+      setServices(servicesResult.items);
+      setRegions(regionsResult.items);
+      setDistricts(districtsResult.items);
+      formOptionsLoaded.current = true;
+    }).finally(() => {
+      formOptionsRequest.current = null;
+    });
+
+    formOptionsRequest.current = request;
+    return request;
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(async () => {
       try {
-        const [clientsResult, artistsResult, servicesResult, regionsResult, districtsResult] =
-          await Promise.all([
-            usersApi.list({ role: clientRole, page: 1, limit: 500, expand: "profile,region,district" }),
-            artistsApi.list({ page: 1, limit: 500 }),
-            servicesApi.list({ page: 1, limit: 1000 }),
-            regionsApi.list({ page: 1, limit: 1000 }),
-            districtsApi.list({ page: 1, limit: 1000 }),
-          ]);
-        setClients(clientsResult.items);
-        setArtistOptions(artistsResult.items);
-        setServices(servicesResult.items);
-        setRegions(regionsResult.items);
-        setDistricts(districtsResult.items);
+        const result = await artistsApi.list({ page: 1, limit: 500 });
+        setArtistOptions(result.items);
       } catch {
-        setClients([]);
         setArtistOptions([]);
-        setServices([]);
-        setRegions([]);
-        setDistricts([]);
       }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadOrderFormOptions().catch(() => undefined);
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [loadOrderFormOptions]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -265,6 +346,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       setFilters((current) => {
         const next: OrderFilters = {
           ...current,
+          q: search,
           status: normalizeOrderStatusFilter(draftFilters.status),
           artist_id: draftFilters.artist_id ?? "",
           date_from: draftFilters.date_from ?? "",
@@ -284,9 +366,10 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     draftFilters.date_to,
     draftFilters.sort,
     draftFilters.status,
+    search,
   ]);
 
-  const clientMap = useMemo(() => createEntityMap(clients, (client) => [client.id]), [clients]);
+  const clientMap = useMemo(() => new Map<number, User>(), []);
   const artistMap = useMemo(
     () => createEntityMap(artistOptions, (artist) => [artist.id, artist.user_id]),
     [artistOptions],
@@ -313,7 +396,10 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     }
     setSubmitting(true);
     try {
-      const order = await ordersApi.detail(row.id);
+      const [order] = await Promise.all([
+        ordersApi.detail(row.id),
+        loadOrderFormOptions(),
+      ]);
       setDialog({ type, order });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
@@ -323,29 +409,45 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
   };
 
   const openDetail = async (row: OrderRecord) => {
-    if (!row.id) {
-      setDialog({ type: "details", order: row });
-      return;
-    }
-    setSubmitting(true);
+    setDialog({ type: "details", order: row, detailLoading: Boolean(row.id) });
+    if (!row.id) return;
+
     try {
-      const order = await ordersApi.detail(row.id, {
-        expand: "client,artist,service,subService,region,district,invoice,orderPayments,history",
-      });
-      setDialog({ type: "details", order: { ...row, ...order } });
-    } catch {
-      setDialog({ type: "details", order: row });
-    } finally {
-      setSubmitting(false);
+      const [orderResult, contractResult] = await Promise.allSettled([
+        ordersApi.detail(row.id, {
+          expand: "client,artist,service,subService,region,district,invoice,orderPayments,history",
+        }),
+        ordersApi.contract(row.id),
+      ]);
+      if (orderResult.status === "rejected") throw orderResult.reason;
+      const order = {
+        ...orderResult.value,
+        ...(contractResult.status === "fulfilled"
+          ? {
+              contract: contractResult.value.contract,
+              public_id: contractResult.value.order_public_id ?? orderResult.value.public_id,
+            }
+          : {}),
+      };
+      setDialog((current) =>
+        current?.type === "details" && current.order.id === row.id
+          ? { type: "details", order: { ...row, ...order }, detailLoading: false }
+          : current,
+      );
+    } catch (caught) {
+      setDialog((current) =>
+        current?.type === "details" && current.order.id === row.id
+          ? { ...current, detailLoading: false }
+          : current,
+      );
+      toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
     }
   };
 
   const openContact = async (row: OrderRecord) => {
-    if (!row.id) {
-      setDialog({ type: "contact", order: row });
-      return;
-    }
-    setSubmitting(true);
+    setDialog({ type: "contact", order: row });
+    if (!row.id) return;
+
     try {
       let order: OrderRecord;
       try {
@@ -362,14 +464,16 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           artistDetail = undefined;
         }
       }
-      setDialog({
-        type: "contact",
-        order: { ...row, ...order, artist_profile_contact: artistDetail },
-      });
+      setDialog((current) =>
+        current?.type === "contact" && current.order.id === row.id
+          ? {
+              type: "contact",
+              order: { ...row, ...order, artist_profile_contact: artistDetail },
+            }
+          : current,
+      );
     } catch {
-      setDialog({ type: "contact", order: row });
-    } finally {
-      setSubmitting(false);
+      // Keep the contact drawer populated from the list response.
     }
   };
 
@@ -402,8 +506,30 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     setFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
   };
 
-  const runSimpleAction = async (type: "confirm" | "complete", deadlineMinutes?: number) => {
+  const applyLocalStatusTransition = (order: OrderRecord, nextStatus: number) => {
+    if (!statusCountsLoaded) {
+      void fetchStatusCounts({ background: true });
+      return;
+    }
+    const previousKey = orderStatusTabFromValue(order.status ?? order.status_code);
+    const nextKey = orderStatusTabFromValue(nextStatus);
+    if (previousKey === nextKey) return;
+    if (previousKey === "all" || nextKey === "all") {
+      void fetchStatusCounts({ background: true });
+      return;
+    }
+
+    startStatusCountRequest();
+    setStatusCounts((current) => ({
+      ...current,
+      [previousKey]: Math.max(0, current[previousKey] - 1),
+      [nextKey]: current[nextKey] + 1,
+    }));
+  };
+
+  const runSimpleAction = async (type: "confirm" | "complete", confirmPayload?: ConfirmOrderFormPayload) => {
     if (!dialog || dialog.type !== type || !dialog.order.id) return;
+    if (type === "confirm" && !confirmPayload) return;
     setDialogError("");
     setSubmitting(true);
     try {
@@ -421,15 +547,16 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         }
         await ordersApi.confirm(dialog.order.id, {
           ...buildConfirmOrderPayload(confirmOrder),
-          deadline_minutes: deadlineMinutes,
+          ...confirmPayload,
         });
         toast.success(labels.confirmedToast);
       } else {
         await ordersApi.complete(dialog.order.id);
         toast.success(labels.completedToast);
       }
+      applyLocalStatusTransition(dialog.order, type === "confirm" ? 20 : 50);
       setDialog(null);
-      await Promise.all([fetchOrders(), fetchStatusCounts()]);
+      void fetchOrders({ background: true });
     } catch (caught) {
       const message = resolveOrderActionErrorMessage(caught, labels, type);
       if (type === "confirm") {
@@ -437,6 +564,22 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       } else {
         toast.error(message);
       }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const runRescheduleAction = async (payload: RescheduleOrderPayload) => {
+    if (!dialog || dialog.type !== "reschedule" || !dialog.order.id) return;
+    setDialogError("");
+    setSubmitting(true);
+    try {
+      await ordersApi.reschedule(dialog.order.id, payload);
+      toast.success(labels.rescheduledToast);
+      setDialog(null);
+      void fetchOrders({ background: true });
+    } catch (caught) {
+      setDialogError(resolveRescheduleErrorMessage(caught, labels));
     } finally {
       setSubmitting(false);
     }
@@ -451,24 +594,58 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
     setDialog({ type, order, payment });
   };
 
-  const runPaymentAction = async (type: "verify-payment" | "reject-payment", reason?: string) => {
-    if (!dialog || dialog.type !== type || !dialog.order.id || !dialog.payment.id) return;
+  const runVerifyPayment = async (allowPartial = false) => {
+    if (
+      !dialog ||
+      (dialog.type !== "verify-payment" && dialog.type !== "confirm-partial-payment")
+    ) return;
+    if (!canSubmitVerifyPayment(dialog.type, allowPartial)) return;
+
+    const { order, payment } = dialog;
+    const orderId = order.id;
+    const paymentId = payment.id;
+    if (!orderId || !paymentId) return;
+
     setSubmitting(true);
     try {
-      if (type === "verify-payment") {
-        const payload: VerifyOrderPaymentPayload = { payment_id: dialog.payment.id };
-        await ordersApi.verifyPayment(dialog.order.id, payload);
-        toast.success(labels.paymentVerifiedToast);
-      } else {
-        const payload: RejectOrderPaymentPayload = {
-          payment_id: dialog.payment.id,
-          reason: stringValue(reason),
-        };
-        await ordersApi.rejectPayment(dialog.order.id, payload);
-        toast.success(labels.paymentRejectedToast);
-      }
+      await ordersApi.verifyPayment(
+        orderId,
+        buildVerifyPaymentPayload(paymentId, allowPartial),
+      );
+      toast.success(labels.paymentVerifiedToast);
+      applyLocalStatusTransition(order, 30);
       setDialog(null);
-      await Promise.all([fetchOrders(), fetchStatusCounts()]);
+      void fetchOrders({ background: true });
+    } catch (caught) {
+      if (!allowPartial && isPartialPaymentApiError(caught)) {
+        setDialog({ type: "confirm-partial-payment", order, payment });
+        return;
+      }
+
+      toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const runRejectPayment = async (reason?: string) => {
+    if (!dialog || dialog.type !== "reject-payment") return;
+
+    const { order, payment } = dialog;
+    const orderId = order.id;
+    const paymentId = payment.id;
+    if (!orderId || !paymentId) return;
+
+    setSubmitting(true);
+    try {
+      const payload: RejectOrderPaymentPayload = {
+        payment_id: paymentId,
+        reason: stringValue(reason),
+      };
+      await ordersApi.rejectPayment(orderId, payload);
+      toast.success(labels.paymentRejectedToast);
+      setDialog(null);
+      void fetchOrders({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
     } finally {
@@ -483,23 +660,21 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
       : undefined);
 
   return (
-    <section className="artistbor-admin-page w-full space-y-4">
-      <div>
-        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-          {labels.eyebrow}
-        </p>
-        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-          {labels.title}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-          {labels.description}
-        </p>
-      </div>
+    <section className="artistbor-admin-page artistbor-responsive-data-page w-full space-y-4">
+      <AdminPageHeader eyebrow={labels.eyebrow} title={labels.title} description={labels.description} />
 
-      <OrderStatusTabs tabs={orderStatusTabs} active={activeStatus} counts={statusCounts} onChange={changeStatus} />
+      <StatusTabRail
+        items={statusTabItems}
+        activeKey={activeStatus}
+        ariaLabel={labels.statusTabsLabel}
+        previousLabel={labels.statusTabsPrevious}
+        nextLabel={labels.statusTabsNext}
+        controlsId="orders-results"
+        onChange={changeStatus}
+      />
 
-      <div className="artistbor-table-filter-shell overflow-x-auto">
-        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto] md:items-center">
+      <div className="artistbor-table-filter-shell artistbor-responsive-filter-shell">
+        <div className="artistbor-table-filter-panel artistbor-responsive-filter-panel">
           <Input
             allowClear
             prefix={<Search className="size-4 text-slate-400" />}
@@ -532,7 +707,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           <button
             type="button"
             onClick={resetFilters}
-            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 px-4 md:col-start-4"
+            className="admin-filter-action artistbor-filter-reset artistbor-table-filter-control h-10 px-4"
           >
             <RotateCcw className="size-4" />
             {labels.reset}
@@ -540,65 +715,73 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         </div>
       </div>
 
-      {loading ? (
-        <OrdersSkeleton />
-      ) : error ? (
-        <ErrorState message={error} />
-      ) : displayedRows.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <>
-          <div className="grid gap-3 lg:hidden">
-            {displayedRows.map((row, index) => (
-              <OrderMobileCard
-                key={String(row.id ?? index)}
-                row={row}
-                client={getClientDisplay(row, clientMap, labels)}
-                artist={getArtistDisplay(row, artistMap, labels)}
-                service={getServiceDisplay(row.service, row.service_id, serviceMap, labels)}
-                subService={getServiceDisplay(row.subService ?? row.sub_service, row.sub_service_id, serviceMap, labels)}
+      <div
+        id="orders-results"
+        role="tabpanel"
+        aria-labelledby={`orders-results-${activeStatus}-tab`}
+        className="space-y-4"
+      >
+        {loading ? (
+          <OrdersSkeleton />
+        ) : error ? (
+          <ErrorState message={error} />
+        ) : displayedRows.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <>
+            <div className="artistbor-orders-cards gap-3">
+              {displayedRows.map((row, index) => (
+                <OrderMobileCard
+                  key={String(row.id ?? index)}
+                  row={row}
+                  client={getClientDisplay(row, clientMap, labels)}
+                  artist={getArtistDisplay(row, artistMap, labels)}
+                  service={getServiceDisplay(row.service, row.service_id, serviceMap, labels)}
+                  subService={getServiceDisplay(row.subService ?? row.sub_service, row.sub_service_id, serviceMap, labels)}
+                  labels={labels}
+                  onDetails={() => void openDetail(row)}
+                  onContact={() => void openContact(row)}
+                  onPrimary={(action) => setDialog({ type: action, order: row })}
+                />
+              ))}
+            </div>
+            <div className="artistbor-orders-table">
+              <OrdersDataTable
+                rows={displayedRows}
+                clientMap={clientMap}
+                artistMap={artistMap}
+                serviceMap={serviceMap}
                 labels={labels}
-                onDetails={() => void openDetail(row)}
-                onContact={() => void openContact(row)}
-                onPrimary={(action) => setDialog({ type: action, order: row })}
+                onOpenDetail={(row) => void openDetail(row)}
+                onOpenContact={(row) => void openContact(row)}
               />
-            ))}
-          </div>
-          <div className="hidden lg:block">
-            <OrdersDataTable
-              rows={displayedRows}
-              clientMap={clientMap}
-              artistMap={artistMap}
-              serviceMap={serviceMap}
-              labels={labels}
-              onOpenDetail={(row) => void openDetail(row)}
-              onOpenContact={(row) => void openContact(row)}
-            />
-          </div>
-        </>
-      )}
+            </div>
+          </>
+        )}
 
-      {pageCount ? (
-        <Pagination
-          meta={meta}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={changePage}
-          onPageSizeChange={changePageSize}
-        />
-      ) : (
-        <FallbackPagination
-          page={page}
-          rowsCount={rows.length}
-          pageSize={pageSize}
-          onPageChange={changePage}
-          onPageSizeChange={changePageSize}
-        />
-      )}
+        {pageCount ? (
+          <Pagination
+            meta={meta}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={changePage}
+            onPageSizeChange={changePageSize}
+          />
+        ) : (
+          <FallbackPagination
+            page={page}
+            rowsCount={rows.length}
+            pageSize={pageSize}
+            onPageChange={changePage}
+            onPageSizeChange={changePageSize}
+          />
+        )}
+      </div>
 
       <OrderDetailDrawer
         open={dialog?.type === "details"}
         order={dialog?.type === "details" ? dialog.order : null}
+        detailLoading={dialog?.type === "details" ? dialog.detailLoading : false}
         client={dialog?.type === "details" ? getClientDisplay(dialog.order, clientMap, labels) : undefined}
         artist={dialog?.type === "details" ? getArtistDisplay(dialog.order, artistMap, labels) : undefined}
         service={
@@ -626,6 +809,12 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         }}
         onConfirm={() => {
           if (dialog?.type === "details") setDialog({ type: "confirm", order: dialog.order });
+        }}
+        onReschedule={() => {
+          if (dialog?.type === "details") {
+            setDialogError("");
+            setDialog({ type: "reschedule", order: dialog.order });
+          }
         }}
         onComplete={() => {
           if (dialog?.type === "details") setDialog({ type: "complete", order: dialog.order });
@@ -667,7 +856,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
               await ordersApi.update(dialog.order.id, payload);
               toast.success(labels.updatedToast);
               setDialog(null);
-              await Promise.all([fetchOrders(), fetchStatusCounts()]);
+              void fetchOrders({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : labels.updateFailed);
             } finally {
@@ -677,16 +866,32 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
         />
       ) : null}
 
-      {dialog?.type === "confirm" ? (
-        <ConfirmOrderModal
+      {dialog?.type === "reschedule" ? (
+        <RescheduleOrderModal
           actionError={dialogError}
           loading={submitting}
+          order={dialog.order}
           labels={labels}
           onClose={() => {
             setDialogError("");
             setDialog(null);
           }}
-          onSubmit={(deadlineMinutes) => runSimpleAction("confirm", deadlineMinutes)}
+          onChange={() => setDialogError("")}
+          onSubmit={runRescheduleAction}
+        />
+      ) : null}
+
+      {dialog?.type === "confirm" ? (
+        <ConfirmOrderModal
+          actionError={dialogError}
+          loading={submitting}
+          order={dialog.order}
+          labels={labels}
+          onClose={() => {
+            setDialogError("");
+            setDialog(null);
+          }}
+          onSubmit={(payload) => runSimpleAction("confirm", payload)}
           onChange={() => setDialogError("")}
         />
       ) : null}
@@ -713,8 +918,9 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
             try {
               await ordersApi.cancel(dialog.order.id, reason);
               toast.success(labels.cancelledToast);
+              applyLocalStatusTransition(dialog.order, 40);
               setDialog(null);
-              await Promise.all([fetchOrders(), fetchStatusCounts()]);
+              void fetchOrders({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : labels.cancelFailed);
             } finally {
@@ -731,7 +937,19 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           message={labels.verifyPaymentDialogMessage}
           confirmLabel={labels.verifyPaymentAction}
           onCancel={() => setDialog(null)}
-          onConfirm={() => runPaymentAction("verify-payment")}
+          onConfirm={() => runVerifyPayment()}
+        />
+      ) : null}
+
+      {dialog?.type === "confirm-partial-payment" ? (
+        <ConfirmDialog
+          danger
+          loading={submitting}
+          title={labels.partialPaymentDialogTitle}
+          message={partialPaymentDialogMessage(dialog.payment, labels)}
+          confirmLabel={labels.partialPaymentConfirmAction}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => runVerifyPayment(true)}
         />
       ) : null}
 
@@ -740,7 +958,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           loading={submitting}
           labels={labels}
           onClose={() => setDialog(null)}
-          onSubmit={(reason) => runPaymentAction("reject-payment", reason)}
+          onSubmit={runRejectPayment}
         />
       ) : null}
 
@@ -795,57 +1013,6 @@ type PrimaryOrderAction = {
   action: "confirm" | "complete";
 };
 
-function OrderStatusTabs({
-  tabs,
-  active,
-  counts,
-  onChange,
-}: {
-  tabs: Array<OrderStatusTab & { label: string }>;
-  active: OrderStatusTabKey;
-  counts: Record<OrderStatusTabKey, number>;
-  onChange: (status: OrderStatusTabKey) => void;
-}) {
-  return (
-    <div className="border-b border-[#e6ebf2] dark:border-white/10">
-      <div className="flex gap-7 overflow-x-auto overflow-y-hidden">
-        {tabs.map((tab) => {
-          const selected = tab.key === active;
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => onChange(tab.key)}
-              className={cn(
-                "relative inline-flex h-12 shrink-0 cursor-pointer items-center gap-2 text-sm font-semibold transition",
-                selected
-                  ? "text-[#f97316] dark:text-amber-300"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
-              )}
-            >
-              <span>{tab.label}</span>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 text-xs font-bold",
-                  selected
-                    ? "bg-[#fff7ed] text-[#f97316] ring-1 ring-[#fed7aa] dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20"
-                    : orderStatusCountClass(tab.key),
-                )}
-              >
-                {counts[tab.key] ?? 0}
-              </span>
-              {selected ? (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#f97316] dark:bg-amber-400" />
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function OrdersDataTable({
   rows,
   clientMap,
@@ -864,9 +1031,14 @@ function OrdersDataTable({
   onOpenContact: (order: OrderRecord) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div
+        role="region"
+        tabIndex={0}
+        aria-label={labels.ordersTableRegionLabel}
+        className="admin-table-scroll artistbor-orders-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent"
+      >
+        <table className="w-full border-separate border-spacing-0">
           <thead>
             <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
               <TableHead>{labels.orderColumn}</TableHead>
@@ -885,14 +1057,15 @@ function OrdersDataTable({
               const subService = getServiceDisplay(row.subService ?? row.sub_service, row.sub_service_id, serviceMap, labels);
 
               return (
-                  <tr
-                    key={String(row.id ?? index)}
-                    className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]"
-                  >
+                <tr
+                  key={String(row.id ?? index)}
+                  className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]"
+                >
                   <TableCell>
                     <OrderIdCell
-                      id={row.id}
+                      publicId={row.public_id}
                       createdAt={firstOrderTimestamp(row, ["created_at", "createdAt"])}
+                      compactMeta={client.primary}
                       labels={labels}
                     />
                   </TableCell>
@@ -956,7 +1129,7 @@ function PaymentStatusBadge({ order, labels }: { order: OrderRecord; labels: Ord
         payment.tone === "paid"
           ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-700 dark:text-emerald-300"
           : payment.tone === "refunded"
-            ? "border-sky-400/35 bg-sky-400/10 text-sky-700 dark:text-sky-300"
+            ? "border-artistbor-border-strong bg-artistbor-surface-subtle text-artistbor-secondary"
             : "border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300",
       )}
     >
@@ -1033,7 +1206,7 @@ function OrderPaymentsPanel({
                   href={payment.receipt_file_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-blue-500/10"
+                  className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-artistbor-border bg-artistbor-surface px-3 text-xs font-black text-artistbor-secondary transition-colors duration-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
                 >
                   {labels.openReceiptAction}
                   <ExternalLink className="size-3.5" />
@@ -1053,7 +1226,7 @@ function OrderPaymentsPanel({
           <button
             type="button"
             onClick={onVerifyPayment}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/15"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-700 transition-colors duration-200 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/15"
           >
             <CreditCard className="size-4" />
             {labels.verifyPaymentAction}
@@ -1110,8 +1283,66 @@ function YandexMapLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function YandexMapPreview({
+  latitude,
+  longitude,
+  labels,
+}: {
+  latitude: string;
+  longitude: string;
+  labels: OrderLabels;
+}) {
+  const coordinates = getValidMapCoordinates(latitude, longitude);
+
+  if (!coordinates) {
+    return (
+      <div className="grid min-h-44 place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center dark:border-white/15 dark:bg-white/[0.025]">
+        <div>
+          <MapPin className="mx-auto size-6 text-slate-400" />
+          <p className="mt-2 text-sm font-bold text-slate-600 dark:text-slate-300">{labels.mapCoordinatesRequired}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const mapUrl = getYandexMapUrlFromCoordinates(coordinates);
+  const staticMapUrl = getYandexStaticMapUrl(coordinates);
+
+  return (
+    <section aria-label={labels.mapPreviewTitle} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.025]">
+      <div className="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
+            <MapPin className="size-4 shrink-0 text-amber-500" />
+            {labels.mapPreviewTitle}
+          </div>
+          <p className="mt-1 font-mono text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {coordinates.latitude.toFixed(6)}, {coordinates.longitude.toFixed(6)}
+          </p>
+        </div>
+        <YandexMapLink href={mapUrl} label={labels.openYandexMap} />
+      </div>
+      <div className="relative h-52 bg-slate-100 sm:h-60 dark:bg-slate-900">
+        <Image
+          fill
+          alt={`${labels.mapPreviewTitle}: ${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`}
+          className="pointer-events-none select-none object-cover"
+          draggable={false}
+          sizes="(max-width: 768px) 100vw, 520px"
+          src={staticMapUrl}
+          unoptimized
+        />
+      </div>
+      <p className="border-t border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 dark:border-white/10 dark:text-slate-400">
+        {labels.mapPreviewReadonly}
+      </p>
+    </section>
+  );
+}
+
 function OrderDetailDrawer({
   order,
+  detailLoading,
   client,
   artist,
   service,
@@ -1122,6 +1353,7 @@ function OrderDetailDrawer({
   onClose,
   onEdit,
   onConfirm,
+  onReschedule,
   onComplete,
   onCancel,
   onVerifyPayment,
@@ -1129,6 +1361,7 @@ function OrderDetailDrawer({
   labels,
 }: {
   order: OrderRecord | null;
+  detailLoading: boolean;
   client?: EntityDisplay;
   artist?: EntityDisplay;
   service?: EntityDisplay;
@@ -1139,6 +1372,7 @@ function OrderDetailDrawer({
   onClose: () => void;
   onEdit: () => void;
   onConfirm: () => void;
+  onReschedule: () => void;
   onComplete: () => void;
   onCancel: () => void;
   onVerifyPayment: () => void;
@@ -1163,7 +1397,7 @@ function OrderDetailDrawer({
       title={
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="truncate text-lg font-bold text-slate-950 dark:text-white">
-            {labels.orderTitle} #{toDisplay(order.id)}
+            {labels.orderTitle} {order.public_id ?? "—"}
           </span>
           <OrderStatusBadge status={localizeOrderStatus(getOrderUiStatus(order), labels)} />
         </div>
@@ -1173,6 +1407,7 @@ function OrderDetailDrawer({
           order={order}
           onEdit={onEdit}
           onConfirm={onConfirm}
+          onReschedule={onReschedule}
           onComplete={onComplete}
           onCancel={onCancel}
           onVerifyPayment={onVerifyPayment}
@@ -1183,6 +1418,7 @@ function OrderDetailDrawer({
       styles={adminDrawerStyles}
     >
       <div className="space-y-3.5 p-4">
+        {detailLoading ? <InlineLoadingState /> : null}
         <div className="flex items-center gap-3">
           <div className="grid size-14 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">
             <WalletCards className="size-6" />
@@ -1235,6 +1471,11 @@ function OrderDetailDrawer({
               ),
             },
             {
+              key: "contract",
+              label: labels.contractTitle,
+              children: <OrderContractPanel contract={order.contract} labels={labels} />,
+            },
+            {
               key: "technical",
               label: labels.historyTitle,
               children: (
@@ -1255,6 +1496,7 @@ function OrderDrawerActions({
   order,
   onEdit,
   onConfirm,
+  onReschedule,
   onComplete,
   onCancel,
   onVerifyPayment,
@@ -1264,6 +1506,7 @@ function OrderDrawerActions({
   order: OrderRecord;
   onEdit: () => void;
   onConfirm: () => void;
+  onReschedule: () => void;
   onComplete: () => void;
   onCancel: () => void;
   onVerifyPayment: () => void;
@@ -1272,6 +1515,7 @@ function OrderDrawerActions({
 }) {
   const primaryAction = getPrimaryOrderAction(order, labels);
   const pendingPayment = findPendingOrderPayment(order);
+  const canReschedule = hasConfirmedOrderStatus(order);
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -1291,6 +1535,14 @@ function OrderDrawerActions({
           label={labels.completeAction}
           tone="complete"
           onClick={onComplete}
+        />
+      ) : null}
+      {canReschedule ? (
+        <DrawerActionButton
+          icon={<CalendarClock className="size-4" />}
+          label={labels.rescheduleAction}
+          tone="reschedule"
+          onClick={onReschedule}
         />
       ) : null}
       {pendingPayment ? (
@@ -1321,18 +1573,20 @@ function DrawerActionButton({
 }: {
   icon: React.ReactNode;
   label: string;
-  tone?: "default" | "confirm" | "complete" | "danger" | "payment";
+  tone?: "default" | "confirm" | "reschedule" | "complete" | "danger" | "payment";
   onClick: () => void;
 }) {
   const toneClass = {
     default:
       "border-slate-200 text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:text-slate-200 dark:hover:border-amber-400/40 dark:hover:bg-amber-400/10 dark:hover:text-amber-200",
     confirm:
-      "border-sky-200 text-sky-700 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-500/30 dark:text-sky-300 dark:hover:bg-sky-500/10",
+      "border-amber-200 text-amber-700 hover:border-amber-300 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/10",
+    reschedule:
+      "border-amber-200 text-amber-700 hover:border-amber-300 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/10",
     complete:
       "border-emerald-200 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10",
     payment:
-      "border-blue-200 text-blue-700 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:hover:bg-blue-500/10",
+      "border-artistbor-border-strong text-artistbor-secondary hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10 dark:hover:text-amber-300",
     danger:
       "border-rose-200 text-rose-600 hover:border-rose-300 hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10",
   }[tone];
@@ -1498,7 +1752,7 @@ function OrderContactDrawer({
         <div className="min-w-0">
           <p className="truncate text-lg font-bold leading-6 text-slate-950 dark:text-white">{labels.contactAction}</p>
           <p className="mt-1 truncate text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            {labels.orderTitle} #{toDisplay(order.id)}
+            {labels.orderTitle} {order.public_id ?? "—"}
           </p>
         </div>
       }
@@ -1579,6 +1833,55 @@ function OrderInfoCell({
   );
 }
 
+function OrderContractPanel({ contract, labels }: { contract?: OrderContract | null; labels: OrderLabels }) {
+  if (!contract) {
+    return (
+      <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 dark:border-white/15 dark:bg-white/[0.025]">
+        <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+          <FileText className="size-4 text-amber-500" />
+          {labels.contractTitle}
+        </div>
+        <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{labels.contractMissing}</p>
+      </section>
+    );
+  }
+
+  const id = contract.contract_id ?? contract.id;
+  const hasFile = contract.has_file !== false && (Boolean(contract.file_url) || contract.status !== "draft");
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.025]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-white">
+            <FileText className="size-4 text-amber-500" />
+            {contract.contract_number || labels.contractTitle}
+          </div>
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {getDashboardStatus("contract", contract.status ?? contract.status_label, labels.locale).label}
+          </p>
+        </div>
+        <ContractFileActions contractId={id} contractNumber={contract.contract_number} disabled={!hasFile} labels={labels.contractFileActions} />
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <ContractSignature label={labels.artistLabel} signed={contract.signatures?.artist?.signed} signedAt={contract.signatures?.artist?.signed_at} labels={labels} />
+        <ContractSignature label={labels.clientColumn} signed={contract.signatures?.client?.signed} signedAt={contract.signatures?.client?.signed_at} labels={labels} />
+      </div>
+    </section>
+  );
+}
+
+function ContractSignature({ label, signed, signedAt, labels }: { label: string; signed?: boolean; signedAt?: number | null; labels: OrderLabels }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-3 dark:bg-white/[0.04]">
+      <p className="text-xs font-bold text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-bold text-slate-950 dark:text-white">
+        {signed ? labels.contractSigned : labels.contractWaiting}
+        {signed && signedAt ? ` · ${formatNullableUnixDate(signedAt)}` : ""}
+      </p>
+    </div>
+  );
+}
+
 function OrderLifecycleHistory({
   order,
   labels,
@@ -1586,7 +1889,9 @@ function OrderLifecycleHistory({
   order: OrderRecord;
   labels: OrderLabels;
 }) {
-  const events = [
+  const historyEvents = orderHistoryEvents(order, labels);
+  const hasCompletionHistory = historyEvents.some((event) => event.key.startsWith("system_completed"));
+  const events: Array<{ key: string; icon: React.ReactNode; label: string; value: unknown }> = [
     {
       key: "created",
       icon: <CalendarDays className="size-4" />,
@@ -1597,20 +1902,22 @@ function OrderLifecycleHistory({
       key: "confirmed",
       icon: <CheckCircle2 className="size-4" />,
       label: labels.lifecycleConfirmed,
-      value: firstOrderTimestamp(order, ["confirmed_at", "confirmedAt", "approved_at", "approvedAt", "accepted_at", "acceptedAt"]),
+      value: firstOrderTimestamp(order, ["confirmed_at", "confirmedAt", "approved_at", "approvedAt", "accepted_at", "acceptedAt"]) ?? orderConfirmationHistoryTimestamp(order),
     },
-    {
-      key: "paid",
-      icon: <CreditCard className="size-4" />,
-      label: labels.lifecyclePaid,
-      value: firstOrderTimestamp(order, ["paid_at", "paidAt", "payment_paid_at", "paymentPaidAt", "payment.paid_at", "payment.paidAt"]),
-    },
-    {
+    ...(historyEvents.length
+      ? historyEvents
+      : [{
+          key: "paid",
+          icon: <CreditCard className="size-4" />,
+          label: labels.lifecyclePaid,
+          value: firstOrderTimestamp(order, ["paid_at", "paidAt", "payment_paid_at", "paymentPaidAt", "payment.paid_at", "payment.paidAt"]),
+        }]),
+    ...(!hasCompletionHistory ? [{
       key: "completed",
-      icon: <Flag className="size-4" />,
-      label: labels.lifecycleCompleted,
+      icon: order.auto_completed ? <Bot className="size-4" /> : <Flag className="size-4" />,
+      label: order.auto_completed ? `${labels.systemActor} · ${labels.autoCompleted}` : labels.lifecycleCompleted,
       value: firstOrderTimestamp(order, ["completed_at", "completedAt", "finished_at", "finishedAt", "done_at", "doneAt"]),
-    },
+    }] : []),
   ];
 
   return (
@@ -1640,11 +1947,90 @@ function OrderLifecycleHistory({
   );
 }
 
+function orderHistoryEvents(order: OrderRecord, labels: OrderLabels) {
+  const rawHistory = ["history", "order_history", "status_history", "events"]
+    .map((key) => order[key])
+    .find(Array.isArray);
+  if (!Array.isArray(rawHistory)) return [];
+
+  return rawHistory
+    .map((entry, index) => {
+      if (!isRecord(entry)) return undefined;
+      const normalized = resolveOrderPaymentHistoryEvent(entry);
+      const knownByEvent: Record<string, { label: string; icon: React.ReactNode }> = {
+        payment_submitted: { label: labels.lifecyclePaymentSubmitted, icon: <CreditCard className="size-4" /> },
+        payment_verified: { label: labels.lifecyclePaymentVerified, icon: <CheckCircle2 className="size-4" /> },
+        payment_rejected: { label: labels.lifecyclePaymentRejected, icon: <XCircle className="size-4" /> },
+        system_completed: { label: `${labels.systemActor} · ${labels.autoCompleted}`, icon: <Bot className="size-4" /> },
+      };
+      const actorRole = firstNonEmptyString(entry, ["actor_role", "actorRole"])?.toLowerCase();
+      const action = firstNonEmptyString(entry, ["action", "event", "event_name", "type"])?.toLowerCase();
+      const historyKey = actorRole === "system" && action === "completed" ? "system_completed" : normalized;
+      const known = historyKey ? knownByEvent[historyKey] : undefined;
+      if (!known) return undefined;
+
+      return {
+        key: `${historyKey}-${index}`,
+        icon: known.icon,
+        label: known.label,
+        value: firstOrderTimestamp(entry, ["created_at", "createdAt", "timestamp", "occurred_at", "occurredAt", "date"]),
+      };
+    })
+    .filter((event): event is NonNullable<typeof event> => Boolean(event));
+}
+
+function resolveOrderPaymentHistoryEvent(entry: UnknownRecord) {
+  const eventName = firstNonEmptyString(entry, ["event", "event_name", "action", "type", "code", "name", "status"]);
+  const normalized = eventName?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "payment_submitted" || normalized === "payment_verified" || normalized === "payment_rejected") {
+    return normalized;
+  }
+
+  const note = firstNonEmptyString(entry, ["note", "message", "description"])?.toLowerCase() ?? "";
+  if (/(payment|платеж|to.?lov).*(verified|confirmed|подтвержд|tasdiq)/i.test(note)) return "payment_verified";
+  if (/(payment|платеж|to.?lov).*(rejected|declined|отклон|rad et)/i.test(note)) return "payment_rejected";
+
+  const oldValues = isRecord(entry.old_values) ? entry.old_values : undefined;
+  const newValues = isRecord(entry.new_values) ? entry.new_values : undefined;
+  const oldPaymentStatus = oldValues?.payment_status;
+  const newPaymentStatus = newValues?.payment_status;
+  if (newPaymentStatus !== undefined && String(newPaymentStatus) === "20" && String(oldPaymentStatus ?? "") !== "20") {
+    return "payment_verified";
+  }
+
+  return undefined;
+}
+
+function orderConfirmationHistoryTimestamp(order: OrderRecord) {
+  const rawHistory = ["history", "order_history", "status_history", "events"]
+    .map((key) => order[key])
+    .find(Array.isArray);
+  if (!Array.isArray(rawHistory)) return undefined;
+
+  const confirmation = rawHistory.find((entry) => {
+    if (!isRecord(entry)) return false;
+    const action = firstNonEmptyString(entry, ["action", "event", "event_name", "type", "code"])?.toLowerCase();
+    const newValues = isRecord(entry.new_values) ? entry.new_values : undefined;
+    return action === "confirmed" && String(newValues?.status ?? "") === "20";
+  });
+  return isRecord(confirmation)
+    ? firstOrderTimestamp(confirmation, ["created_at", "createdAt", "timestamp", "occurred_at", "occurredAt", "date"])
+    : undefined;
+}
+
+function firstNonEmptyString(record: UnknownRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
 function TableHead({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <th
       className={cn(
-        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        "border-b border-[#e6ebf2] px-3 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
         className,
       )}
     >
@@ -1654,16 +2040,31 @@ function TableHead({ children, className }: { children: React.ReactNode; classNa
 }
 
 function TableCell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
+  return <td className={cn("border-b border-[#edf2f7] px-3 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
 }
 
-function OrderIdCell({ id, createdAt, labels }: { id: unknown; createdAt: unknown; labels: OrderLabels }) {
+function OrderIdCell({
+  publicId,
+  createdAt,
+  compactMeta,
+  labels,
+}: {
+  publicId?: string;
+  createdAt: unknown;
+  compactMeta?: string;
+  labels: OrderLabels;
+}) {
   return (
     <div className="min-w-0">
-      <p className="text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">#{formatOrderId(id)}</p>
+      <p className="whitespace-nowrap text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">{publicId || "—"}</p>
       <p className="mt-1 whitespace-nowrap text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
         {labels.createdAtLabel}: {formatNullableUnixDate(createdAt)}
       </p>
+      {compactMeta ? (
+        <p className="artistbor-compact-only mt-1 max-w-[220px] truncate text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">
+          {compactMeta}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1695,7 +2096,7 @@ function OrderMobileCard({
     <article className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-700/70 dark:bg-[#111827]">
       <div className="flex items-start justify-between gap-3">
         <OrderIdCell
-          id={row.id}
+          publicId={row.public_id}
           createdAt={firstOrderTimestamp(row, ["created_at", "createdAt"])}
           labels={labels}
         />
@@ -1729,7 +2130,7 @@ function OrderMobileCard({
         <button
           type="button"
           onClick={onContact}
-          className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-black text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
+          className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-artistbor-border px-3 text-xs font-black text-artistbor-secondary transition-colors duration-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:border-amber-400/30 dark:hover:bg-amber-400/10 dark:hover:text-amber-300"
         >
           <Phone className="size-3.5" />
           {labels.contactAction}
@@ -1764,6 +2165,12 @@ function OrderStatusCell({
   return (
     <div className={cn("inline-flex min-w-0 flex-col gap-1.5", align === "end" ? "items-end text-right" : "items-start text-left")}>
       <OrderStatusBadge status={status} />
+      {order.auto_completed ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-artistbor-surface-subtle px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-artistbor-secondary ring-1 ring-artistbor-border-strong">
+          <Bot className="size-3" />
+          {labels.autoCompleted}
+        </span>
+      ) : null}
       {baseStatus.key === "payment_pending" && hasPaymentDeadline ? (
         <p
           className={cn(
@@ -1830,9 +2237,6 @@ function EditOrderDrawer({
   const initialServiceId = numberKey(order.service_id);
   const initialRegionId = numberKey(order.region_id);
   const [values, setValues] = useState({
-    date: stringValue(order.date) ?? "",
-    time: stringValue(order.time) ?? stringValue(order.start_time) ?? "",
-    time_to: stringValue(order.time_to) ?? stringValue(order.end_time) ?? "",
     service_id: toInputValue(initialServiceId),
     sub_service_id: toInputValue(numberKey(order.sub_service_id)),
     region_id: toInputValue(initialRegionId),
@@ -1866,13 +2270,15 @@ function EditOrderDrawer({
     labels.locale,
   );
   const formId = `order-edit-form-${order.id ?? "unknown"}`;
+  const latitudeError = getCoordinateFieldError(values.lat, -90, 90, labels.latitudeInvalid);
+  const longitudeError = getCoordinateFieldError(values.lon, -180, 180, labels.longitudeInvalid);
+  const previewLatitude = useDebouncedValue(values.lat, 350);
+  const previewLongitude = useDebouncedValue(values.lon, 350);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (latitudeError || longitudeError) return;
     const payload = compactOrderUpdatePayload({
-      date: values.date,
-      time: values.time,
-      time_to: values.time_to,
       service_id: parseNumberInput(values.service_id),
       sub_service_id: parseNullableNumberInput(values.sub_service_id, order.sub_service_id),
       region_id: parseNumberInput(values.region_id),
@@ -1897,27 +2303,6 @@ function EditOrderDrawer({
         <div className="grid gap-4 md:grid-cols-2">
           <FormField
             compact
-            label={labels.dateLabel}
-            type="date"
-            value={values.date}
-            onChange={(date) => setValues((current) => ({ ...current, date }))}
-          />
-          <FormField
-            compact
-            label={labels.startTime}
-            type="time"
-            value={values.time}
-            onChange={(time) => setValues((current) => ({ ...current, time }))}
-          />
-          <FormField
-            compact
-            label={labels.endTime}
-            type="time"
-            value={values.time_to}
-            onChange={(time_to) => setValues((current) => ({ ...current, time_to }))}
-          />
-          <FormField
-            compact
             label={labels.serviceColumn}
             type="select"
             value={values.service_id}
@@ -1926,7 +2311,7 @@ function EditOrderDrawer({
           />
           <FormField
             compact
-            label={labels.serviceColumn}
+            label={labels.subServiceLabel}
             type="select"
             value={values.sub_service_id}
             options={subServiceOptions}
@@ -1957,35 +2342,42 @@ function EditOrderDrawer({
           />
           <FormField
             compact
-            label={labels.latitudeLabel}
-            type="number"
-            value={values.lat}
-            onChange={(lat) => setValues((current) => ({ ...current, lat }))}
-          />
-          <FormField
-            compact
-            label={labels.longitudeLabel}
-            type="number"
-            value={values.lon}
-            onChange={(lon) => setValues((current) => ({ ...current, lon }))}
-          />
-          <FormField
-            compact
-            className="md:col-span-2"
-            label={labels.noteLabel}
-            type="textarea"
-            rows={4}
-            value={values.comment}
-            onChange={(comment) => setValues((current) => ({ ...current, comment }))}
-          />
-          <FormField
-            compact
-            className="md:col-span-2"
             label={labels.priceLabel}
             placeholder="1 500 000"
             suffix={MONEY_CURRENCY_LABEL}
             value={values.total_price}
             onChange={(total_price) => setValues((current) => ({ ...current, total_price: formatNumberInput(total_price) }))}
+          />
+          <div className="space-y-4 md:col-span-2">
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                compact
+                error={latitudeError}
+                inputMode="decimal"
+                label={labels.latitudeLabel}
+                value={values.lat}
+                onChange={(lat) => setValues((current) => ({ ...current, lat }))}
+              />
+              <FormField
+                compact
+                error={longitudeError}
+                inputMode="decimal"
+                label={labels.longitudeLabel}
+                value={values.lon}
+                onChange={(lon) => setValues((current) => ({ ...current, lon }))}
+              />
+            </div>
+            <YandexMapPreview latitude={previewLatitude} longitude={previewLongitude} labels={labels} />
+          </div>
+          <FormField
+            compact
+            className="md:col-span-2"
+            label={labels.noteLabel}
+            placeholder={labels.notePlaceholder}
+            type="textarea"
+            rows={4}
+            value={values.comment}
+            onChange={(comment) => setValues((current) => ({ ...current, comment }))}
           />
         </div>
       </form>
@@ -1993,9 +2385,17 @@ function EditOrderDrawer({
   );
 }
 
-function ConfirmOrderModal({
+type RescheduleOrderFormValues = {
+  date: string;
+  time: string;
+  time_to: string;
+  reason: string;
+};
+
+function RescheduleOrderModal({
   actionError,
   loading,
+  order,
   labels,
   onClose,
   onChange,
@@ -2003,27 +2403,162 @@ function ConfirmOrderModal({
 }: {
   actionError?: string;
   loading: boolean;
+  order: OrderRecord;
   labels: OrderLabels;
   onClose: () => void;
   onChange?: () => void;
-  onSubmit: (deadlineMinutes?: number) => Promise<void>;
+  onSubmit: (payload: RescheduleOrderPayload) => Promise<void>;
 }) {
+  const [values, setValues] = useState<RescheduleOrderFormValues>(() => initialRescheduleOrderValues(order));
+  const [errors, setErrors] = useState<Partial<Record<keyof RescheduleOrderFormValues, string>>>({});
+  const formId = "order-reschedule-form";
+
+  const changeValue = (key: keyof RescheduleOrderFormValues, value: string) => {
+    setValues((current) => ({ ...current, [key]: value }));
+    setErrors((current) => ({ ...current, [key]: undefined }));
+    onChange?.();
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextErrors: Partial<Record<keyof RescheduleOrderFormValues, string>> = {};
+    if (!values.date.trim()) nextErrors.date = labels.requiredField;
+    if (!values.time.trim()) nextErrors.time = labels.requiredField;
+    if (!values.time_to.trim()) nextErrors.time_to = labels.requiredField;
+    if (values.time && values.time_to && !isTimeRangeIncreasing(values.time, values.time_to)) {
+      nextErrors.time_to = labels.rescheduleEndTimeAfterStart;
+    }
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    const reason = values.reason.trim();
+    await onSubmit({
+      date: values.date,
+      time: values.time,
+      time_to: values.time_to,
+      ...(reason ? { reason } : {}),
+    });
+  };
+
+  return (
+    <Modal
+      centered
+      open
+      rootClassName="artistbor-confirm-modal"
+      width={560}
+      title={labels.rescheduleModalTitle}
+      onCancel={onClose}
+      closeIcon={<X className="size-4" />}
+      footer={
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            form={formId}
+            disabled={loading}
+            className="artistbor-modal-action artistbor-modal-action--success w-full text-sm font-black sm:w-1/2"
+          >
+            <CalendarClock className="size-4" />
+            {loading ? labels.processing : labels.rescheduleAction}
+          </button>
+        </div>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="space-y-5" aria-busy={loading}>
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+          {labels.rescheduleActionDescription}
+        </p>
+        {actionError ? (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold leading-5 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200"
+          >
+            {actionError}
+          </div>
+        ) : null}
+        <FormField
+          compact
+          required
+          label={labels.dateLabel}
+          type="date"
+          value={values.date}
+          error={errors.date}
+          disabled={loading}
+          onChange={(date) => changeValue("date", date)}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            compact
+            required
+            label={labels.startTime}
+            type="time"
+            value={values.time}
+            error={errors.time}
+            disabled={loading}
+            onChange={(time) => changeValue("time", time)}
+          />
+          <FormField
+            compact
+            required
+            label={labels.endTime}
+            type="time"
+            value={values.time_to}
+            error={errors.time_to}
+            disabled={loading}
+            onChange={(timeTo) => changeValue("time_to", timeTo)}
+          />
+        </div>
+        <FormField
+          compact
+          label={labels.reasonLabel}
+          type="textarea"
+          rows={4}
+          value={values.reason}
+          disabled={loading}
+          onChange={(reason) => changeValue("reason", reason)}
+        />
+      </form>
+    </Modal>
+  );
+}
+
+function ConfirmOrderModal({
+  actionError,
+  loading,
+  order,
+  labels,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  actionError?: string;
+  loading: boolean;
+  order: OrderRecord;
+  labels: OrderLabels;
+  onClose: () => void;
+  onChange?: () => void;
+  onSubmit: (payload: ConfirmOrderFormPayload) => Promise<void>;
+}) {
+  const [totalPrice, setTotalPrice] = useState(() => formatSignedMoneyInput(order.total_price));
   const [deadlineMinutes, setDeadlineMinutes] = useState("30");
-  const [error, setError] = useState("");
+  const [totalPriceError, setTotalPriceError] = useState("");
+  const [deadlineError, setDeadlineError] = useState("");
   const formId = "order-confirm-form";
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!deadlineMinutes.trim()) {
-      await onSubmit(30);
-      return;
-    }
-    const parsed = parseNumberInput(deadlineMinutes);
-    if (!parsed || parsed <= 0) {
-      setError(labels.requiredField);
-      return;
-    }
-    await onSubmit(Math.trunc(parsed));
+    const parsedTotalPrice = positiveMoneyAmount(totalPrice);
+    const parsedDeadline = positiveInteger(deadlineMinutes.trim() || 30);
+    const nextTotalPriceError = parsedTotalPrice === null ? labels.totalPriceRequired : "";
+    const nextDeadlineError = parsedDeadline === null ? labels.requiredField : "";
+    setTotalPriceError(nextTotalPriceError);
+    setDeadlineError(nextDeadlineError);
+    if (nextTotalPriceError || nextDeadlineError || parsedTotalPrice === null || parsedDeadline === null) return;
+
+    await onSubmit({
+      total_price: parsedTotalPrice,
+      deadline_minutes: parsedDeadline,
+    });
   };
 
   return (
@@ -2059,15 +2594,29 @@ function ConfirmOrderModal({
           </div>
         ) : null}
         <FormField
+          required
+          label={labels.priceLabel}
+          inputMode="numeric"
+          placeholder="1 500 000"
+          suffix={MONEY_CURRENCY_LABEL}
+          value={totalPrice}
+          error={totalPriceError}
+          onChange={(value) => {
+            setTotalPrice(formatSignedMoneyInput(value));
+            setTotalPriceError("");
+            onChange?.();
+          }}
+        />
+        <FormField
           label={labels.deadlineMinutesLabel}
           type="text"
           inputMode="numeric"
           placeholder={labels.deadlineMinutesPlaceholder}
           value={deadlineMinutes}
-          error={error}
+          error={deadlineError}
           onChange={(value) => {
             setDeadlineMinutes(value);
-            setError("");
+            setDeadlineError("");
             onChange?.();
           }}
         />
@@ -2267,7 +2816,12 @@ function PrimitiveValue({
   if (isLocationIdKey(fieldKey)) {
     return <LocationName fieldKey={fieldKey} value={value} fallback={toDisplay(value)} />;
   }
-  if (isStatusField(fieldKey)) return <StatusBadge value={value} fieldKey={fieldKey} />;
+  if (isStatusField(fieldKey)) {
+    const statusFieldKey = fieldKey === "status" || fieldKey === "status_code"
+      ? "order_status"
+      : fieldKey;
+    return <StatusBadge value={value} fieldKey={statusFieldKey} />;
+  }
   if (fieldKey.endsWith("_at") || fieldKey === "created_at" || fieldKey === "updated_at") {
     return <span>{normalizeDate(value)}</span>;
   }
@@ -2292,7 +2846,9 @@ function normalizeOrderStatusFilter(value: unknown) {
   if (!normalized) return "";
   if (normalized === "10" || normalized === "pending") return "10";
   if (normalized === "20" || normalized === "payment_pending") return "20";
+  if (normalized === "25" || normalized === "payment_verification") return "25";
   if (normalized === "30" || normalized === "confirmed") return "30";
+  if (normalized === "35" || normalized === "rejected") return "35";
   if (normalized === "50" || normalized === "completed") return "50";
   if (normalized === "40" || normalized === "cancelled") return "40";
   return orderStatusTabValues.some((tab) => tab.value === normalized) ? normalized : "";
@@ -2302,13 +2858,13 @@ function orderStatusCountClass(status: OrderStatusTabKey) {
   if (status === "pending") {
     return "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300";
   }
-  if (status === "payment_pending") {
-    return "bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300";
+  if (status === "payment_pending" || status === "payment_verification") {
+    return "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300";
   }
   if (status === "confirmed" || status === "completed") {
     return "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300";
   }
-  if (status === "cancelled") {
+  if (status === "cancelled" || status === "rejected") {
     return "bg-rose-50 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300";
   }
   return "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300";
@@ -2321,6 +2877,7 @@ function getResultCount(result: ListResult<OrderRecord>) {
 function sameOrderFilters(left: OrderFilters, right: OrderFilters) {
   return (
     String(left.status ?? "") === String(right.status ?? "") &&
+    String(left.q ?? "") === String(right.q ?? "") &&
     String(left.artist_id ?? "") === String(right.artist_id ?? "") &&
     String(left.date_from ?? "") === String(right.date_from ?? "") &&
     String(left.date_to ?? "") === String(right.date_to ?? "") &&
@@ -2355,6 +2912,7 @@ function filterOrderRows(
 
     const haystack = [
       row.id,
+      row.public_id,
       formatOrderId(row.id),
       row.date,
       row.time,
@@ -2399,6 +2957,39 @@ function buildConfirmOrderPayload(order: OrderRecord): ConfirmOrderPayload {
   });
 }
 
+function initialRescheduleOrderValues(order: OrderRecord): RescheduleOrderFormValues {
+  return {
+    date: (stringValue(order.date) ?? "").slice(0, 10),
+    time: normalizeRescheduleTimeValue(order.time ?? order.start_time),
+    time_to: normalizeRescheduleTimeValue(order.time_to ?? order.end_time),
+    reason: "",
+  };
+}
+
+function normalizeRescheduleTimeValue(value: unknown) {
+  const match = String(value ?? "").trim().match(/^(\d{1,2}):(\d{2})/);
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : "";
+}
+
+function isTimeRangeIncreasing(start: string, end: string) {
+  const startMinutes = timeValueToMinutes(start);
+  const endMinutes = timeValueToMinutes(end);
+  return startMinutes !== undefined && endMinutes !== undefined && endMinutes > startMinutes;
+}
+
+function timeValueToMinutes(value: string) {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return undefined;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return undefined;
+  return hours * 60 + minutes;
+}
+
+function hasConfirmedOrderStatus(order: OrderRecord) {
+  return order.status === CONFIRMED_ORDER_STATUS_CODE;
+}
+
 function isOrderScheduleExpired(order: OrderRecord, nowMs = Date.now()) {
   const scheduledMs = getOrderScheduleStartMs(order);
   return typeof scheduledMs === "number" && nowMs > scheduledMs;
@@ -2422,8 +3013,25 @@ function normalizeOrderTimeForDate(time: string) {
 
 function resolveOrderActionErrorMessage(caught: unknown, labels: OrderLabels, type: "confirm" | "complete") {
   const message = caught instanceof Error ? caught.message : "";
-  if (type === "confirm" && isValidationFailedMessage(message)) return labels.orderExpiredConfirmBlocked;
+  const code = isRecord(caught) ? String(caught.code ?? "").toUpperCase() : "";
+  if (type === "confirm" && (code === "INVALID_PRICE" || message.toUpperCase().includes("INVALID_PRICE"))) {
+    return labels.totalPriceRequired;
+  }
+  if (type === "confirm" && (code === "VALIDATION_FAILED" || isValidationFailedMessage(message))) {
+    return labels.orderExpiredConfirmBlocked;
+  }
   return message || labels.actionFailed;
+}
+
+function resolveRescheduleErrorMessage(caught: unknown, labels: OrderLabels) {
+  const message = caught instanceof Error ? caught.message : "";
+  const errorDetails = isRecord(caught) ? toDisplay(caught.errors) : "";
+  const errorCode = isRecord(caught) ? toDisplay(caught.code) : "";
+  const searchable = `${errorCode} ${message} ${errorDetails}`.toUpperCase();
+  if (searchable.includes("ORDER_NOT_CONFIRMED")) return labels.rescheduleOrderNotConfirmed;
+  if (searchable.includes("TIME_TO_REQUIRED")) return labels.rescheduleTimeToRequired;
+  if (searchable.includes("TIME_CONFLICT")) return labels.rescheduleTimeConflict;
+  return message || labels.rescheduleFailed;
 }
 
 function isValidationFailedMessage(message: string) {
@@ -2442,6 +3050,12 @@ function getOrderPayments(order: OrderRecord): OrderPaymentRecord[] {
 
 function findPendingOrderPayment(order: OrderRecord) {
   return getOrderPayments(order).find((payment) => normalizePaymentRecordStatus(payment.status) === "pending");
+}
+
+function partialPaymentDialogMessage(payment: OrderPaymentRecord, labels: OrderLabels) {
+  const paidAmount = formatMoneyWithCurrency(payment.paid_amount, labels.locale) || undefined;
+  const expectedAmount = formatMoneyWithCurrency(payment.amount, labels.locale) || labels.priceNotSet;
+  return labels.partialPaymentDialogMessage(paidAmount, expectedAmount);
 }
 
 function normalizePaymentRecordStatus(status: unknown): "pending" | "verified" | "rejected" {
@@ -2537,19 +3151,61 @@ function hasMeaningfulDeadlineValue(value: unknown) {
   return value !== null && value !== undefined && value !== "";
 }
 
+type MapCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
 function getYandexMapUrl(order: OrderRecord) {
   const lat = coordinateNumber(order.lat);
   const lon = coordinateNumber(order.lon) ?? coordinateNumber(order.lng) ?? coordinateNumber(order.long);
-  if (lat === undefined || lon === undefined) return undefined;
+  const coordinates = getValidMapCoordinates(lat, lon);
+  return coordinates ? getYandexMapUrlFromCoordinates(coordinates) : undefined;
+}
 
-  const point = `${lon},${lat}`;
+function getValidMapCoordinates(latitudeValue: unknown, longitudeValue: unknown): MapCoordinates | undefined {
+  const latitude = coordinateInputNumber(latitudeValue);
+  const longitude = coordinateInputNumber(longitudeValue);
+  if (latitude === undefined || longitude === undefined) return undefined;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
+  return { latitude, longitude };
+}
+
+function coordinateInputNumber(value: unknown) {
+  if (typeof value === "string") return parseCoordinateInput(value);
+  return coordinateNumber(value);
+}
+
+function getCoordinateFieldError(value: string, min: number, max: number, message: string) {
+  if (!value.trim()) return undefined;
+  const coordinate = coordinateInputNumber(value);
+  return coordinate === undefined || coordinate < min || coordinate > max ? message : undefined;
+}
+
+function getYandexMapQuery(coordinates: MapCoordinates) {
+  const point = `${coordinates.longitude},${coordinates.latitude}`;
   const params = new URLSearchParams({
     ll: point,
     pt: `${point},pm2rdm`,
     z: "16",
   });
+  return params.toString();
+}
 
-  return `https://yandex.uz/maps/?${params.toString()}`;
+function getYandexMapUrlFromCoordinates(coordinates: MapCoordinates) {
+  return `https://yandex.uz/maps/?${getYandexMapQuery(coordinates)}`;
+}
+
+function getYandexStaticMapUrl(coordinates: MapCoordinates) {
+  const point = `${coordinates.longitude},${coordinates.latitude}`;
+  const params = new URLSearchParams({
+    ll: point,
+    z: "16",
+    size: "650,330",
+    l: "map",
+    pt: `${point},pm2rdm`,
+  });
+  return `https://static-maps.yandex.ru/1.x/?${params.toString()}`;
 }
 
 function formatNullableUnixDate(value: unknown) {
@@ -2609,6 +3265,8 @@ function mergeRecords(...records: Array<UnknownRecord | undefined>) {
 }
 
 function coordinateNumber(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && !value.trim()) return undefined;
   const number = typeof value === "number" ? value : Number(String(value ?? "").trim());
   return Number.isFinite(number) ? number : undefined;
 }
@@ -2774,6 +3432,7 @@ function normalizeComparable(value: string | undefined) {
 
 function createFiltersFromSearchParams(searchParams: Pick<URLSearchParams, "get"> | null): OrderFilters {
   return {
+    q: searchParams?.get("q")?.trim() ?? "",
     status: normalizeOrderStatusFilter(searchParams?.get("status")),
     artist_id: searchParams?.get("artist_id") ?? "",
     date_from: searchParams?.get("date_from") ?? "",
@@ -2785,10 +3444,23 @@ function createFiltersFromSearchParams(searchParams: Pick<URLSearchParams, "get"
 }
 
 function getOrderLabels(locale: Locale) {
+  const notification = (key: Parameters<typeof getDashboardNotification>[0]) =>
+    getDashboardNotification(key, locale);
+  const orderStatus = (value: number) => getDashboardStatus("order", value, locale).label;
+  const paymentStatus = (value: number) => getDashboardStatus("payment", value, locale).label;
+  const paymentRecordStatus = (value: string) => getDashboardStatus("payment_record", value, locale).label;
+
   if (locale === "ru") {
     return {
       locale,
       actionFailed: "Не удалось выполнить действие",
+      autoCompleted: "Завершено автоматически",
+      systemActor: "Система",
+      contractTitle: "Договор",
+      contractMissing: "Для этого заказа договор еще не создан.",
+      contractSigned: "Подписано",
+      contractWaiting: "Ожидает подписи",
+      contractFileActions: { view: "Открыть PDF", download: "Скачать PDF", failed: "Не удалось загрузить PDF" },
       actionsColumn: "Действия",
       actionsModalTitle: (id: unknown) => `Заказ #${id} действия`,
       advanceAmountLabel: "Аванс",
@@ -2803,7 +3475,7 @@ function getOrderLabels(locale: Locale) {
       cancelFailed: "Не удалось отменить заказ",
       cancelModalTitle: "Отмена заказа",
       cancelOrderAction: "Отменить",
-      cancelledToast: "Заказ отменен",
+      cancelledToast: notification("orderCancelled"),
       clientColumn: "Клиент",
       clientEmail: "Email клиента",
       clientPhone: "Телефон клиента",
@@ -2812,13 +3484,13 @@ function getOrderLabels(locale: Locale) {
       completeActionDescription: "Подтвержденный → Завершенный. Используется после выполнения заказа.",
       completeDialogMessage: "Подтвердить отметку заказа как завершенного?",
       completeDialogTitle: "Завершение заказа",
-      completedToast: "Заказ завершен",
+      completedToast: notification("orderCompleted"),
       contactAction: "Контакты",
       confirmAction: "Подтвердить",
       confirmActionDescription: "Ожидает → Ожидает оплаты. Клиенту открывается авансовая оплата.",
       confirmDialogMessage: "Перевести заказ в ожидание оплаты?",
       confirmDialogTitle: "Подтверждение заказа",
-      confirmedToast: "Заказ переведен в ожидание оплаты",
+      confirmedToast: notification("orderPaymentPending"),
       conflictCheck: "Проверка конфликтов",
       conflictCheckFailed: "Не удалось выполнить проверку конфликтов",
       conflictsLoading: "Проверка конфликтов...",
@@ -2844,18 +3516,27 @@ function getOrderLabels(locale: Locale) {
       infoTab: "Информация",
       historyTitle: "История",
       latitudeLabel: "Широта",
-      lifecycleCompleted: "Завершен",
-      lifecycleConfirmed: "Подтвержден",
-      lifecycleCreated: "Создан",
+      latitudeInvalid: "Широта должна быть числом от -90 до 90.",
+      lifecycleCompleted: "Заказ завершен",
+      lifecycleConfirmed: "Заказ подтвержден",
+      lifecycleCreated: "Заказ создан",
       lifecyclePaid: "Оплата получена",
+      lifecyclePaymentSubmitted: "Платеж отправлен",
+      lifecyclePaymentVerified: "Платеж подтвержден",
+      lifecyclePaymentRejected: "Платеж отклонен",
       loadFailed: "Не удалось загрузить заказы",
       longitudeLabel: "Долгота",
+      longitudeInvalid: "Долгота должна быть числом от -180 до 180.",
       mainInfoTitle: "Основная информация",
       mapLabel: "Карта",
+      mapCoordinatesRequired: "Укажите корректные широту и долготу, чтобы увидеть точку на карте.",
+      mapPreviewReadonly: "Карта доступна только для просмотра. Положение метки меняется через поля координат.",
+      mapPreviewTitle: "Предпросмотр на Яндекс Картах",
       groupSizeLabel: "Количество гостей",
       month: "30 дней",
       newest: "Новые",
       noteLabel: "Комментарий",
+      notePlaceholder: "Введите комментарий...",
       oldest: "Старые",
       noPaymentReceipts: "Чеки пока не загружены",
       openReceiptAction: "Открыть чек",
@@ -2868,23 +3549,29 @@ function getOrderLabels(locale: Locale) {
       paymentDeadlineLabel: "Срок оплаты",
       paymentExpired: "Срок истек",
       paymentLabel: "Оплата",
-      paymentPaid: "Оплачено",
-      paymentPending: "Ожидает оплаты",
-      paymentRefunded: "Возвращено",
+      paymentPaid: paymentStatus(20),
+      paymentPending: paymentStatus(10),
+      paymentRefunded: paymentStatus(30),
       paymentReceiptLabel: "Чек",
       paymentRecordStatuses: {
-        pending: "На проверке",
-        verified: "Подтвержден",
-        rejected: "Отклонен",
+        pending: paymentRecordStatus("pending"),
+        verified: paymentRecordStatus("verified"),
+        rejected: paymentRecordStatus("rejected"),
       },
       paymentsDescription: "Аванс, срок оплаты и чеки клиента.",
       paymentsTitle: "Платежи",
       paymentStatusLabel: "Статус оплаты",
-      paymentRejectedToast: "Платеж отклонен",
-      paymentVerifiedToast: "Платеж подтвержден",
+      paymentRejectedToast: notification("paymentRejected"),
+      paymentVerifiedToast: notification("paymentVerified"),
+      partialPaymentConfirmAction: "Всё равно подтвердить",
+      partialPaymentDialogMessage: (paidAmount: string | undefined, expectedAmount: string) => paidAmount
+        ? `Клиент оплатил ${paidAmount}, ожидаемая сумма — ${expectedAmount}. Всё равно подтвердить платеж?`
+        : `Клиент не указал оплаченную сумму, ожидаемая сумма — ${expectedAmount}. Всё равно подтвердить платеж?`,
+      partialPaymentDialogTitle: "Неполная оплата",
       pendingPaymentNotFound: "Ожидающий проверки чек не найден",
       priceLabel: "Цена",
       priceNotSet: "Цена не указана",
+      totalPriceRequired: "Укажите стоимость заказа больше нуля.",
       processing: "Выполняется...",
       reasonLabel: "Причина",
       rejectPaymentAction: "Отклонить платеж",
@@ -2893,22 +3580,32 @@ function getOrderLabels(locale: Locale) {
       requiredField: "Обязательное поле",
       rescheduleAction: "Изменить время",
       rescheduleActionDescription: "Изменить дату или время заказа.",
+      rescheduleEndTimeAfterStart: "Время окончания должно быть позже времени начала.",
       rescheduleFailed: "Не удалось перенести заказ",
       rescheduleModalTitle: "Перенос заказа",
-      rescheduledToast: "Заказ перенесен",
+      rescheduleOrderNotConfirmed: "Перенести можно только подтвержденный оплаченный заказ.",
+      rescheduledToast: notification("orderRescheduled"),
+      rescheduleTimeConflict: "Артист занят в выбранное время. Выберите другое время.",
+      rescheduleTimeToRequired: "Укажите время окончания заказа.",
       reset: "Сбросить",
       saveAction: "Сохранить",
       searchPlaceholder: "Поиск...",
       serviceColumn: "Услуга",
       startTime: "Начало",
       statusColumn: "Статус",
+      statusTabsLabel: "Статусы заказов",
+      statusTabsPrevious: "Предыдущие статусы",
+      statusTabsNext: "Следующие статусы",
+      ordersTableRegionLabel: "Таблица заказов. Для просмотра скрытых столбцов используйте горизонтальную прокрутку.",
       statusTabs: {
         all: "Все",
-        pending: "Ожидает",
-        payment_pending: "Ожидает оплаты",
-        confirmed: "Подтвержден",
-        completed: "Завершен",
-        cancelled: "Отменен",
+        pending: orderStatus(10),
+        payment_pending: orderStatus(20),
+        payment_verification: orderStatus(25),
+        confirmed: orderStatus(30),
+        rejected: orderStatus(35),
+        completed: orderStatus(50),
+        cancelled: orderStatus(40),
         unknown: "Неизвестно",
       },
       subServiceLabel: "Подуслуга",
@@ -2917,7 +3614,7 @@ function getOrderLabels(locale: Locale) {
       title: "Заказы",
       today: "Сегодня",
       updatedAtLabel: "Обновлен",
-      updatedToast: "Заказ обновлен",
+      updatedToast: notification("orderUpdated"),
       updateFailed: "Не удалось обновить",
       verifiedAtLabel: "Проверен",
       verifyPaymentAction: "Подтвердить платеж",
@@ -2931,6 +3628,13 @@ function getOrderLabels(locale: Locale) {
   return {
     locale,
     actionFailed: "Amal bajarilmadi",
+    autoCompleted: "Avtomatik yakunlandi",
+    systemActor: "Tizim",
+    contractTitle: "Shartnoma",
+    contractMissing: "Bu buyurtma uchun shartnoma hali yaratilmagan.",
+    contractSigned: "Imzolangan",
+    contractWaiting: "Imzo kutilmoqda",
+    contractFileActions: { view: "PDF ko‘rish", download: "PDF yuklab olish", failed: "PDF yuklanmadi" },
     actionsColumn: "Amallar",
     actionsModalTitle: (id: unknown) => `Buyurtma #${id} amallari`,
     advanceAmountLabel: "Avans",
@@ -2945,7 +3649,7 @@ function getOrderLabels(locale: Locale) {
     cancelFailed: "Bekor qilish bajarilmadi",
     cancelModalTitle: "Buyurtmani bekor qilish",
     cancelOrderAction: "Bekor qilish",
-    cancelledToast: "Buyurtma bekor qilindi",
+    cancelledToast: notification("orderCancelled"),
     clientColumn: "Mijoz",
     clientEmail: "Mijoz email",
     clientPhone: "Mijoz telefoni",
@@ -2954,13 +3658,13 @@ function getOrderLabels(locale: Locale) {
     completeActionDescription: "Tasdiqlangan → Yakunlangan. Ish bajarilganidan keyin bosiladi.",
     completeDialogMessage: "Buyurtma yakunlandi deb belgilashni tasdiqlaysizmi?",
     completeDialogTitle: "Buyurtmani yakunlash",
-    completedToast: "Buyurtma bajarildi",
+    completedToast: notification("orderCompleted"),
     contactAction: "Aloqa",
     confirmAction: "Tasdiqlash",
     confirmActionDescription: "Kutilmoqda → To'lov kutilmoqda. Mijozga avans to'lovi ochiladi.",
     confirmDialogMessage: "Buyurtmani to'lov kutilmoqda holatiga o'tkazasizmi?",
     confirmDialogTitle: "Buyurtmani tasdiqlash",
-    confirmedToast: "Buyurtma to'lov kutilmoqda holatiga o'tkazildi",
+    confirmedToast: notification("orderPaymentPending"),
     conflictCheck: "Konflikt tekshiruvi",
     conflictCheckFailed: "Konflikt tekshiruvi bajarilmadi",
     conflictsLoading: "Konfliktlar tekshirilmoqda...",
@@ -2986,18 +3690,27 @@ function getOrderLabels(locale: Locale) {
     infoTab: "Ma'lumot",
     historyTitle: "Tarix",
     latitudeLabel: "Kenglik",
-    lifecycleCompleted: "Yakunlandi",
-    lifecycleConfirmed: "Tasdiqlandi",
-    lifecycleCreated: "Yaratildi",
+    latitudeInvalid: "Kenglik -90 dan 90 gacha bo'lgan son bo'lishi kerak.",
+    lifecycleCompleted: "Buyurtma yakunlandi",
+    lifecycleConfirmed: "Buyurtma tasdiqlandi",
+    lifecycleCreated: "Buyurtma yaratildi",
     lifecyclePaid: "To'lov to'landi",
+    lifecyclePaymentSubmitted: "To'lov yuborildi",
+    lifecyclePaymentVerified: "To'lov tasdiqlandi",
+    lifecyclePaymentRejected: "To'lov rad etildi",
     loadFailed: "Buyurtmalar yuklanmadi",
     longitudeLabel: "Uzunlik",
+    longitudeInvalid: "Uzunlik -180 dan 180 gacha bo'lgan son bo'lishi kerak.",
     mainInfoTitle: "Asosiy ma'lumotlar",
     mapLabel: "Xarita",
+    mapCoordinatesRequired: "Xaritada nuqtani ko'rish uchun to'g'ri kenglik va uzunlik kiriting.",
+    mapPreviewReadonly: "Xarita faqat ko'rish uchun. Marker joyi koordinata maydonlari orqali o'zgaradi.",
+    mapPreviewTitle: "Yandex xarita ko'rinishi",
     groupSizeLabel: "Mehmonlar soni",
     month: "30 kun",
     newest: "Yangilari",
     noteLabel: "Izoh",
+    notePlaceholder: "Izoh yozing...",
     oldest: "Eng eskilari",
     noPaymentReceipts: "Hali chek yuklanmagan",
     openReceiptAction: "Chekni ochish",
@@ -3010,23 +3723,29 @@ function getOrderLabels(locale: Locale) {
     paymentDeadlineLabel: "To'lov muddati",
     paymentExpired: "Muddati o'tgan",
     paymentLabel: "To'lov",
-    paymentPaid: "To'langan",
-    paymentPending: "To'lov kutilmoqda",
-    paymentRefunded: "Qaytarilgan",
+    paymentPaid: paymentStatus(20),
+    paymentPending: paymentStatus(10),
+    paymentRefunded: paymentStatus(30),
     paymentReceiptLabel: "Chek",
     paymentRecordStatuses: {
-      pending: "Tekshiruvda",
-      verified: "Tasdiqlangan",
-      rejected: "Rad etilgan",
+      pending: paymentRecordStatus("pending"),
+      verified: paymentRecordStatus("verified"),
+      rejected: paymentRecordStatus("rejected"),
     },
     paymentsDescription: "Avans, to'lov muddati va mijoz yuklagan cheklar.",
     paymentsTitle: "To'lovlar",
     paymentStatusLabel: "To'lov holati",
-    paymentRejectedToast: "To'lov rad etildi",
-    paymentVerifiedToast: "To'lov tasdiqlandi",
+    paymentRejectedToast: notification("paymentRejected"),
+    paymentVerifiedToast: notification("paymentVerified"),
+    partialPaymentConfirmAction: "Baribir tasdiqlash",
+    partialPaymentDialogMessage: (paidAmount: string | undefined, expectedAmount: string) => paidAmount
+      ? `Mijoz ${paidAmount} to'lagan, kutilgan summa — ${expectedAmount}. Baribir to'lovni tasdiqlaysizmi?`
+      : `Mijoz to'lagan summani ko'rsatmagan, kutilgan summa — ${expectedAmount}. Baribir to'lovni tasdiqlaysizmi?`,
+    partialPaymentDialogTitle: "Kam to'langan chek",
     pendingPaymentNotFound: "Tekshiruvdagi chek topilmadi",
     priceLabel: "Narx",
     priceNotSet: "Narx belgilanmagan",
+    totalPriceRequired: "Buyurtma narxini noldan katta qilib kiriting.",
     processing: "Bajarilmoqda...",
     reasonLabel: "Sabab",
     rejectPaymentAction: "To'lovni rad etish",
@@ -3035,23 +3754,33 @@ function getOrderLabels(locale: Locale) {
     requiredField: "Majburiy maydon",
     rescheduleAction: "Vaqtni o'zgartirish",
     rescheduleActionDescription: "Buyurtma sanasi yoki vaqtini almashtirish.",
+    rescheduleEndTimeAfterStart: "Tugash vaqti boshlanish vaqtidan keyin bo'lishi kerak.",
     rescheduleFailed: "Qayta belgilash bajarilmadi",
     rescheduleModalTitle: "Buyurtmani qayta belgilash",
-    rescheduledToast: "Buyurtma qayta belgilandi",
+    rescheduleOrderNotConfirmed: "Faqat to'lovi tasdiqlangan buyurtma vaqtini o'zgartirish mumkin.",
+    rescheduledToast: notification("orderRescheduled"),
+    rescheduleTimeConflict: "Tanlangan vaqtda san'atkor band. Boshqa vaqtni tanlang.",
+    rescheduleTimeToRequired: "Buyurtmaning tugash vaqtini kiriting.",
     reset: "Tozalash",
     saveAction: "Saqlash",
     searchPlaceholder: "Qidirish...",
     serviceColumn: "Xizmat",
     startTime: "Boshlanish",
     statusColumn: "Holat",
+    statusTabsLabel: "Buyurtma holatlari",
+    statusTabsPrevious: "Oldingi holatlar",
+    statusTabsNext: "Keyingi holatlar",
+    ordersTableRegionLabel: "Buyurtmalar jadvali. Yashirin ustunlarni ko'rish uchun gorizontal aylantiring.",
     statusTabs: {
       all: "Barchasi",
-      pending: "Kutilmoqda",
-      payment_pending: "To'lov kutilmoqda",
-      confirmed: "Tasdiqlangan",
-      completed: "Yakunlangan",
-      cancelled: "Bekor qilingan",
-      unknown: "Noma'lum",
+      pending: orderStatus(10),
+      payment_pending: orderStatus(20),
+      payment_verification: orderStatus(25),
+      confirmed: orderStatus(30),
+      rejected: orderStatus(35),
+      completed: orderStatus(50),
+      cancelled: orderStatus(40),
+      unknown: "Noma’lum",
     },
     subServiceLabel: "Sub xizmat",
     technicalTab: "Texnik",
@@ -3059,7 +3788,7 @@ function getOrderLabels(locale: Locale) {
     title: "Buyurtmalar",
     today: "Bugun",
     updatedAtLabel: "Yangilangan",
-    updatedToast: "Buyurtma yangilandi",
+    updatedToast: notification("orderUpdated"),
     updateFailed: "Yangilash bajarilmadi",
     verifiedAtLabel: "Tekshirildi",
     verifyPaymentAction: "To'lovni tasdiqlash",

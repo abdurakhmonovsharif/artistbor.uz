@@ -44,12 +44,12 @@ export function ApplicationsFilterBar({
     .filter((category) => typeof category.id === "number")
     .map((category) => ({
       value: String(category.id),
-      label: getLocalizedCategoryName(category, locale) || `#${category.id}`,
+      label: getLocalizedCategoryName(category, locale) || "Kategoriya —",
     }));
 
   return (
-    <div className="artistbor-table-filter-shell overflow-x-auto">
-      <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
+    <div className="artistbor-table-filter-shell artistbor-responsive-filter-shell">
+      <div className="artistbor-table-filter-panel artistbor-responsive-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
         <Input
           allowClear
           prefix={<Search className="size-4 text-[#94a3b8]" />}

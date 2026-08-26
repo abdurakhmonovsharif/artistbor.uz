@@ -7,7 +7,7 @@ export function getArtistId(artist: ArtistProfile) {
 
 export function getArtistName(artist: ArtistProfile) {
   const fromParts = [artist.first_name, artist.last_name].filter(Boolean).join(" ").trim();
-  return artist.full_name || fromParts || artist.administrator_name || `Sanatkor #${getArtistId(artist) ?? "—"}`;
+  return artist.full_name || fromParts || artist.administrator_name || `Sanatkor ${artist.public_id ?? "—"}`;
 }
 
 export function getArtistOptionLabel(artist: ArtistProfile) {

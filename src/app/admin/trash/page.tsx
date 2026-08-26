@@ -9,16 +9,19 @@ import {
 } from "@/components/admin/admin-filter-form";
 import { adminPrimaryActionButtonClass } from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { trashApi, type TrashModel } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { formatPhone } from "@/lib/phone-format";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 import type { ListResult, TrashRecord } from "@/types/api";
@@ -31,7 +34,7 @@ type TrashFilters = {
 };
 
 type DialogState =
-  | { type: "view"; record: TrashRecord }
+  | { type: "view"; record: TrashRecord; detailLoading: boolean }
   | { type: "restore"; record: TrashRecord }
   | { type: "delete"; record: TrashRecord }
   | null;
@@ -64,7 +67,7 @@ const initialFilters: TrashFilters = {
 };
 
 const getTrashDetailFields = (labels: TrashLabels): DetailField[] => [
-  { key: "id", label: "ID" },
+  { key: "public_id", label: "Public ID" },
   { key: "model", label: labels.model },
   { key: "type", label: labels.type },
   { key: "name", label: labels.name },
@@ -88,6 +91,7 @@ export default function TrashPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
 
   const selectedModel = filters.model || "user";
   const selectedModelLabel = getModelLabel(selectedModel, trashModels);
@@ -95,7 +99,7 @@ export default function TrashPage() {
 
   const columns = useMemo<DataTableColumn<TrashRecord>[]>(
     () => [
-      { key: "id", label: "ID", kind: "number" },
+      { key: "public_id", label: "Public ID" },
       {
         key: "__model",
         label: labels.model,
@@ -132,29 +136,38 @@ export default function TrashPage() {
     [labels.date, labels.model, labels.name, labels.status, selectedModelLabel, trashModels],
   );
 
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
     if (!filters.model) {
-      setError(labels.selectModel);
-      setRows([]);
-      setMeta(undefined);
-      setLoading(false);
+      if (!background) {
+        setError(labels.selectModel);
+        setRows([]);
+        setMeta(undefined);
+        setLoading(false);
+      }
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = filters.q.trim()
         ? await trashApi.search({ q: filters.q.trim(), model: filters.model })
         : await trashApi.list(filters.model, { page: filters.page, limit: filters.limit });
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed, labels.selectModel]);
+  }, [filters, labels.loadFailed, labels.selectModel, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -182,8 +195,8 @@ export default function TrashPage() {
     setFilters(initialFilters);
   };
 
-  const refresh = async () => {
-    await fetchRecords();
+  const refresh = async ({ background = false }: { background?: boolean } = {}) => {
+    await fetchRecords({ background });
   };
 
   const changePage = (page: number) => {
@@ -203,14 +216,21 @@ export default function TrashPage() {
       return;
     }
 
-    setSubmitting(true);
+    setDialog({ type: "view", record: row, detailLoading: true });
     try {
       const record = await trashApi.detail(model, id);
-      setDialog({ type: "view", record });
+      setDialog((current) =>
+        current?.type === "view" && getNumericId(current.record) === id
+          ? { type: "view", record, detailLoading: false }
+          : current,
+      );
     } catch (caught) {
+      setDialog((current) =>
+        current?.type === "view" && getNumericId(current.record) === id
+          ? { ...current, detailLoading: false }
+          : current,
+      );
       toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -228,7 +248,7 @@ export default function TrashPage() {
       await trashApi.restore(model, id);
       toast.success(labels.restored);
       setDialog(null);
-      await refresh();
+      void refresh({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.restoreFailed);
     } finally {
@@ -250,7 +270,7 @@ export default function TrashPage() {
       await trashApi.permanentlyDelete(model, id);
       toast.success(labels.deleted);
       setDialog(null);
-      await refresh();
+      void refresh({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.deleteFailed);
     } finally {
@@ -265,28 +285,22 @@ export default function TrashPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-            {labels.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className={adminPrimaryActionButtonClass}
-        >
-          <RefreshCw className="size-4" />
-          {labels.refresh}
-        </button>
-      </div>
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.description}
+        actions={(
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className={adminPrimaryActionButtonClass}
+          >
+            <RefreshCw className="size-4" />
+            {labels.refresh}
+          </button>
+        )}
+      />
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
@@ -364,6 +378,7 @@ export default function TrashPage() {
       {dialog?.type === "view" ? (
         <AdminDrawer title={labels.detailTitle} onClose={() => setDialog(null)} size="min(100vw, 720px)">
           <div className="p-4">
+            {dialog.detailLoading ? <InlineLoadingState /> : null}
             <DetailGrid record={dialog.record} fields={trashDetailFields} />
           </div>
         </AdminDrawer>
@@ -477,7 +492,7 @@ function getTrashLabels(locale: string) {
     return {
       date: "Дата",
       createdAt: "Создано",
-      deleted: "Запись удалена навсегда",
+      deleted: getDashboardNotification("recordPermanentlyDeleted", "ru"),
       deletedAt: "Удалено",
       deleteFailed: "Не удалось удалить навсегда",
       description: "Просмотр, восстановление или окончательное удаление удаленных записей.",
@@ -494,7 +509,7 @@ function getTrashLabels(locale: string) {
       permanentDeleteTitle: "Удалить навсегда",
       refresh: "Обновить",
       reset: "Сбросить",
-      restored: "Запись восстановлена",
+      restored: getDashboardNotification("genericRestored", "ru"),
       restoreAction: "Восстановить",
       restoreFailed: "Не удалось восстановить запись",
       restoreMessage: "Эта запись будет восстановлена из корзины. Продолжить?",
@@ -512,7 +527,7 @@ function getTrashLabels(locale: string) {
   return {
     date: "Sana",
     createdAt: "Yaratilgan",
-    deleted: "Yozuv butunlay o'chirildi",
+    deleted: getDashboardNotification("recordPermanentlyDeleted", "uz"),
     deletedAt: "O'chirilgan",
     deleteFailed: "Butunlay o'chirish bajarilmadi",
     description: "O'chirilgan yozuvlarni ko'rish, tiklash yoki butunlay o'chirish.",
@@ -529,7 +544,7 @@ function getTrashLabels(locale: string) {
     permanentDeleteTitle: "Butunlay o'chirish",
     refresh: "Yangilash",
     reset: "Tozalash",
-    restored: "Yozuv qayta tiklandi",
+    restored: getDashboardNotification("genericRestored", "uz"),
     restoreAction: "Tiklash",
     restoreFailed: "Qayta tiklash bajarilmadi",
     restoreMessage: "Bu yozuv trashdan qayta tiklanadi. Davom etasizmi?",

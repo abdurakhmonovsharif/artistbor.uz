@@ -34,6 +34,11 @@ export function moneyAmount(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function positiveMoneyAmount(value: unknown) {
+  const amount = moneyAmount(value);
+  return amount !== null && amount > 0 ? amount : null;
+}
+
 export function formatMoneyAmount(value: unknown, locale?: Locale | string) {
   const amount = moneyAmount(value);
   if (amount === null) return "";
@@ -58,4 +63,11 @@ export function formatMoneyInput(value: unknown, locale?: Locale | string) {
   if (!digits) return "";
 
   return formatMoneyAmount(digits, locale);
+}
+
+export function formatSignedMoneyInput(value: unknown, locale?: Locale | string) {
+  const rawValue = String(value ?? "");
+  const sign = rawValue.trimStart().startsWith("-") ? "-" : "";
+  const amount = formatMoneyInput(rawValue, locale);
+  return amount ? `${sign}${amount}` : sign;
 }

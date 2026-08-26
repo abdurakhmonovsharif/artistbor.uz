@@ -5,9 +5,9 @@ import Image from "next/image";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Phone } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { translations } from "@/lib/i18n/translations";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useToast } from "@/components/ui/toast";
+import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
 
 export default function LoginPage() {
   const [phone, setPhone] = useState("+998 ");
@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [rememberDevice, setRememberDevice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const toast = useToast();
 
   useEffect(() => {
@@ -28,9 +28,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(normalizePhoneForApi(phone), password, rememberDevice);
-      toast.success(translations.uz["login.success"]);
+      toast.success(getDashboardNotification("loginSuccess", locale));
     } catch {
-      toast.error(translations.uz["login.failed"]);
+      toast.error(t("login.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -96,10 +96,10 @@ export default function LoginPage() {
                   <BrandLogo className="h-[68px] w-[104px]" />
                 </div>
                 <h1 className="mt-6 text-[clamp(26px,3vw,36px)] font-black leading-[1.04] tracking-[-0.02em] text-[#0d1322]">
-                  Boshqaruv paneliga kirish
+                  {t("login.pageTitle")}
                 </h1>
                 <p className="mt-3 max-w-[340px] text-sm font-medium leading-6 text-[#667085]">
-                  Platforma operatsiyalari uchun himoyalangan Artistbor ish muhiti.
+                  {t("login.pageDescription")}
                 </p>
               </div>
 
@@ -134,7 +134,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     className="grid size-8 shrink-0 place-items-center rounded-xl text-[#9aa6b8] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-white hover:text-[#101828] focus:outline-none focus:ring-2 focus:ring-[#ffb000]/45"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? t("common.hidePassword") : t("common.showPassword")}
                     onClick={() => setShowPassword((current) => !current)}
                   >
                     {showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
@@ -149,7 +149,7 @@ export default function LoginPage() {
                       onChange={(event) => setRememberDevice(event.target.checked)}
                       className="size-[18px] rounded-xl accent-[#ffb000]"
                     />
-                    <span className="select-none">Qurilmani eslab qolish</span>
+                    <span className="select-none">{t("login.rememberDevice")}</span>
                   </label>
                 </div>
 
@@ -158,7 +158,7 @@ export default function LoginPage() {
                   disabled={submitting}
                   className="group mt-2 flex h-12 w-full cursor-pointer items-center justify-between rounded-xl bg-[#ffb000] px-2.5 pl-5 text-[15px] font-black text-[#101828] shadow-[0_14px_30px_rgba(255,176,0,0.22)] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-[1px] hover:bg-[#ffa600] hover:shadow-[0_18px_34px_rgba(255,176,0,0.28)] active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-[#ffb000]/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <span>{submitting ? t("login.submitting") : "Kirish"}</span>
+                  <span>{submitting ? t("login.submitting") : t("login.submit")}</span>
                   <span className="grid size-9 place-items-center rounded-xl bg-[#101828]/10 transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:-translate-y-[1px] group-hover:translate-x-1 group-hover:scale-105">
                     <ArrowRight className="size-[18px]" />
                   </span>
@@ -173,6 +173,8 @@ export default function LoginPage() {
 }
 
 function HeroPanel() {
+  const { t } = useI18n();
+
   return (
     <section className="relative hidden min-h-[100dvh] overflow-hidden bg-[#030813] px-12 py-12 text-white lg:block xl:px-16">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_35%,rgba(255,188,28,0.24),transparent_14%),radial-gradient(circle_at_84%_18%,rgba(78,92,132,0.18),transparent_26%),linear-gradient(180deg,#071225_0%,#020713_100%)]" />
@@ -194,11 +196,11 @@ function HeroPanel() {
 
         <div className="max-w-[660px] pb-10">
           <p className="inline-flex rounded-full bg-white/8 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#ffd45a] ring-1 ring-white/10">
-            Operational command
+            {t("login.heroEyebrow")}
           </p>
           <h2 className="mt-7 text-[clamp(54px,5.5vw,92px)] font-black leading-[0.92] tracking-[-0.05em]">
             Artistbor
-            <span className="block text-[#ffd45a]">admin studio.</span>
+            <span className="block text-[#ffd45a]">{t("login.heroAccent")}</span>
           </h2>
         </div>
       </div>

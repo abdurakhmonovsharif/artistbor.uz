@@ -26,6 +26,7 @@ import {
   type CategoryMap,
 } from "@/components/admin/applications/application-utils";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FormField } from "@/components/ui/form-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -36,6 +37,7 @@ import {
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import type { Locale } from "@/lib/i18n/translations";
 import { toDisplay } from "@/lib/utils";
 import type { ArtistApplication, Category, ListResult } from "@/types/api";
@@ -98,33 +100,45 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
   const [rows, setRows] = useState<ArtistApplication[]>([]);
   const [categoryMap, setCategoryMap] = useState<CategoryMap>(() => new Map());
   const [counts, setCounts] = useState<StatusCounts>(initialCounts);
+  const [countsLoaded, setCountsLoaded] = useState(false);
   const [meta, setMeta] = useState<ListResult<ArtistApplication>["meta"]>();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailApplication, setDetailApplication] = useState<ArtistApplication | null>(null);
   const [contactApplication, setContactApplication] = useState<ArtistApplication | null>(null);
+  const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
+  const [contactLoadingId, setContactLoadingId] = useState<number | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const startListRequest = useLatestRequest(apiFilters);
+  const startStatusCountRequest = useLatestRequest();
   const debouncedSearch = useDebouncedValue(uiFilters.search, 450);
 
   const activeStatus = uiFilters.status;
   const page = Number(apiFilters.page ?? 1);
   const pageSize = Number(apiFilters.limit ?? limit);
 
-  const fetchApplications = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchApplications = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await applicationsApi.list(apiFilters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : getApplicationLabels(locale).loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : getApplicationLabels(locale).loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [apiFilters, locale]);
+  }, [apiFilters, locale, startListRequest, toast]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -135,7 +149,8 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     }
   }, [locale, toast]);
 
-  const fetchStatusCounts = useCallback(async () => {
+  const fetchStatusCounts = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startStatusCountRequest();
     try {
       const [all, pending, approved, rejected] = await Promise.all([
         applicationsApi.list({ status: "", page: 1, limit: 1 }),
@@ -143,16 +158,24 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
         applicationsApi.list({ status: APPLICATION_STATUS_FILTERS.approved, page: 1, limit: 1 }),
         applicationsApi.list({ status: APPLICATION_STATUS_FILTERS.rejected, page: 1, limit: 1 }),
       ]);
+      if (!isLatestRequest()) return;
       setCounts({
         all: getResultCount(all),
         pending: getResultCount(pending),
         approved: getResultCount(approved),
         rejected: getResultCount(rejected),
       });
-    } catch {
-      setCounts(initialCounts);
+      setCountsLoaded(true);
+    } catch (caught) {
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.loadFailed);
+      } else {
+        setCounts(initialCounts);
+        setCountsLoaded(false);
+      }
     }
-  }, []);
+  }, [labels.loadFailed, startStatusCountRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -160,6 +183,16 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     }, 0);
     return () => window.clearTimeout(timer);
   }, [fetchApplications]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setApiFilters((current) => {
+        if ((current.search ?? "") === debouncedSearch && (current.q ?? "") === debouncedSearch) return current;
+        return { ...current, search: debouncedSearch, q: debouncedSearch, page: 1 };
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -221,16 +254,42 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     setApiFilters((current) => ({ ...current, page: 1, limit: nextLimit }));
   };
 
+  const applyLocalStatusTransition = (
+    application: ArtistApplication,
+    nextStatus: "approved" | "rejected",
+  ) => {
+    if (!countsLoaded) {
+      void fetchStatusCounts({ background: true });
+      return;
+    }
+    const previousStatus = applicationStatusKey(application);
+    if (previousStatus === nextStatus) return;
+    if (previousStatus === "all" || previousStatus === "unknown") {
+      void fetchStatusCounts({ background: true });
+      return;
+    }
+
+    startStatusCountRequest();
+    setCounts((current) => ({
+      ...current,
+      [previousStatus]: Math.max(0, current[previousStatus] - 1),
+      [nextStatus]: current[nextStatus] + 1,
+    }));
+  };
+
   const openDetail = async (application: ArtistApplication) => {
     if (!application.id) return;
-    setSubmitting(true);
+    setDetailApplication(application);
+    setDetailLoadingId(application.id);
     try {
       const detail = await applicationsApi.detail(application.id);
-      setDetailApplication({ ...application, ...detail });
+      setDetailApplication((current) =>
+        current?.id === application.id ? { ...application, ...detail } : current,
+      );
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
     } finally {
-      setSubmitting(false);
+      setDetailLoadingId((current) => current === application.id ? null : current);
     }
   };
 
@@ -239,14 +298,17 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
       setContactApplication(application);
       return;
     }
-    setSubmitting(true);
+    setContactApplication(application);
+    setContactLoadingId(application.id);
     try {
       const detail = await applicationsApi.detail(application.id);
-      setContactApplication({ ...application, ...detail });
+      setContactApplication((current) =>
+        current?.id === application.id ? { ...application, ...detail } : current,
+      );
     } catch {
-      setContactApplication(application);
+      // Keep the contact drawer populated from the list response.
     } finally {
-      setSubmitting(false);
+      setContactLoadingId((current) => current === application.id ? null : current);
     }
   };
 
@@ -255,16 +317,17 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     if (!canApproveApplication(dialog.application)) {
       toast.error(labels.alreadyProcessed);
       setDialog(null);
-      await Promise.all([fetchApplications(), fetchStatusCounts()]);
+      void Promise.allSettled([fetchApplications({ background: true }), fetchStatusCounts({ background: true })]);
       return;
     }
     setSubmitting(true);
     try {
       await applicationsApi.approve(dialog.application.id);
       toast.success(labels.approvedToast);
+      applyLocalStatusTransition(dialog.application, "approved");
       setDialog(null);
       setDetailApplication(null);
-      await Promise.all([fetchApplications(), fetchStatusCounts()]);
+      void fetchApplications({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.approveFailed);
     } finally {
@@ -277,16 +340,17 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
     if (!canRejectApplication(dialog.application)) {
       toast.error(labels.alreadyProcessed);
       setDialog(null);
-      await Promise.all([fetchApplications(), fetchStatusCounts()]);
+      void Promise.allSettled([fetchApplications({ background: true }), fetchStatusCounts({ background: true })]);
       return;
     }
     setSubmitting(true);
     try {
       await applicationsApi.reject(dialog.application.id, reason);
       toast.success(labels.rejectedToast);
+      applyLocalStatusTransition(dialog.application, "rejected");
       setDialog(null);
       setDetailApplication(null);
-      await Promise.all([fetchApplications(), fetchStatusCounts()]);
+      void fetchApplications({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.rejectFailed);
     } finally {
@@ -299,13 +363,11 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div>
-        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">{labels.pageEyebrow}</p>
-        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{labels.pageTitle}</h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-          {labels.pageDescription}
-        </p>
-      </div>
+      <AdminPageHeader
+        eyebrow={labels.pageEyebrow}
+        title={labels.pageTitle}
+        description={labels.pageDescription}
+      />
 
       <ApplicationStatusTabs active={activeStatus} counts={counts} onChange={changeStatus} />
       <ApplicationsFilterBar
@@ -325,8 +387,6 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
         <ApplicationsTable
           rows={displayedRows}
           categoryMap={categoryMap}
-          page={page}
-          pageSize={pageSize}
           onOpenDetail={(application) => void openDetail(application)}
           onOpenContact={(application) => void openContact(application)}
           onApprove={(application) => setDialog({ type: "approve", application })}
@@ -355,8 +415,12 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
       <ApplicationDetailDrawer
         open={Boolean(detailApplication)}
         application={detailApplication}
+        detailLoading={detailLoadingId === detailApplication?.id}
         categoryMap={categoryMap}
-        onClose={() => setDetailApplication(null)}
+        onClose={() => {
+          setDetailApplication(null);
+          setDetailLoadingId(null);
+        }}
         onApprove={(application) => setDialog({ type: "approve", application })}
         onReject={(application) => setDialog({ type: "reject", application })}
       />
@@ -364,8 +428,12 @@ function ApplicationsTableView({ initialStatus }: { initialStatus: InitialApplic
       <ApplicationContactDrawer
         open={Boolean(contactApplication)}
         application={contactApplication}
+        detailLoading={contactLoadingId === contactApplication?.id}
         categoryMap={categoryMap}
-        onClose={() => setContactApplication(null)}
+        onClose={() => {
+          setContactApplication(null);
+          setContactLoadingId(null);
+        }}
       />
 
       {dialog?.type === "approve" ? (
@@ -405,7 +473,7 @@ function ApproveApplicationModal({
   onSubmit: () => Promise<void>;
 }) {
   const labels = getApplicationLabels(locale);
-  const applicationId = toDisplay(application.id);
+  const applicationId = application.public_id ?? "—";
   const formId = `application-approve-form-${applicationId}`;
 
   const submit = async (event: FormEvent) => {
@@ -483,7 +551,7 @@ function RejectApplicationModal({
       open
       rootClassName="artistbor-confirm-modal"
       width={480}
-      title={labels.rejectDialogTitle(toDisplay(application.id))}
+      title={labels.rejectDialogTitle(application.public_id ?? "—")}
       onCancel={onClose}
       closeIcon={<ApplicationModalCloseIcon />}
       footer={
@@ -571,6 +639,7 @@ function matchesSearch(
 
   const haystack = [
     application.id,
+    application.public_id,
     application.profile_photo_id,
     application.bio,
     application.rejection_reason,

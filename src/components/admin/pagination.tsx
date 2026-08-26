@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Select } from "antd";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { cn } from "@/lib/utils";
 import type { PaginationMeta } from "@/types/api";
@@ -105,7 +106,10 @@ function PaginationShell({
     : t("pagination.range", { from: firstItem, to: lastItem });
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 rounded-[18px] border border-slate-100 bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-xl shadow-slate-950/[0.04] dark:border-slate-700/70 dark:bg-[#111827] dark:text-slate-400">
+    <nav
+      aria-label={t("pagination.label")}
+      className="flex flex-wrap items-center justify-end gap-2 rounded-[18px] border border-artistbor-border bg-artistbor-surface px-4 py-3 text-sm font-semibold text-artistbor-secondary shadow-[var(--artistbor-surface-shadow)]"
+    >
       <PaginationIconButton
         label={t("pagination.first")}
         disabled={!canGoPrevious}
@@ -131,7 +135,7 @@ function PaginationShell({
               className={cn(
                 "grid size-9 place-items-center rounded-full text-sm font-black transition",
                 pageNumber === page
-                  ? "bg-[#fff7e6] text-[#ad6800] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-[#453821] dark:!text-amber-300 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.22)]"
+                  ? "bg-amber-50 text-artistbor-accent shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-amber-500/10 dark:!text-amber-300 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.13)]"
                   : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-700/70 dark:hover:text-white",
               )}
               aria-current={pageNumber === page ? "page" : undefined}
@@ -141,7 +145,7 @@ function PaginationShell({
           ))}
         </div>
       ) : (
-        <span className="grid size-9 place-items-center rounded-full bg-[#fff7e6] text-sm font-black text-[#ad6800] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-[#453821] dark:text-amber-400 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.22)]">
+        <span className="grid size-9 place-items-center rounded-full bg-amber-50 text-sm font-bold text-artistbor-accent shadow-[inset_0_0_0_1px_rgba(245,158,11,0.16)] dark:bg-amber-500/10 dark:text-amber-300 dark:shadow-[inset_0_0_0_1px_rgba(251,191,36,0.13)]">
           {page}
         </span>
       )}
@@ -161,25 +165,20 @@ function PaginationShell({
         <ChevronsRight className="size-4" />
       </PaginationIconButton>
 
-      <span className="mx-1 whitespace-nowrap text-slate-500 dark:text-slate-400">
+      <span className="mx-1 whitespace-nowrap text-artistbor-secondary">
         {rangeLabel}
       </span>
 
       {onPageSizeChange ? (
-        <select
+        <Select
+          className="artistbor-pagination-select ml-1 shrink-0"
           value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          className="artistbor-table-filter-control h-10 rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 text-[13px] font-bold text-[#475569] shadow-none outline-none transition hover:border-[#e6ebf2] focus:border-orange-500/45 focus:ring-0 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200"
+          onChange={(value) => onPageSizeChange(Number(value))}
+          options={pageSizeOptions.map((option) => ({ label: `${option}`, value: option }))}
           aria-label={t("pagination.perPage")}
-        >
-          {pageSizeOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        />
       ) : null}
-    </div>
+    </nav>
   );
 }
 

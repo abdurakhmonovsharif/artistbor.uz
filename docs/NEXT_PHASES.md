@@ -1,54 +1,28 @@
-# Next Phases
+# Next phases
 
-Date: 2026-05-02
+Date: 2026-08-26
 
-## Recommended Next Phase
+## Current delivery status
 
-Phase 1: Verification and stabilization.
+The dashboard UI implementation sequence is complete for the agreed scope:
+availability correctness/management, artist services and finance, gallery,
+video CRUD, filtered notifications, UZ/RU status feedback, responsive filters,
+adaptive tables and identifier no-wrap behavior.
 
-Goal: make the current admin routes compile cleanly, match live backend response shapes, and remove broken navigation before adding new features.
+## Required handoff verification
 
-## Phase 1 Checklist
+1. Run `npm run lint`, `npm test`, `npx tsc --noEmit`, and `npm run build`.
+2. Perform a read-only authenticated browser walk through every sidebar route at
+   desktop and compact widths.
+3. Use approved staging records to verify each mutating workflow one at a time.
+4. Record actual backend request/response evidence for any failure before
+   changing frontend logic.
 
-- Run `npm run lint` and fix reported issues.
-- Run `npm run build` and fix compile/runtime build issues.
-- Compare `src/lib/api/admin-content.ts` payloads and normalized responses with live Swagger/backend responses.
-- Confirm each implemented route loads under authenticated admin session:
-  - `/admin/categories`
-  - `/admin/faq`
-  - `/admin/regions`
-  - `/admin/services`
-  - `/admin/users`
-  - `/admin/artists`
-  - `/admin/applications`
-  - `/admin/orders`
-  - `/admin/comments`
-- Decide whether to implement or remove sidebar entries for:
-  - `/admin/ratings`
-  - `/admin/notifications`
-  - `/admin/trash`
+## Follow-up improvements
 
-## Phase 2
-
-Improve resource-specific UX after API response shapes are verified.
-
-- Replace raw JSON preview columns on orders and comments with stable columns from backend data.
-- Improve detail modals for artists, applications, orders, and comments.
-- Add safer validation for destructive actions.
-
-## Phase 3
-
-Security and production hardening.
-
-- Verify role/permission behavior for admin/operator.
-- Review public endpoint exposure and error messages.
-- Confirm no secrets are stored in `NEXT_PUBLIC_*` variables.
-- Add rate-limit/error handling guidance if backend supports it.
-
-## Phase 4
-
-Tests and regression protection.
-
-- Add focused tests for API normalization helpers.
-- Add smoke tests for protected route redirects and main admin pages.
-- Add manual QA checklist for real backend credentials and production deploy flow.
+- Add authenticated Playwright coverage once a dedicated non-production admin
+  account and disposable fixture data are available.
+- Replace defensive/raw detail rendering when OpenAPI exposes stable schemas.
+- Add visual regression snapshots for 320, 768, 1024, 1280 and 1440 widths.
+- Review newly introduced backend endpoints as separate product work instead of
+  silently exposing them without role, UX and data-retention decisions.

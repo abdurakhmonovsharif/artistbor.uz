@@ -5,17 +5,19 @@ import { CrudPage, type CrudField, type FilterField } from "@/components/admin/c
 import type { DataTableColumn } from "@/components/admin/data-table";
 import { faqApi, type FaqFilters, type FaqPayload } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { Faq } from "@/types/api";
 
 export default function FaqPage() {
   const { locale } = useI18n();
   const labels = getLabels(locale);
   const columns: DataTableColumn<Faq>[] = [
-    { key: "id", label: "ID", kind: "number" },
+    { key: "public_id", label: "Public ID", render: (row) => row.public_id ?? "—" },
     { key: "question_uz", label: labels.questionUz },
     { key: "question_ru", label: labels.questionRu },
     { key: "answer_uz", label: labels.answerUz },
-    { key: "status", label: labels.status, kind: "status" },
+    { key: "status", label: labels.status, render: (row) => <StatusBadge value={row.status} fieldKey="is_active" /> },
     { key: "sort_order", label: labels.sortOrder, kind: "number" },
     { key: "created_at", label: labels.createdAt, kind: "date" },
   ];
@@ -31,8 +33,12 @@ export default function FaqPage() {
     {
       name: "status",
       label: labels.status,
-      type: "number",
+      type: "select",
       placeholder: labels.status,
+      options: [
+        { label: getDashboardStatus("resource", 1, locale).label, value: 1 },
+        { label: getDashboardStatus("resource", 0, locale).label, value: 0 },
+      ],
       hideLabel: true,
       compact: true,
     },
@@ -45,7 +51,15 @@ export default function FaqPage() {
     { name: "answer_ru", label: labels.answerRu, type: "textarea" },
     { name: "answer_en", label: labels.answerEn, type: "textarea" },
     { name: "sort_order", label: labels.sortOrder, type: "number" },
-    { name: "status", label: labels.status, type: "number" },
+    {
+      name: "status",
+      label: labels.status,
+      type: "select",
+      options: [
+        { label: getDashboardStatus("resource", 1, locale).label, value: 1 },
+        { label: getDashboardStatus("resource", 0, locale).label, value: 0 },
+      ],
+    },
   ];
 
   return (

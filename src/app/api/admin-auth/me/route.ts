@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const token = await getAdminSessionToken();
-  if (!token) return NextResponse.json({ message: "Sessiya topilmadi" }, { status: 401 });
+  if (!token) return NextResponse.json({ code: "SESSION_MISSING", message: "Sessiya topilmadi" }, { status: 401 });
 
   const backendResponse = await fetch(`${API_BASE_URL}/v1/admin/auth/me`, {
     headers: {
@@ -21,14 +21,14 @@ export async function GET() {
   const payload = await backendResponse.json().catch(() => null);
   if (!backendResponse.ok) {
     if (backendResponse.status === 401) await clearAdminSessionToken();
-    return NextResponse.json({ message: "Sessiya tasdiqlanmadi" }, { status: backendResponse.status });
+    return NextResponse.json({ code: "SESSION_INVALID", message: "Sessiya tasdiqlanmadi" }, { status: backendResponse.status });
   }
 
   const user = normalizeAuthUser(unwrapData<unknown>(payload));
-  if (!user) return NextResponse.json({ message: "Admin profil ma'lumotlari topilmadi" }, { status: 502 });
+  if (!user) return NextResponse.json({ code: "ADMIN_PROFILE_MISSING", message: "Admin profil ma'lumotlari topilmadi" }, { status: 502 });
   if (!canAccessAdminPanel(user.role)) {
     await clearAdminSessionToken();
-    return NextResponse.json({ message: "Bu panelga kirish huquqi yo'q" }, { status: 403 });
+    return NextResponse.json({ code: "PANEL_ACCESS_DENIED", message: "Bu panelga kirish huquqi yo'q" }, { status: 403 });
   }
 
   return NextResponse.json({ user });

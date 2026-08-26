@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Eye, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import {
   adminActionButtonClass,
@@ -8,14 +8,17 @@ import {
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid } from "@/components/admin/detail-grid";
 import { Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField, type FormFieldOption } from "@/components/ui/form-field";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import type { ListResult, UnknownRecord } from "@/types/api";
 import { cn, isRecord, toDisplay } from "@/lib/utils";
 
@@ -45,7 +48,7 @@ export type FilterField<TFilters extends object> = {
 type DialogState<TItem extends object> =
   | { type: "create" }
   | { type: "edit"; item: TItem }
-  | { type: "view"; item: TItem }
+  | { type: "view"; item: TItem; detailLoading?: boolean }
   | { type: "delete"; item: TItem }
   | { type: "restore"; item: TItem }
   | null;
@@ -110,25 +113,34 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState<TItem>>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const toast = useToast();
+  const listRequestScope = useMemo(() => ({ filters, list }), [filters, list]);
+  const startListRequest = useLatestRequest(listRequestScope);
 
   const page = Number((filters as Record<string, unknown>).page ?? 1);
   const pageSize = Number((filters as Record<string, unknown>).limit ?? pagination?.limit ?? 20);
 
-  const fetchRows = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRows = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t("crud.loadFailed"));
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : t("crud.loadFailed");
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, list, t]);
+  }, [filters, list, startListRequest, t, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -161,6 +173,27 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
       setDialog({ type, item: row });
       return;
     }
+
+    if (type === "view") {
+      setDialog({ type, item: row, detailLoading: true });
+      try {
+        const item = await detail(row.id);
+        setDialog((current) =>
+          current?.type === "view" && current.item.id === row.id
+            ? { type, item, detailLoading: false }
+            : current,
+        );
+      } catch (caught) {
+        setDialog((current) =>
+          current?.type === "view" && current.item.id === row.id
+            ? { ...current, detailLoading: false }
+            : current,
+        );
+        toast.error(caught instanceof Error ? caught.message : t("crud.detailFailed"));
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
       const item = await detail(row.id);
@@ -223,7 +256,7 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
             "inline-flex items-center justify-center border border-slate-200 bg-white text-slate-700 shadow-sm shadow-slate-950/[0.02] transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-transparent dark:text-slate-300 dark:hover:bg-white/[0.05] md:hidden",
             inlineFilterActions ? "size-10 rounded-lg" : "size-11 rounded-2xl",
           )}
-          aria-label="Filter settings"
+          aria-label={t("common.filterSettings")}
           aria-expanded={mobileFiltersOpen}
         >
           <SlidersHorizontal className="size-4" />
@@ -247,25 +280,21 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{title}</h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {description}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDialog({ type: "create" })}
-          className={adminActionButtonLargeClass}
-        >
-          <Plus className="size-4" />
-          {t("actions.create")}
-        </button>
-      </div>
+      <AdminPageHeader
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        actions={(
+          <button
+            type="button"
+            onClick={() => setDialog({ type: "create" })}
+            className={adminActionButtonLargeClass}
+          >
+            <Plus className="size-4" />
+            {t("actions.create")}
+          </button>
+        )}
+      />
 
       <form
         onSubmit={applyFilters}
@@ -365,9 +394,9 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
             setSubmitting(true);
             try {
               await create(payload as TCreate);
-              toast.success(t("crud.created"));
+              toast.success(getDashboardNotification("genericCreated", locale));
               setDialog(null);
-              await fetchRows();
+              void fetchRows({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.createFailed"));
             } finally {
@@ -390,9 +419,9 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
             setSubmitting(true);
             try {
               await update(dialog.item.id, payload as TUpdate);
-              toast.success(t("crud.updated"));
+              toast.success(getDashboardNotification("genericUpdated", locale));
               setDialog(null);
-              await fetchRows();
+              void fetchRows({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.updateFailed"));
             } finally {
@@ -405,6 +434,7 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
       {dialog?.type === "view" ? (
         <AdminDrawer title={t("crud.detailsTitle", { title })} onClose={() => setDialog(null)} size="min(100vw, 720px)">
           <div className="p-4">
+            {dialog.detailLoading ? <InlineLoadingState /> : null}
             <DetailGrid record={dialog.item as UnknownRecord} />
           </div>
         </AdminDrawer>
@@ -422,9 +452,9 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
             setSubmitting(true);
             try {
               await remove(dialog.item.id);
-              toast.success(t("crud.deleted"));
+              toast.success(getDashboardNotification("genericDeleted", locale));
               setDialog(null);
-              await fetchRows();
+              void fetchRows({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.deleteFailed"));
             } finally {
@@ -445,9 +475,9 @@ export function CrudPage<TItem extends { id?: number }, TFilters extends object,
             setSubmitting(true);
             try {
               await restore(dialog.item.id);
-              toast.success(t("crud.restored"));
+              toast.success(getDashboardNotification("genericRestored", locale));
               setDialog(null);
-              await fetchRows();
+              void fetchRows({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.restoreFailed"));
             } finally {

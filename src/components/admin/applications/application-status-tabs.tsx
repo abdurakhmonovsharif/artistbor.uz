@@ -1,8 +1,8 @@
-import { cn } from "@/lib/utils";
 import {
   applicationStatusLabel,
   type ApplicationStatusKey,
 } from "@/components/admin/applications/application-utils";
+import { StatusTabRail } from "@/components/admin/status-tab-rail";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const tabs: ApplicationStatusKey[] = ["all", "pending", "approved", "rejected"];
@@ -17,45 +17,22 @@ export function ApplicationStatusTabs({
   onChange: (status: ApplicationStatusKey) => void;
 }) {
   const { locale } = useI18n();
+  const items = tabs.map((tab) => ({
+    key: tab,
+    label: applicationStatusLabel(tab, locale),
+    count: counts[tab as Exclude<ApplicationStatusKey, "unknown">] ?? 0,
+    countClassName: statusCountClass(tab),
+  }));
 
   return (
-    <div className="border-b border-[#e6ebf2] dark:border-white/10">
-      <div className="flex gap-7 overflow-x-auto overflow-y-hidden">
-        {tabs.map((tab) => {
-          const selected = tab === active;
-          const count = counts[tab as Exclude<ApplicationStatusKey, "unknown">] ?? 0;
-
-          return (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => onChange(tab)}
-              className={cn(
-                "relative inline-flex h-12 shrink-0 cursor-pointer items-center gap-2 text-sm font-semibold transition",
-                selected
-                  ? "text-[#f97316] dark:text-amber-300"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
-              )}
-            >
-              <span>{applicationStatusLabel(tab, locale)}</span>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 text-xs font-bold",
-                  selected
-                    ? "bg-[#fff7ed] text-[#f97316] ring-1 ring-[#fed7aa] dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20"
-                    : statusCountClass(tab),
-                )}
-              >
-                {count}
-              </span>
-              {selected ? (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#f97316] dark:bg-amber-400" />
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <StatusTabRail
+      items={items}
+      activeKey={active}
+      ariaLabel={locale === "ru" ? "Статусы заявок" : "Ariza holatlari"}
+      previousLabel={locale === "ru" ? "Предыдущие статусы" : "Oldingi holatlar"}
+      nextLabel={locale === "ru" ? "Следующие статусы" : "Keyingi holatlar"}
+      onChange={onChange}
+    />
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useId } from "react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function Modal({
@@ -15,18 +16,22 @@ export function Modal({
   width?: string;
 }) {
   const { t } = useI18n();
+  const titleId = useId();
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+    <div className="artistbor-confirm-modal fixed inset-0 z-40 flex items-center justify-center bg-[var(--artistbor-modal-mask)] p-4 backdrop-blur-sm">
       <div
-        className={`relative isolate max-h-[90vh] w-full ${width} overflow-hidden rounded-xl border border-white/10 bg-[#111827] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_28px_80px_rgba(2,6,23,0.56)] before:pointer-events-none before:absolute before:inset-px before:z-0 before:rounded-[10px] before:border before:border-white/[0.04] before:content-['']`}
+        className={`relative max-h-[90vh] w-full ${width} overflow-hidden rounded-xl border border-[var(--artistbor-modal-surface-border)] bg-[var(--artistbor-modal-surface)] text-[var(--artistbor-modal-text)] shadow-[var(--artistbor-modal-surface-shadow)]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
       >
-        <div className="flex items-center justify-between border-b border-white/10 bg-[#0f172a] px-6 py-4">
-          <h2 className="text-lg font-black text-slate-50">{title}</h2>
+        <div className="flex items-center justify-between border-b border-[var(--artistbor-modal-surface-border)] bg-[var(--artistbor-modal-subtle-bg)] px-6 py-4">
+          <h2 id={titleId} className="text-lg font-bold text-[var(--artistbor-modal-title)]">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-[10px] border border-rose-400/70 bg-transparent p-2 text-rose-400 transition-[background-color,border-color,color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-rose-300 hover:bg-rose-500/10 hover:text-rose-300"
+            className="rounded-[10px] border border-[var(--artistbor-modal-close-border)] bg-transparent p-2 text-[var(--artistbor-modal-close-color)] transition-[background-color,border-color,color] duration-200 ease-out hover:border-[var(--artistbor-modal-close-hover-border)] hover:bg-[var(--artistbor-modal-close-hover-bg)] hover:text-[var(--artistbor-modal-close-hover-color)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
             aria-label={t("actions.close")}
           >
             <X className="size-4" />

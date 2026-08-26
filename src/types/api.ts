@@ -27,6 +27,7 @@ export type ListResult<T = UnknownRecord> = {
 
 export type User = {
   id?: number;
+  public_id?: string;
   phone?: string;
   first_name?: string;
   last_name?: string;
@@ -42,9 +43,11 @@ export type User = {
 export type ArtistProfile = {
   id?: number;
   user_id?: number;
+  public_id?: string;
   first_name?: string;
   last_name?: string;
   full_name?: string | null;
+  stage_name?: string | null;
   phone?: string;
   email?: string | null;
   region_id?: number | null;
@@ -58,7 +61,10 @@ export type ArtistProfile = {
   avatar_url?: string | null;
   created_at?: number;
   bio?: string;
+  short_description?: string | null;
   experience_years?: number;
+  titles?: string[];
+  achievements?: string[];
   is_verified?: boolean;
   is_top?: boolean;
   rating?: number;
@@ -69,8 +75,9 @@ export type ArtistProfile = {
   administrator_phone?: string;
   profile_photo_id?: number | null;
   profile_photo_url?: string | null;
-  card_last_four?: string | null;
-  card_token?: string | null;
+  card_number?: string | null;
+  card_number_masked?: string | null;
+  card_holder_name?: string | null;
   balance?: string | number | null;
   debt?: string | number | null;
   badges?: string[];
@@ -84,12 +91,37 @@ export type ArtistProfile = {
   artist_profile?: UnknownRecord | null;
 };
 
-export type ArtistApplication = {
+export type ArtistApplicationService = UnknownRecord & {
   id?: number;
+  service_id?: number;
+  name_uz?: string;
+  name_ru?: string;
+  name_en?: string;
+  description_uz?: string | null;
+  description_ru?: string | null;
+  description_en?: string | null;
+  price?: number | string | null;
+  note?: string | null;
+  service?: Service | UnknownRecord | null;
+};
+
+export type ArtistApplication = UnknownRecord & {
+  id?: number;
+  public_id?: string;
   user_id?: number;
   user?: User | UnknownRecord | null;
+  region_id?: number;
+  district_id?: number;
+  region?: Region | UnknownRecord | null;
+  district?: District | UnknownRecord | null;
   category_ids?: number[];
   sub_category_ids?: number[];
+  categories?: Category[];
+  sub_categories?: Category[];
+  subCategories?: Category[];
+  services?: ArtistApplicationService[];
+  application_services?: ArtistApplicationService[];
+  applicationServices?: ArtistApplicationService[];
   bio?: string;
   albums_count?: number;
   extra_phone?: string;
@@ -97,6 +129,7 @@ export type ArtistApplication = {
   administrator_phone?: string;
   profile_photo_id?: number;
   profile_photo_url?: string | null;
+  is_top?: boolean | number;
   status?: string | number;
   status_label?: string;
   rejection_reason?: string;
@@ -105,6 +138,7 @@ export type ArtistApplication = {
 
 export type OrderRecord = UnknownRecord & {
   id?: number;
+  public_id?: string;
   client_id?: number;
   artist_id?: number;
   service_id?: number;
@@ -118,6 +152,8 @@ export type OrderRecord = UnknownRecord & {
   status_label?: string;
   status_code?: number;
   advance_amount?: string | number | null;
+  advance_source?: string | null;
+  is_advance_custom?: boolean;
   payment_deadline?: number | null;
   payment_deadline_formatted?: string | null;
   payment_status?: string | number;
@@ -137,6 +173,44 @@ export type OrderRecord = UnknownRecord & {
   long?: string | number | null;
   created_at?: number;
   updated_at?: number;
+  completed_at?: number | null;
+  auto_completed?: boolean;
+  completion?: UnknownRecord | null;
+  contract?: OrderContract | null;
+};
+
+export type ContractSignature = {
+  signed?: boolean;
+  signed_at?: number | null;
+};
+
+export type OrderContract = UnknownRecord & {
+  id?: number;
+  contract_id?: number;
+  contract_number?: string;
+  order_id?: number;
+  order_public_id?: string;
+  artist_id?: number;
+  client_id?: number;
+  status?: "draft" | "pending_signatures" | "partially_signed" | "signed" | "cancelled" | string;
+  status_label?: string;
+  file_url?: string | null;
+  has_file?: boolean;
+  file_size?: number | null;
+  generated_at?: number | null;
+  signatures?: {
+    artist?: ContractSignature;
+    client?: ContractSignature;
+  };
+  is_fully_signed?: boolean;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type OrderContractResponse = {
+  order_id?: number;
+  order_public_id?: string;
+  contract?: OrderContract | null;
 };
 
 export type OrderPaymentRecord = UnknownRecord & {
@@ -185,6 +259,10 @@ export type ArtistServiceRecord = UnknownRecord & {
     region_id?: number;
     region_name?: string;
     price?: number | string;
+    advance_amount?: number | string | null;
+    advance_effective?: number | string | null;
+    advance_label?: string | null;
+    is_advance_custom?: boolean;
   }>;
 };
 
@@ -211,6 +289,47 @@ export type ArtistAvailabilityRecord = UnknownRecord & {
   start_time?: string;
   end_time?: string;
   reason?: string;
+  source?: "manual" | "hold" | "order" | string;
+  source_label?: string;
+  expires_at?: number | null;
+  is_expired?: boolean;
+  order_id?: number | null;
+};
+
+export type AuditLogRecord = UnknownRecord & {
+  id?: number;
+  admin_id?: number;
+  admin_public_id?: string;
+  admin_name?: string;
+  admin_role?: string;
+  admin_role_label?: string;
+  action?: string;
+  action_label?: string;
+  entity_type?: string;
+  entity_id?: string | number;
+  entity_public_id?: string;
+  old_values?: UnknownRecord | null;
+  new_values?: UnknownRecord | null;
+  metadata?: UnknownRecord | null;
+  note?: string | null;
+  method?: string;
+  route?: string;
+  ip?: string;
+  user_agent?: string;
+  created_at?: number;
+  created_at_iso?: string;
+};
+
+export type AuditLogMeta = {
+  actions?: Array<{ value: string; label: string }>;
+  entity_types?: string[];
+  roles?: Array<{ value: string; label: string }>;
+  admins?: Array<{
+    admin_id: number;
+    admin_name: string;
+    admin_public_id?: string;
+    admin_role?: string;
+  }>;
 };
 
 export type ArtistGalleryRecord = UnknownRecord & {
@@ -236,15 +355,18 @@ export type ArtistVideoRecord = UnknownRecord & {
 
 export type NotificationRecord = UnknownRecord & {
   id?: number;
+  public_id?: string;
   type?: string;
 };
 
 export type TrashRecord = UnknownRecord & {
   id?: number;
+  public_id?: string;
 };
 
 export type Category = {
   id?: number;
+  public_id?: string;
   parent_id?: number | null;
   name_uz?: string;
   name_ru?: string;
@@ -259,6 +381,8 @@ export type Category = {
 
 export type Service = {
   id?: number;
+  public_id?: string;
+  category_id?: number;
   parent_id?: number | null;
   name_uz?: string;
   name_ru?: string;
@@ -275,6 +399,7 @@ export type Service = {
 
 export type Faq = {
   id?: number;
+  public_id?: string;
   question_uz?: string;
   question_ru?: string;
   question_en?: string;

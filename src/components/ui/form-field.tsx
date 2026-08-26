@@ -1,7 +1,8 @@
 "use client";
 
-import { ChangeEvent, type ReactNode, useState } from "react";
-import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { ChangeEvent, type ReactNode, useId, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { Select } from "antd";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,6 @@ export function FormField({
   className,
   inputClassName,
   inputMode,
-  selectIconClassName,
   suffix,
   autoComplete,
   disabled,
@@ -49,7 +49,6 @@ export function FormField({
   className?: string;
   inputClassName?: string;
   inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search";
-  selectIconClassName?: string;
   suffix?: ReactNode;
   autoComplete?: string;
   disabled?: boolean;
@@ -58,6 +57,7 @@ export function FormField({
   showCount?: boolean;
 }) {
   const { t } = useI18n();
+  const errorId = useId();
   const [showPassword, setShowPassword] = useState(false);
   const hasPrefixIcon = Boolean(prefixIcon) && type !== "select" && type !== "textarea";
   const isPassword = type === "password";
@@ -65,7 +65,7 @@ export function FormField({
   const isCompactTextarea = compact && type === "textarea";
   const textLength = typeof value === "string" ? value.length : String(value).length;
   const baseClass = cn(
-    "w-full border bg-[#f8fafc] px-3 text-[13px] font-bold text-[#475569] shadow-none outline-none transition placeholder:text-[#94a3b8] focus:border-orange-500/45 focus:ring-0 dark:bg-white/[0.035] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-amber-300/50",
+    "w-full border bg-artistbor-surface-subtle px-3 text-[13px] font-semibold text-artistbor-primary shadow-none outline-none transition-colors duration-200 placeholder:text-artistbor-muted focus:border-artistbor-focus focus:ring-0",
     !isCompactTextarea ? "artistbor-table-filter-control h-10 rounded-xl py-0 leading-[40px]" : null,
     isCompactTextarea
       ? cn("min-h-[112px] rounded-xl py-3", showCount && maxLength ? "pb-10 pr-16" : null)
@@ -75,8 +75,8 @@ export function FormField({
     hasPrefixIcon && "pl-10",
     isPassword && "pr-11",
     hasSuffix && "pr-16",
-    error ? "border-rose-300" : "border-slate-200/90 dark:border-white/10",
-    "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-70 dark:disabled:bg-white/[0.04] dark:disabled:text-slate-500",
+    error ? "border-rose-300" : "border-artistbor-border",
+    "disabled:cursor-not-allowed disabled:bg-artistbor-surface-subtle disabled:text-artistbor-muted",
     inputClassName,
   );
 
@@ -88,7 +88,7 @@ export function FormField({
     <label className={cn("block", className)}>
       <span
         className={cn(
-          "mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400",
+          "mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-artistbor-secondary",
           hideLabel && "sr-only",
         )}
       >
@@ -103,6 +103,8 @@ export function FormField({
         ) : null}
         {type === "textarea" ? (
           <textarea
+            aria-describedby={error ? errorId : undefined}
+            aria-invalid={Boolean(error)}
             className={baseClass}
             value={value}
             onChange={handleChange}
@@ -114,16 +116,22 @@ export function FormField({
             onFocus={onFocus}
           />
         ) : type === "select" ? (
-          <select className={cn(baseClass, "pr-9")} value={value} onChange={handleChange} required={required} disabled={disabled} onFocus={onFocus}>
-            <option value="">{placeholder ?? t("common.select")}</option>
-            {options?.map((option) => (
-              <option key={String(option.value)} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Select
+            aria-describedby={error ? errorId : undefined}
+            aria-invalid={Boolean(error)}
+            className={cn("artistbor-form-select", inputClassName)}
+            value={value === "" ? undefined : String(value)}
+            onChange={(nextValue) => onChange(nextValue === undefined || nextValue === null ? "" : String(nextValue))}
+            options={options?.map((option) => ({ label: option.label, value: String(option.value) }))}
+            placeholder={placeholder ?? t("common.select")}
+            status={error ? "error" : undefined}
+            disabled={disabled}
+            onFocus={onFocus}
+          />
         ) : (
           <input
+            aria-describedby={error ? errorId : undefined}
+            aria-invalid={Boolean(error)}
             className={baseClass}
             value={value}
             onChange={handleChange}
@@ -132,15 +140,11 @@ export function FormField({
             type={isPassword && showPassword ? "text" : type}
             inputMode={inputMode}
             autoComplete={autoComplete}
+            maxLength={maxLength}
             disabled={disabled}
             onFocus={onFocus}
           />
         )}
-        {type === "select" && selectIconClassName ? (
-          <span className={cn("pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2", selectIconClassName)}>
-            <ChevronDown className="size-4" />
-          </span>
-        ) : null}
         {hasSuffix ? (
           <span className="pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2 text-xs font-bold text-slate-400 dark:text-slate-500">
             {suffix}
@@ -156,7 +160,7 @@ export function FormField({
             type="button"
             className="absolute right-3 top-1/2 z-10 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-white"
             disabled={disabled}
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={showPassword ? t("common.hidePassword") : t("common.showPassword")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => setShowPassword((current) => !current)}
           >
@@ -164,7 +168,11 @@ export function FormField({
           </button>
         ) : null}
       </span>
-      {error ? <span className="mt-1 block text-xs font-semibold text-rose-500">{error}</span> : null}
+      {error ? (
+        <span id={errorId} role="alert" className="mt-1 block text-xs font-semibold text-rose-500">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }

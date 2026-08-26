@@ -6,6 +6,8 @@ import { getCurrentAdmin, login as loginRequest, logout as logoutRequest } from 
 import { ADMIN_AUTH_PREVIEW_ENABLED } from "@/lib/api/client";
 import { staffApi, type StaffRole, type UpdateStaffPayload } from "@/lib/api/admin-content";
 import { canAccessAdminPanel, normalizeStaffRole } from "@/lib/auth/permissions";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getCurrentDashboardLocale, getDashboardApiError } from "@/lib/i18n/dashboard-copy";
 import type { User } from "@/types/api";
 
 export type AdminProfileUpdatePayload = {
@@ -36,6 +38,7 @@ const previewAdmin: User = {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { locale } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -53,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const current = await getCurrentAdmin();
       if (!canAccessAdminPanel(current.role)) {
         await logoutRequest();
-        throw new Error("Bu panelga kirish huquqi yo'q");
+        throw new Error(getDashboardApiError("panelAccessDenied", getCurrentDashboardLocale()));
       }
       setUser(current);
     } catch {
@@ -76,12 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await loginRequest({ phone, password, rememberDevice });
       if (!canAccessAdminPanel(result.user.role)) {
         await logoutRequest();
-        throw new Error("Bu panelga kirish huquqi yo'q");
+        throw new Error(getDashboardApiError("panelAccessDenied", locale));
       }
       setUser(result.user);
       router.replace("/admin");
     },
-    [router],
+    [locale, router],
   );
 
   const logout = useCallback(async () => {
@@ -96,11 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = useCallback(
     async (payload: AdminProfileUpdatePayload) => {
-      if (!user?.id) throw new Error("Admin ID topilmadi");
+      if (!user?.id) throw new Error(getDashboardApiError("adminIdMissing", locale));
 
       const updatePayload: UpdateStaffPayload = {
         ...payload,
-        role: resolveStaffRole(user.role),
+        role: resolveStaffRole(user.role, locale),
         status: user.status,
       };
       const updated = await staffApi.update(user.id, updatePayload);
@@ -113,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: updated?.email ?? payload.email,
       }));
     },
-    [user],
+    [locale, user],
   );
 
   const value = useMemo(
@@ -130,8 +133,8 @@ export function useAuth() {
   return context;
 }
 
-function resolveStaffRole(role: User["role"]): StaffRole {
+function resolveStaffRole(role: User["role"], locale: "uz" | "ru"): StaffRole {
   const normalized = normalizeStaffRole(role);
-  if (!normalized) throw new Error("Admin roli aniqlanmadi");
+  if (!normalized) throw new Error(getDashboardApiError("adminRoleInvalid", locale));
   return normalized;
 }

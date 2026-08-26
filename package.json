@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --no-warnings --test \"src/**/*.test.mjs\""
   },
   "dependencies": {
     "@ant-design/charts": "^2.6.7",

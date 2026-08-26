@@ -8,6 +8,7 @@ import { FormField } from "@/components/ui/form-field";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { localeLabels, locales, type Locale } from "@/lib/i18n/translations";
 import { useTheme } from "@/lib/theme/theme-provider";
@@ -40,21 +41,21 @@ export function Header({
   return (
     <>
       <header className="artistbor-admin-header px-[var(--artistbor-main-padding)] pb-2 pt-[calc(env(safe-area-inset-top)+10px)] sm:pt-4">
-        <div className="w-full rounded-[18px] border border-[#dce4ef] bg-white p-1 dark:border-white/10 dark:bg-slate-950">
-          <div className="flex min-h-12 items-center gap-2 rounded-[14px] bg-[#f8fafc] px-2.5 dark:bg-white/[0.035] sm:min-h-14 sm:gap-3 sm:px-4">
+        <div className="w-full rounded-[18px] border border-artistbor-border bg-artistbor-surface p-1 shadow-[var(--artistbor-surface-shadow)]">
+          <div className="flex min-h-12 items-center gap-2 rounded-[14px] bg-artistbor-surface-subtle px-2.5 sm:min-h-14 sm:gap-3 sm:px-4">
             <button
               type="button"
               onClick={onToggleNavigation}
-              className="grid size-9 shrink-0 place-items-center rounded-xl border border-[#e6ebf2] bg-white text-slate-700 transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.045] dark:text-slate-200 dark:hover:bg-white/[0.08] sm:size-10"
+              className="grid size-9 shrink-0 place-items-center rounded-xl border border-artistbor-border bg-artistbor-surface text-artistbor-secondary transition-[border-color,background-color,color,transform] duration-200 hover:border-artistbor-border-strong hover:bg-artistbor-surface-subtle hover:text-artistbor-primary focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] sm:size-10"
               aria-label={t("sidebar.openMenu")}
               title={t("sidebar.openMenu")}
             >
               {navigationExpanded ? <PanelLeftClose className="size-5" /> : <PanelLeftOpen className="size-5" />}
             </button>
 
-            <h1 className="min-w-0 truncate text-[13px] font-black text-slate-950 dark:text-white sm:text-[15px]">
+            <p className="min-w-0 truncate text-[13px] font-bold text-artistbor-primary sm:text-[15px]">
               {t("menu.dashboard")}
-            </h1>
+            </p>
 
             <div className="flex-1" />
 
@@ -62,7 +63,7 @@ export function Header({
             <HeaderThemeButton />
             <Link
               href="/admin/orders?status=10"
-              className="relative hidden size-10 shrink-0 place-items-center rounded-xl border border-[#e6ebf2] bg-white text-slate-700 transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-slate-950 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.045] dark:text-slate-200 dark:hover:bg-white/[0.08] sm:grid"
+              className="relative hidden size-10 shrink-0 place-items-center rounded-xl border border-artistbor-border bg-artistbor-surface text-artistbor-secondary transition-[border-color,background-color,color,transform] duration-200 hover:border-artistbor-border-strong hover:bg-artistbor-surface-subtle hover:text-artistbor-primary active:scale-[0.98] sm:grid"
               aria-label={t("menu.orders")}
               title={t("menu.orders")}
             >
@@ -129,7 +130,7 @@ function HeaderLanguageControl() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-[#e6ebf2] bg-white px-3 text-xs font-black text-slate-700 transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.045] dark:text-slate-200 dark:hover:bg-white/[0.08]"
+        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-artistbor-border bg-artistbor-surface px-3 text-xs font-bold text-artistbor-secondary transition-[border-color,background-color,color,transform] duration-200 hover:border-artistbor-border-strong hover:bg-artistbor-surface-subtle hover:text-artistbor-primary focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98]"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t("language.label")}
@@ -143,7 +144,7 @@ function HeaderLanguageControl() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-12 z-50 w-40 overflow-hidden rounded-[18px] border border-[#dce4ef] bg-white p-1.5 ring-1 ring-slate-950/[0.03] dark:border-white/10 dark:bg-slate-950 dark:ring-white/10"
+          className="absolute right-0 top-12 z-50 w-40 overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface p-1.5 shadow-[var(--artistbor-surface-shadow)]"
         >
           {locales.map((item) => (
             <button
@@ -176,7 +177,7 @@ function HeaderThemeButton() {
       onClick={toggleTheme}
       title={label}
       aria-label={label}
-      className="hidden size-10 shrink-0 place-items-center rounded-xl border border-[#e6ebf2] bg-white text-slate-700 transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.045] dark:text-slate-200 dark:hover:bg-white/[0.08] sm:grid"
+      className="hidden size-10 shrink-0 place-items-center rounded-xl border border-artistbor-border bg-artistbor-surface text-artistbor-secondary transition-[border-color,background-color,color,transform] duration-200 hover:border-artistbor-border-strong hover:bg-artistbor-surface-subtle hover:text-artistbor-primary focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] sm:grid"
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </button>
@@ -237,21 +238,21 @@ function UserMenu({
         type="button"
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-[#e6ebf2] bg-white px-2 text-left transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.045] dark:hover:bg-white/[0.08] sm:h-11 sm:gap-3 sm:px-3",
+          "inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-artistbor-border bg-artistbor-surface px-2 text-left transition-[border-color,background-color,transform] duration-200 hover:border-artistbor-border-strong hover:bg-artistbor-surface-subtle focus:outline-none focus:ring-2 focus:ring-amber-300/40 active:scale-[0.98] sm:h-11 sm:gap-3 sm:px-3",
           "max-w-[180px] sm:max-w-[300px]",
         )}
         aria-expanded={open}
         aria-haspopup="menu"
       >
         <span className="hidden min-w-0 sm:block">
-          <span className="block whitespace-nowrap text-xs font-black text-slate-950 dark:text-white">
+          <span className="block whitespace-nowrap text-xs font-bold text-artistbor-primary">
             {name}
           </span>
-          <span className="block truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+          <span className="block truncate text-[11px] font-semibold text-artistbor-secondary">
             {roleLabel}
           </span>
         </span>
-        <span className="grid size-7 shrink-0 place-items-center rounded-xl bg-[#ffb357] text-xs font-black text-white sm:size-8 sm:text-sm">
+        <span className="grid size-7 shrink-0 place-items-center rounded-xl bg-artistbor-accent text-xs font-bold text-white sm:size-8 sm:text-sm">
           {name.slice(0, 1).toUpperCase()}
         </span>
         <ChevronDown className="hidden size-3.5 shrink-0 text-slate-400 sm:block" />
@@ -260,11 +261,11 @@ function UserMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-13 z-50 w-56 overflow-hidden rounded-[18px] border border-[#dce4ef] bg-white p-1.5 ring-1 ring-slate-950/[0.03] dark:border-white/10 dark:bg-slate-950 dark:ring-white/10"
+          className="absolute right-0 top-13 z-50 w-56 overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface p-1.5 shadow-[var(--artistbor-surface-shadow)]"
         >
           <div className="px-3 py-2">
-            <p className="truncate text-sm font-black text-slate-950 dark:text-white">{name}</p>
-            <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <p className="truncate text-sm font-bold text-artistbor-primary">{name}</p>
+            <p className="truncate text-xs font-semibold text-artistbor-secondary">
               {subtitle}
             </p>
           </div>
@@ -433,7 +434,7 @@ function profileLabels(locale: Locale, t: ReturnType<typeof useI18n>["t"]) {
     phone: isRu ? "Телефон" : "Telefon",
     email: "Email",
     required: t("common.requiredField"),
-    updated: isRu ? "Профиль обновлен" : "Profil yangilandi",
+    updated: getDashboardNotification("profileUpdated", locale),
     updateFailed: isRu ? "Не удалось обновить профиль" : "Profilni yangilash bajarilmadi",
   };
 }

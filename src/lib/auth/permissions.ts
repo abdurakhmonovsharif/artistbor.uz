@@ -23,15 +23,28 @@ export const ADMIN_ROUTE_RULES: AdminRouteRule[] = [
   { path: "/admin/videos", roles: MODERATOR_OR_ADMIN_ROLES },
   { path: "/admin/users", roles: [ADMIN_ROLE] },
   { path: "/admin/operators", roles: [ADMIN_ROLE] },
+  { path: "/admin/regions", roles: [ADMIN_ROLE] },
   { path: "/admin/settings", roles: [ADMIN_ROLE] },
+  { path: "/admin/audit-logs", roles: [ADMIN_ROLE] },
+  { path: "/admin/contracts", roles: [ADMIN_ROLE] },
   { path: "/admin/trash", roles: [ADMIN_ROLE] },
 ];
 
-export type AdminAction = "artistCommentsModerate" | "artistVideosRead";
+export type AdminAction =
+  | "artistAvailabilityManage"
+  | "artistCommentsModerate"
+  | "artistGalleryManage"
+  | "artistServicesManage"
+  | "artistVideosManage"
+  | "artistVideosRead";
 
 const ADMIN_ACTION_RULES: Record<AdminAction, readonly StaffRole[]> = {
+  artistAvailabilityManage: STAFF_ROLES,
   artistCommentsModerate: MODERATOR_OR_ADMIN_ROLES,
+  artistGalleryManage: MODERATOR_OR_ADMIN_ROLES,
   artistVideosRead: MODERATOR_OR_ADMIN_ROLES,
+  artistVideosManage: MODERATOR_OR_ADMIN_ROLES,
+  artistServicesManage: MODERATOR_OR_ADMIN_ROLES,
 };
 
 export function normalizeStaffRole(role: User["role"]): StaffRole | null {

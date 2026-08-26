@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, X, XCircle } from "lucide-react";
+import { useId } from "react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { cn } from "@/lib/utils";
 
@@ -23,26 +24,32 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const { t } = useI18n();
+  const titleId = useId();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-[2px]">
-      <section className="relative isolate w-full max-w-[480px] rounded-xl border border-white/10 bg-[#111827] p-6 text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_28px_80px_rgba(2,6,23,0.56)] before:pointer-events-none before:absolute before:inset-px before:z-0 before:rounded-[10px] before:border before:border-white/[0.04] before:content-['']">
+    <div className="artistbor-confirm-modal fixed inset-0 z-50 flex items-center justify-center bg-[var(--artistbor-modal-mask)] p-4 backdrop-blur-[2px]">
+      <section
+        className="relative w-full max-w-[480px] rounded-xl border border-[var(--artistbor-modal-surface-border)] bg-[var(--artistbor-modal-surface)] p-6 text-[var(--artistbor-modal-text)] shadow-[var(--artistbor-modal-surface-shadow)]"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <header className="flex items-start justify-between gap-4">
-          <h2 className="text-base font-black text-slate-50">
+          <h2 id={titleId} className="text-base font-bold text-[var(--artistbor-modal-title)]">
             {title ?? t("actions.confirm")}
           </h2>
           <button
             type="button"
             onClick={onCancel}
-            className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-rose-400/70 bg-transparent text-rose-400 transition-[background-color,border-color,color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-rose-300 hover:bg-rose-500/10 hover:text-rose-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
+            className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-[var(--artistbor-modal-close-border)] bg-transparent text-[var(--artistbor-modal-close-color)] transition-[background-color,border-color,color] duration-200 ease-out hover:border-[var(--artistbor-modal-close-hover-border)] hover:bg-[var(--artistbor-modal-close-hover-bg)] hover:text-[var(--artistbor-modal-close-hover-color)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
             aria-label={t("actions.close")}
           >
             <X className="size-4" />
           </button>
         </header>
 
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="text-sm font-semibold leading-6 text-slate-200">
+        <div className="mt-4 rounded-xl border border-[var(--artistbor-modal-subtle-border)] bg-[var(--artistbor-modal-subtle-bg)] p-4">
+          <p className="text-sm font-normal leading-6 text-[var(--artistbor-modal-body)]">
             {message}
           </p>
         </div>

@@ -1,12 +1,12 @@
 # Final QA Checklist
 
-Date: 2026-05-02
+Date: 2026-08-26
 
 ## Scope
 
-Use this checklist after backend CORS/OPTIONS and backend 500 blockers are fixed.
-Run against authenticated admin credentials. Do not submit destructive actions on
-production data.
+Run against authenticated admin credentials. The dashboard uses the same-origin
+admin proxy, so browser requests do not depend on direct-backend CORS. Do not
+submit destructive actions on production data.
 
 ## Implemented Routes
 
@@ -17,12 +17,17 @@ production data.
 - `/admin/regions`
 - `/admin/services`
 - `/admin/users`
+- `/admin/operators`
 - `/admin/artists`
 - `/admin/applications`
 - `/admin/orders`
+- `/admin/contracts`
 - `/admin/comments`
 - `/admin/ratings`
+- `/admin/videos`
 - `/admin/notifications`
+- `/admin/settings`
+- `/admin/audit-logs`
 - `/admin/trash`
 
 ## Auth Checks
@@ -116,8 +121,11 @@ For every implemented admin route:
 - Filter by `search`, `is_verified`, `is_top`, `status`.
 - Verify pagination.
 - Open artist detail modal.
-- Confirm placeholder nested tabs render without API calls:
-  Services, Availability, Gallery, Comments, Ratings.
+- Confirm Services, Availability, Gallery, Comments, Ratings, finance and
+  transaction sections load from their real admin endpoints.
+- Open Availability management and verify expired holds are not shown as busy.
+- Verify busy-slot edit restores the original slot if replacement fails.
+- Upload/delete gallery media only with approved staging data.
 - Open artist edit modal and verify update fields.
 
 ### `/admin/applications`
@@ -176,9 +184,30 @@ For every implemented admin route:
 - Open detail modal.
 - Open send filtered modal and verify fields:
   `title`, `message`, `type`, `role`, `region_id`, `district_id`, `data`.
+- Confirm send filtered is blocked until at least one audience selector is set.
+- Confirm a successful filtered send shows `recipient_count` when returned.
 - Open send all modal and verify fields:
   `title`, `message`, `type`, `data`.
 - Validate invalid `data` JSON shows form error.
+
+### `/admin/videos`
+
+- Filter by artist.
+- Open create/edit drawers and verify YouTube URL, localized titles, sort order,
+  and active state.
+- Confirm an invalid or non-HTTPS YouTube URL is rejected.
+- Run create/update/delete only with approved staging data.
+
+### Responsive tables and filters
+
+- Test at 320, 768, 1024, 1280 and 1440 CSS pixels.
+- Confirm status rails never sit behind a native scrollbar.
+- Confirm filters wrap and remain keyboard reachable.
+- Confirm `ID`, `Public ID`, `ORD-*`, `ART-*`, `USR-*` and other identifier values
+  remain on one line.
+- Confirm secondary columns collapse before a table needs horizontal scroll.
+- When horizontal scroll remains necessary, confirm the region receives keyboard
+  focus and shows a visible scrollbar.
 
 ### `/admin/trash`
 
@@ -227,16 +256,12 @@ Run only on staging/test data:
 - Notification send/send-all.
 - Trash restore/permanent delete.
 
-## Known Backend Blockers
+## Backend/runtime notes
 
-- Browser CORS/preflight blocks several `/v1/admin/*` endpoints because
-  `OPTIONS` handling is missing or incomplete.
-- `/v1/admin/regions` returns backend `500`: missing
-  `backend\base\BaseAdminController`.
-- `/v1/admin/artist-comments` returns backend `500`: missing
-  `artist_comment.deleted_at`.
-
-See `docs/BACKEND_BLOCKERS.md` for the backend handoff details.
+- Historical backend failures are kept in `docs/BACKEND_BLOCKERS.md`; they are
+  not treated as confirmed-current until reproduced on 2026-08-26 runtime.
+- Live OpenAPI is available at `/docs/api`, but several response schemas remain
+  intentionally incomplete.
 
 ## Known Schema Risks
 
@@ -249,16 +274,17 @@ See `docs/BACKEND_BLOCKERS.md` for the backend handoff details.
   them as `string` without enum values.
 - Trash actions assume returned records include numeric `id`.
 
-## Final Smoke Test After Backend Fixes
+## Final smoke test
 
 1. Run `npm run lint`.
-2. Run `npm run build`.
-3. Start the dashboard locally.
-4. Login with real admin credentials.
-5. Verify auth checks.
-6. Walk all implemented routes in the order listed above.
-7. Confirm every page reaches table/empty/error state without runtime crash.
-8. Confirm network requests hit documented Swagger endpoints.
-9. Confirm filters, modals, and pagination behavior.
-10. On staging/test data only, submit mutating actions one resource at a time.
-11. Re-run `npm run lint` and `npm run build` after any fixes.
+2. Run `npm test`.
+3. Run `npm run build`.
+4. Start the dashboard locally.
+5. Login with real admin credentials.
+6. Verify auth checks.
+7. Walk all implemented routes in the order listed above.
+8. Confirm every page reaches table/empty/error state without runtime crash.
+9. Confirm network requests hit documented OpenAPI endpoints.
+10. Confirm filters, modals, tables and pagination behavior.
+11. On staging/test data only, submit mutating actions one resource at a time.
+12. Re-run lint, tests and build after any fixes.

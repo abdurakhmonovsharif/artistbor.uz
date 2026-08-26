@@ -20,13 +20,14 @@ import {
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { DetailGrid, type DetailField } from "@/components/admin/detail-grid";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, InlineLoadingState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
   artistsApi,
@@ -36,13 +37,15 @@ import {
 } from "@/lib/api/admin-content";
 import { getArtistSelectOptions } from "@/lib/artist-display";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn, normalizeDate, toDisplay } from "@/lib/utils";
 import type { ArtistProfile, CommentRecord, ListResult } from "@/types/api";
 
 type Tab = "all" | "pending";
 
 type DialogState =
-  | { type: "view"; comment: CommentRecord }
+  | { type: "view"; comment: CommentRecord; detailLoading: boolean }
   | { type: "edit"; comment: CommentRecord }
   | { type: "delete"; comment: CommentRecord }
   | { type: "publish"; comment: CommentRecord }
@@ -55,7 +58,6 @@ const limit = 20;
 type CommentLabels = ReturnType<typeof getCommentLabels>;
 
 const getCommentColumns = (labels: CommentLabels): DataTableColumn<CommentRecord>[] => [
-  { key: "id", label: "ID", kind: "number" },
   {
     key: "comment",
     label: labels.comment,
@@ -65,8 +67,8 @@ const getCommentColumns = (labels: CommentLabels): DataTableColumn<CommentRecord
       </span>
     ),
   },
-  { key: "artist_id", label: labels.artistId, kind: "number" },
-  { key: "client_id", label: labels.clientId, kind: "number" },
+  { key: "artist_public_id", label: labels.artistId, render: (row) => toDisplay(row.artist_public_id) },
+  { key: "client_public_id", label: labels.clientId, render: (row) => toDisplay(row.client_public_id) },
   {
     key: "is_published",
     label: labels.isPublished,
@@ -85,10 +87,10 @@ const getCommentColumns = (labels: CommentLabels): DataTableColumn<CommentRecord
 ];
 
 const getCommentDetailFields = (labels: CommentLabels): DetailField[] => [
-  { key: "id", label: "ID" },
+  { key: "public_id", label: "Public ID" },
   { key: "comment", label: labels.comment },
-  { key: "artist_id", label: labels.artistId },
-  { key: "client_id", label: labels.clientId },
+  { key: "artist_public_id", label: labels.artistId },
+  { key: "client_public_id", label: labels.clientId },
   { key: "is_published", label: labels.isPublished },
   { key: "status", label: labels.status },
   { key: "created_at", label: labels.createdAt },
@@ -119,23 +121,32 @@ export default function CommentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const toast = useToast();
+  const listRequestScope = useMemo(() => ({ filters, tab }), [filters, tab]);
+  const startListRequest = useLatestRequest(listRequestScope);
 
-  const fetchComments = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchComments = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result =
         tab === "pending"
           ? await commentsApi.pending(filters.page, filters.limit)
           : await commentsApi.list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed, tab]);
+  }, [filters, labels.loadFailed, startListRequest, tab, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -164,6 +175,26 @@ export default function CommentsPage() {
       toast.error(labels.idNotFound);
       return;
     }
+    if (type === "view") {
+      setDialog({ type, comment: row, detailLoading: true });
+      try {
+        const comment = await commentsApi.detail(row.id);
+        setDialog((current) =>
+          current?.type === "view" && current.comment.id === row.id
+            ? { type, comment, detailLoading: false }
+            : current,
+        );
+      } catch (caught) {
+        setDialog((current) =>
+          current?.type === "view" && current.comment.id === row.id
+            ? { ...current, detailLoading: false }
+            : current,
+        );
+        toast.error(caught instanceof Error ? caught.message : labels.detailLoadFailed);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
       const comment = await commentsApi.detail(row.id);
@@ -218,7 +249,7 @@ export default function CommentsPage() {
         toast.success(labels.restored);
       }
       setDialog(null);
-      await fetchComments();
+      void fetchComments({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
     } finally {
@@ -232,17 +263,7 @@ export default function CommentsPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div>
-        <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-          {labels.eyebrow}
-        </p>
-        <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-          {labels.title}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-          {labels.description}
-        </p>
-      </div>
+      <AdminPageHeader eyebrow={labels.eyebrow} title={labels.title} description={labels.description} />
 
       <div className="inline-flex rounded-[18px] border border-slate-200 bg-white p-1 shadow-none dark:border-white/10 dark:bg-[#111827]">
         <TabButton active={tab === "all"} onClick={() => changeTab("all")}>
@@ -354,6 +375,7 @@ export default function CommentsPage() {
       {dialog?.type === "view" ? (
         <AdminDrawer title={labels.detailTitle} onClose={() => setDialog(null)} size="min(100vw, 720px)">
           <div className="p-4">
+            {dialog.detailLoading ? <InlineLoadingState /> : null}
             <DetailGrid record={dialog.comment} fields={commentDetailFields} />
           </div>
         </AdminDrawer>
@@ -372,7 +394,7 @@ export default function CommentsPage() {
               await commentsApi.update(dialog.comment.id, payload);
               toast.success(labels.updated);
               setDialog(null);
-              await fetchComments();
+              void fetchComments({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : labels.updateFailed);
             } finally {
@@ -466,6 +488,7 @@ function EditCommentModal({
         <FormField
           compact
           label={labels.comment}
+          placeholder={labels.commentPlaceholder}
           type="textarea"
           rows={4}
           value={values.comment}
@@ -520,18 +543,24 @@ function FormActions({
 }
 
 function getCommentLabels(locale: string) {
+  const language = locale === "ru" ? "ru" : "uz";
+  const publicationStatus = (value: number) => getDashboardStatus("publication", value, language).label;
+  const notification = (key: Parameters<typeof getDashboardNotification>[0]) =>
+    getDashboardNotification(key, language);
+
   if (locale === "ru") {
     return {
       actionFailed: "Не удалось выполнить действие",
       allTab: "Все",
       artistAll: "Артист: Все",
-      artistId: "ID артиста",
+      artistId: "Public ID артиста",
       artistLoading: "Артисты загружаются...",
-      clientId: "ID клиента",
+      clientId: "Public ID клиента",
       closeAction: "Закрыть",
       comment: "Комментарий",
+      commentPlaceholder: "Введите комментарий...",
       createdAt: "Создано",
-      deleted: "Комментарий удален",
+      deleted: notification("commentDeleted"),
       deleteAction: "Удалить",
       deleteMessage: "Подтвердите удаление комментария.",
       deleteTitle: "Удалить комментарий",
@@ -542,12 +571,12 @@ function getCommentLabels(locale: string) {
       editTitle: "Редактировать комментарий",
       eyebrow: "Комментарии",
       idNotFound: "ID комментария не найден",
-      isPublished: "Показан",
+      isPublished: publicationStatus(1),
       loadFailed: "Не удалось загрузить комментарии",
-      pending: "Ожидает",
+      pending: publicationStatus(0),
       pendingTab: "Ожидающие",
-      published: "Комментарий опубликован",
-      publishedStatus: "Показан",
+      published: notification("commentPublished"),
+      publishedStatus: publicationStatus(1),
       publishAction: "Показать",
       publishMessage: "Подтвердите публикацию комментария.",
       publishTitle: "Показать комментарий",
@@ -555,18 +584,18 @@ function getCommentLabels(locale: string) {
       restoreAction: "Восстановить",
       restoreMessage: "Подтвердите восстановление комментария.",
       restoreTitle: "Восстановить комментарий",
-      restored: "Комментарий восстановлен",
+      restored: notification("commentRestored"),
       saveAction: "Сохранить",
       saving: "Сохранение...",
       search: "Поиск",
       status: "Статус",
       statusAll: "Статус: Все",
       title: "Комментарии",
-      unpublished: "Комментарий скрыт",
+      unpublished: notification("commentHidden"),
       unpublishAction: "Скрыть",
       unpublishMessage: "Подтвердите скрытие комментария.",
       unpublishTitle: "Скрыть комментарий",
-      updated: "Комментарий обновлен",
+      updated: notification("commentUpdated"),
       updateFailed: "Не удалось обновить комментарий",
       viewAction: "Просмотр",
     };
@@ -576,13 +605,14 @@ function getCommentLabels(locale: string) {
     actionFailed: "Amal bajarilmadi",
     allTab: "Barchasi",
     artistAll: "Sanatkor: Barchasi",
-    artistId: "Sanatkor ID",
+    artistId: "Sanatkor Public ID",
     artistLoading: "Sanatkorlar yuklanmoqda...",
-    clientId: "Mijoz ID",
+    clientId: "Mijoz Public ID",
     closeAction: "Yopish",
     comment: "Izoh",
+    commentPlaceholder: "Izoh yozing...",
     createdAt: "Yaratilgan",
-    deleted: "Izoh o'chirildi",
+    deleted: notification("commentDeleted"),
     deleteAction: "O'chirish",
     deleteMessage: "Izohni o'chirishni tasdiqlaysizmi?",
     deleteTitle: "Izohni o'chirish",
@@ -593,12 +623,12 @@ function getCommentLabels(locale: string) {
     editTitle: "Izohni tahrirlash",
     eyebrow: "Izohlar",
     idNotFound: "Izoh ID topilmadi",
-    isPublished: "Ko'rsatilgan",
+    isPublished: publicationStatus(1),
     loadFailed: "Izohlar yuklanmadi",
-    pending: "Kutilmoqda",
+    pending: publicationStatus(0),
     pendingTab: "Kutilayotganlar",
-    published: "Izoh ko'rsatildi",
-    publishedStatus: "Ko'rsatilgan",
+    published: notification("commentPublished"),
+    publishedStatus: publicationStatus(1),
     publishAction: "Ko'rsatish",
     publishMessage: "Izohni ko'rsatishni tasdiqlaysizmi?",
     publishTitle: "Izohni ko'rsatish",
@@ -606,18 +636,18 @@ function getCommentLabels(locale: string) {
     restoreAction: "Tiklash",
     restoreMessage: "Izohni tiklashni tasdiqlaysizmi?",
     restoreTitle: "Izohni tiklash",
-    restored: "Izoh tiklandi",
+    restored: notification("commentRestored"),
     saveAction: "Saqlash",
     saving: "Saqlanmoqda...",
     search: "Qidirish",
     status: "Holat",
     statusAll: "Holat: Barchasi",
     title: "Izohlar",
-    unpublished: "Izoh yashirildi",
+    unpublished: notification("commentHidden"),
     unpublishAction: "Yashirish",
     unpublishMessage: "Izohni yashirishni tasdiqlaysizmi?",
     unpublishTitle: "Izohni yashirish",
-    updated: "Izoh yangilandi",
+    updated: notification("commentUpdated"),
     updateFailed: "Yangilash bajarilmadi",
     viewAction: "Ko'rish",
   };

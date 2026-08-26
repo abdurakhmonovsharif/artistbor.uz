@@ -30,11 +30,11 @@ export async function DELETE(request: Request, context: ProxyContext) {
 
 async function proxyAdminRequest(request: Request, context: ProxyContext) {
   const token = await getAdminSessionToken();
-  if (!token) return NextResponse.json({ message: "Sessiya topilmadi" }, { status: 401 });
+  if (!token) return NextResponse.json({ code: "SESSION_MISSING", message: "Sessiya topilmadi" }, { status: 401 });
 
   const { path } = await context.params;
   if (!isAllowedAdminPath(path)) {
-    return NextResponse.json({ message: "Endpoint ruxsat etilmagan" }, { status: 403 });
+    return NextResponse.json({ code: "ENDPOINT_FORBIDDEN", message: "Endpoint ruxsat etilmagan" }, { status: 403 });
   }
 
   const targetUrl = new URL(`${API_BASE_URL}/${path.map(encodeURIComponent).join("/")}`);

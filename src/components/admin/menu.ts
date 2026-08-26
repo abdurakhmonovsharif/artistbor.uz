@@ -1,13 +1,16 @@
 import {
   Bell,
+  BookOpenCheck,
   ClipboardList,
   FolderTree,
   HelpCircle,
   Home,
   MessageSquare,
+  MapPinned,
   PackageCheck,
   Paintbrush,
   Settings,
+  ScrollText,
   Star,
   Trash2,
   UserCog,
@@ -60,6 +63,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     children: [
       { labelKey: "menu.categories", href: "/admin/categories", icon: FolderTree },
       { labelKey: "menu.services", href: "/admin/services", icon: Wrench },
+      { labelKey: "menu.regions", href: "/admin/regions", icon: MapPinned, roles: [ADMIN_ROLE] },
     ],
   },
   {
@@ -67,6 +71,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     labelKey: "menu.ordersGroup",
     children: [
       { labelKey: "menu.orders", href: "/admin/orders", icon: PackageCheck },
+      { labelKey: "menu.contracts", href: "/admin/contracts", icon: BookOpenCheck, roles: [ADMIN_ROLE] },
       { labelKey: "menu.comments", href: "/admin/comments", icon: MessageSquare, roles: MODERATOR_OR_ADMIN_ROLES },
       { labelKey: "menu.ratings", href: "/admin/ratings", icon: Star },
     ],
@@ -85,6 +90,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     labelKey: "menu.system",
     children: [
       { labelKey: "menu.settings", href: "/admin/settings", icon: Settings, roles: [ADMIN_ROLE] },
+      { labelKey: "menu.auditLogs", href: "/admin/audit-logs", icon: ScrollText, roles: [ADMIN_ROLE] },
       { labelKey: "menu.trash", href: "/admin/trash", icon: Trash2, roles: [ADMIN_ROLE] },
     ],
   },

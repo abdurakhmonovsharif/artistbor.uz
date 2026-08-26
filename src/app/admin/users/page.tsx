@@ -14,6 +14,7 @@ import {
   type DateFilterValue,
 } from "@/components/admin/date-filter-select";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FallbackPagination, Pagination } from "@/components/admin/pagination";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormField } from "@/components/ui/form-field";
@@ -25,8 +26,11 @@ import {
   type UserFilters,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import type { Locale } from "@/lib/i18n/translations";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn } from "@/lib/utils";
 import type { ListResult, User } from "@/types/api";
 
@@ -69,13 +73,6 @@ function getUserDrawerSelectClassName(error?: string) {
   );
 }
 
-function getUserDrawerSelectIconClassName(error?: string) {
-  return cn(
-    "text-[#94a3b8] transition-colors duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] dark:text-slate-500",
-    error && "text-rose-400 dark:text-rose-300",
-  );
-}
-
 function formatPhoneInput(value: unknown) {
   return formatPhone(value);
 }
@@ -94,21 +91,29 @@ export default function UsersPage() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [dateFilterMode, setDateFilterMode] = useState(() => inferDateFilterMode(initialFilters));
   const toast = useToast();
+  const startListRequest = useLatestRequest(filters);
   const debouncedSearch = useDebouncedValue(draftFilters.search ?? "", 450);
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchUsers = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await usersApi.list({ ...filters, role: clientRole });
+      if (!isLatestRequest()) return;
       setRows(result.items);
       setMeta(result.meta);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : getUserLabels(locale).loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : getUserLabels(locale).loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, locale]);
+  }, [filters, locale, startListRequest, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -190,7 +195,7 @@ export default function UsersPage() {
         toast.success(labels.unblocked);
       }
       setDialog(null);
-      await fetchUsers();
+      void fetchUsers({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.actionFailed);
     } finally {
@@ -207,25 +212,13 @@ export default function UsersPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">
-            {labels.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.description}
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader eyebrow={labels.eyebrow} title={labels.title} description={labels.description} />
 
       <form
         onSubmit={applyFilters}
-        className="artistbor-table-filter-shell overflow-x-auto"
+        className="artistbor-table-filter-shell artistbor-responsive-filter-shell"
       >
-        <div className="artistbor-table-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
+        <div className="artistbor-table-filter-panel artistbor-responsive-filter-panel grid gap-3 md:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto] md:items-center">
           <Input
             allowClear
             prefix={<Search className="size-4 text-[#94a3b8]" />}
@@ -318,7 +311,7 @@ export default function UsersPage() {
               await usersApi.update(dialog.user.id, payload);
               toast.success(labels.updated);
               setDialog(null);
-              await fetchUsers();
+              void fetchUsers({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.updateFailed"));
             } finally {
@@ -368,9 +361,9 @@ function UsersTable({
   onUnblock: (row: User) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1156px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div className="admin-table-scroll artistbor-people-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
+        <table aria-label={labels.title} className="w-full min-w-[1156px] border-separate border-spacing-0">
           <colgroup>
             <col className="w-14" />
             <col className="w-[340px]" />
@@ -381,7 +374,7 @@ function UsersTable({
           </colgroup>
           <thead>
             <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
-              <UsersTableHead label="ID" sortable />
+              <UsersTableHead label="Public ID" sortable />
               <UsersTableHead label={labels.user} sortable />
               <UsersTableHead label={labels.contact} />
               <UsersTableHead label={labels.status} />
@@ -392,8 +385,8 @@ function UsersTable({
           <tbody>
             {rows.map((row, index) => (
               <tr key={`${row.id ?? "user"}-${index}`} className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]">
-                <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-semibold text-[#475569] dark:border-white/10 dark:text-slate-300">
-                  {row.id ?? "—"}
+                <td className="whitespace-nowrap border-b border-artistbor-border px-3.5 py-[9px] align-middle text-[13px] font-semibold text-artistbor-secondary">
+                  {row.public_id ?? "—"}
                 </td>
                 <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <UserIdentityCell user={row} labels={labels} />
@@ -589,7 +582,6 @@ function EditUserDrawer({
             error={errors.status}
             options={statusOptions}
             inputClassName={getUserDrawerSelectClassName(errors.status)}
-            selectIconClassName={getUserDrawerSelectIconClassName(errors.status)}
             onChange={(status) => setValues((current) => ({ ...current, status }))}
           />
         </div>
@@ -646,18 +638,13 @@ function isBlockedUser(user: User) {
 }
 
 function getUserStatusDisplay(user: User, labels: UserLabels) {
-  const status = String(user.status ?? user.status_label ?? "10").trim().toLowerCase();
-  if (status === "20" || status.includes("block")) return { label: labels.blockedStatus, tone: "danger" as const };
-  if (status === "9" || status.includes("inactive") || status.includes("nofaol")) return { label: labels.inactiveStatus, tone: "neutral" as const };
-  if (status === "0" || status.includes("delete") || status.includes("deleted") || status.includes("o'chiril")) {
-    return { label: labels.deletedStatus, tone: "danger" as const };
-  }
-  return { label: labels.activeStatus, tone: "success" as const };
+  const status = getDashboardStatus("account", user.status ?? user.status_label, labels.locale);
+  return { label: status.label, tone: status.tone };
 }
 
 function getUserName(user: User, labels: UserLabels) {
   const fromParts = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-  return fromParts || user.email || formatPhone(user.phone) || `${labels.user} #${user.id ?? "—"}`;
+  return fromParts || user.email || formatPhone(user.phone) || `${labels.user} ${user.public_id ?? "—"}`;
 }
 
 function formatUserDate(value: unknown) {
@@ -700,16 +687,22 @@ function getUserStatusOptions(labels: UserLabels) {
 }
 
 function getUserLabels(locale: string) {
+  const language = locale === "ru" ? "ru" : "uz";
+  const accountStatus = (value: number) => getDashboardStatus("account", value, language).label;
+  const notification = (key: Parameters<typeof getDashboardNotification>[0]) =>
+    getDashboardNotification(key, language);
+
   if (locale === "ru") {
     return {
+      locale: language as Locale,
       actionFailed: "Не удалось выполнить действие",
       actions: "Действия",
-      activeStatus: "Активный",
+      activeStatus: accountStatus(10),
       all: "Все",
       blockAction: "Заблокировать",
       blockConfirm: "Подтвердите блокировку пользователя.",
-      blocked: "Пользователь заблокирован",
-      blockedStatus: "Заблокирован",
+      blocked: notification("userBlocked"),
+      blockedStatus: accountStatus(20),
       blockTitle: "Блокировка пользователя",
       cancel: "Закрыть",
       clear: "Сбросить",
@@ -719,12 +712,12 @@ function getUserLabels(locale: string) {
       dateFrom: "Дата с",
       dateFilter: "Дата",
       dateTo: "Дата до",
-      deletedStatus: "Удален",
+      deletedStatus: accountStatus(0),
       description: "Просмотр, редактирование и блокировка обычных клиентских пользователей.",
       editTitle: "Редактирование пользователя",
       eyebrow: "Пользователи",
       firstName: "Имя",
-      inactiveStatus: "Неактивный",
+      inactiveStatus: accountStatus(9),
       lastName: "Фамилия",
       loadFailed: "Не удалось загрузить пользователей",
       newest: "Новые",
@@ -739,22 +732,23 @@ function getUserLabels(locale: string) {
       title: "Пользователи",
       unblockAction: "Разблокировать",
       unblockConfirm: "Подтвердите разблокировку пользователя.",
-      unblocked: "Пользователь разблокирован",
+      unblocked: notification("userUnblocked"),
       unblockTitle: "Разблокировка",
-      updated: "Пользователь обновлен",
+      updated: notification("userUpdated"),
       user: "Пользователь",
     };
   }
 
   return {
+    locale: language as Locale,
     actionFailed: "Amal bajarilmadi",
     actions: "Amallar",
-    activeStatus: "Faol",
+    activeStatus: accountStatus(10),
     all: "Barchasi",
     blockAction: "Bloklash",
     blockConfirm: "Foydalanuvchini bloklashni tasdiqlaysizmi?",
-    blocked: "Foydalanuvchi bloklandi",
-    blockedStatus: "Bloklangan",
+    blocked: notification("userBlocked"),
+    blockedStatus: accountStatus(20),
     blockTitle: "Foydalanuvchini bloklash",
     cancel: "Yopish",
     clear: "Tozalash",
@@ -764,12 +758,12 @@ function getUserLabels(locale: string) {
     dateFrom: "Sanadan",
     dateFilter: "Sana",
     dateTo: "Sanagacha",
-    deletedStatus: "O'chirilgan",
+    deletedStatus: accountStatus(0),
     description: "Oddiy mijoz foydalanuvchilarni ko'rish, tahrirlash va bloklash.",
     editTitle: "Foydalanuvchini tahrirlash",
     eyebrow: "Foydalanuvchilar",
     firstName: "Ism",
-    inactiveStatus: "Nofaol",
+    inactiveStatus: accountStatus(9),
     lastName: "Familiya",
     loadFailed: "Foydalanuvchilar yuklanmadi",
     newest: "Yangilari",
@@ -784,9 +778,9 @@ function getUserLabels(locale: string) {
     title: "Foydalanuvchilar",
     unblockAction: "Blokdan chiqarish",
     unblockConfirm: "Foydalanuvchini blokdan chiqarishni tasdiqlaysizmi?",
-    unblocked: "Foydalanuvchi blokdan chiqarildi",
+    unblocked: notification("userUnblocked"),
     unblockTitle: "Blokdan chiqarish",
-    updated: "Foydalanuvchi yangilandi",
+    updated: notification("userUpdated"),
     user: "Foydalanuvchi",
   };
 }

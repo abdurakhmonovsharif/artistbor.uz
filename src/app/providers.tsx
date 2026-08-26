@@ -32,10 +32,16 @@ function AntdThemeProvider({ children }: { children: React.ReactNode }) {
         token: {
           colorPrimary: "#f59e0b",
           borderRadius: 12,
-          fontFamily:
-            "var(--font-sans-system), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          fontFamily: "var(--font-geist), sans-serif",
         },
         components: {
+          Select: {
+            optionActiveBg: dark ? "rgba(255, 255, 255, 0.06)" : "#f8fafc",
+            optionFontSize: 13,
+            optionHeight: 36,
+            optionSelectedBg: dark ? "rgba(245, 158, 11, 0.16)" : "#fff7e6",
+            optionSelectedColor: dark ? "#fbbf24" : "#ad6800",
+          },
           Menu: {
             itemBg: "transparent",
             subMenuItemBg: "transparent",

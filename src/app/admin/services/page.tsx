@@ -18,6 +18,7 @@ import {
   adminPrimaryActionButtonClass,
 } from "@/components/admin/admin-action-button";
 import { AdminDrawer } from "@/components/admin/admin-drawer";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import {
   AdminFilterForm,
   adminFilterActionClass,
@@ -36,6 +37,8 @@ import {
   type ServiceUpdatePayload,
 } from "@/lib/api/admin-content";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn, toDisplay } from "@/lib/utils";
 import type { Category, Service } from "@/types/api";
 
@@ -66,6 +69,8 @@ export default function ServicesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const startListRequest = useLatestRequest(filters);
+  const startAllServicesRequest = useLatestRequest();
 
   const loadCategories = useCallback(async () => {
     try {
@@ -74,7 +79,7 @@ export default function ServicesPage() {
         result.items
           .filter((category): category is Category & { id: number } => typeof category.id === "number")
           .map((category) => ({
-            label: localizedCategoryName(category, locale) || `${getLabels(locale).category} #${category.id}`,
+            label: localizedCategoryName(category, locale) || `${getLabels(locale).category} —`,
             value: String(category.id),
           })),
       );
@@ -83,30 +88,47 @@ export default function ServicesPage() {
     }
   }, [locale, toast]);
 
-  const fetchRows = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRows = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startListRequest();
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const result = await servicesApi.list(filters);
+      if (!isLatestRequest()) return;
       setRows(result.items);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : labels.loadFailed);
+      if (!isLatestRequest()) return;
+      const message = caught instanceof Error ? caught.message : labels.loadFailed;
+      if (background) toast.error(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (isLatestRequest()) setLoading(false);
     }
-  }, [filters, labels.loadFailed]);
+  }, [filters, labels.loadFailed, startListRequest, toast]);
 
-  const fetchAllServices = useCallback(async () => {
+  const fetchAllServices = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    const isLatestRequest = startAllServicesRequest();
     try {
       const result = await servicesApi.list({});
+      if (!isLatestRequest()) return;
       setAllServices(result.items);
-    } catch {
-      setAllServices([]);
+    } catch (caught) {
+      if (!isLatestRequest()) return;
+      if (background) {
+        toast.error(caught instanceof Error ? caught.message : labels.loadFailed);
+      } else {
+        setAllServices([]);
+      }
     }
-  }, []);
+  }, [labels.loadFailed, startAllServicesRequest, toast]);
 
-  const refetch = useCallback(async () => {
-    await Promise.all([fetchRows(), fetchAllServices()]);
+  const refetch = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    await Promise.all([
+      fetchRows({ background }),
+      fetchAllServices({ background }),
+    ]);
   }, [fetchAllServices, fetchRows]);
 
   useEffect(() => {
@@ -155,9 +177,9 @@ export default function ServicesPage() {
     setSubmitting(true);
     try {
       await servicesApi.delete(dialog.service.id);
-      toast.success(t("crud.deleted"));
+      toast.success(getDashboardNotification("genericDeleted", locale));
       setDialog(null);
-      await refetch();
+      void refetch({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : t("crud.deleteFailed"));
     } finally {
@@ -167,25 +189,21 @@ export default function ServicesPage() {
 
   return (
     <section className="artistbor-admin-page w-full space-y-4">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-[11px] font-bold uppercase leading-[14px] tracking-[2px] text-[#f97316]">
-            {labels.eyebrow}
-          </p>
-          <h1 className="mt-2 text-2xl font-bold leading-[30px] tracking-[-0.02em] text-[#0f172a] dark:text-white md:text-[30px] md:leading-9">{labels.title}</h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-[22px] text-[#64748b] dark:text-slate-400">
-            {labels.pageDescription}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setDialog({ type: "create" })}
-          className={adminActionButtonLargeClass}
-        >
-          <Plus className="size-4" />
-          {t("actions.create")}
-        </button>
-      </div>
+      <AdminPageHeader
+        eyebrow={labels.eyebrow}
+        title={labels.title}
+        description={labels.pageDescription}
+        actions={(
+          <button
+            type="button"
+            onClick={() => setDialog({ type: "create" })}
+            className={adminActionButtonLargeClass}
+          >
+            <Plus className="size-4" />
+            {t("actions.create")}
+          </button>
+        )}
+      />
 
       <AdminFilterForm
         onSubmit={(event) => event.preventDefault()}
@@ -269,9 +287,9 @@ export default function ServicesPage() {
             setSubmitting(true);
             try {
               await servicesApi.create(payload as ServiceCreatePayload);
-              toast.success(t("crud.created"));
+              toast.success(getDashboardNotification("genericCreated", locale));
               setDialog(null);
-              await refetch();
+              void refetch({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.createFailed"));
             } finally {
@@ -293,9 +311,9 @@ export default function ServicesPage() {
             setSubmitting(true);
             try {
               await servicesApi.update(dialog.service.id, payload as ServiceUpdatePayload);
-              toast.success(t("crud.updated"));
+              toast.success(getDashboardNotification("genericUpdated", locale));
               setDialog(null);
-              await refetch();
+              void refetch({ background: true });
             } catch (caught) {
               toast.error(caught instanceof Error ? caught.message : t("crud.updateFailed"));
             } finally {
@@ -339,13 +357,13 @@ function ServiceHierarchyTable({
   onExpand: (id: number) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div className="admin-table-scroll artistbor-hierarchy-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
+        <table aria-label={labels.title} className="w-full min-w-[920px] border-separate border-spacing-0">
           <thead>
             <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
               <TableHead className="w-12" />
-              <TableHead>ID</TableHead>
+              <TableHead>Public ID</TableHead>
               <TableHead>{labels.name}</TableHead>
               <TableHead>Slug</TableHead>
               <TableHead>{labels.status}</TableHead>
@@ -488,7 +506,7 @@ function ServiceTableRow({
           <span className="ml-3 block h-px w-5 bg-[#cbd5e1] dark:bg-white/20" />
         ) : null}
       </TableCell>
-      <TableCell className="font-semibold text-[#64748b] dark:text-slate-400">{toDisplay(service.id)}</TableCell>
+      <TableCell className="whitespace-nowrap font-semibold text-artistbor-secondary">{toDisplay(service.public_id)}</TableCell>
       <TableCell>
         <div className={cn("min-w-0", nested && "pl-5")}>
           <p className="line-clamp-2 text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
@@ -507,7 +525,7 @@ function ServiceTableRow({
       </TableCell>
       <TableCell className="font-medium text-[#334155] dark:text-slate-200">{service.slug ?? "—"}</TableCell>
       <TableCell>
-        <StatusBadge value={service.status} fieldKey="status" />
+        <StatusBadge value={service.status} fieldKey="is_active" />
       </TableCell>
       <TableCell className="font-medium text-[#475569] dark:text-slate-300">{toDisplay(service.sort_order)}</TableCell>
       <TableCell className="text-right">
@@ -793,10 +811,14 @@ function parentValue(value: number | null | undefined) {
 }
 
 function getLabels(locale: string) {
+  const language = locale === "ru" ? "ru" : "uz";
+  const active = getDashboardStatus("resource", 1, language).label;
+  const inactive = getDashboardStatus("resource", 0, language).label;
+
   if (locale === "ru") {
     return {
       actions: "Действия",
-      active: "Активный",
+      active,
       categoriesLoadFailed: "Не удалось загрузить категории",
       category: "Категория",
       categoryAll: "Категория: Все",
@@ -810,7 +832,7 @@ function getLabels(locale: string) {
       edit: "Редактировать",
       expandSubservices: "Развернуть подуслуги",
       eyebrow: "Услуги",
-      inactive: "Неактивный",
+      inactive,
       loadFailed: "Не удалось загрузить услуги",
       locale: "ru",
       name: "Название",
@@ -832,7 +854,7 @@ function getLabels(locale: string) {
 
   return {
     actions: "Amallar",
-    active: "Faol",
+    active,
     categoriesLoadFailed: "Kategoriyalar yuklanmadi",
     category: "Kategoriya",
     categoryAll: "Kategoriya: Barchasi",
@@ -846,7 +868,7 @@ function getLabels(locale: string) {
     edit: "Tahrirlash",
     expandSubservices: "Subservicelarni ochish",
     eyebrow: "Xizmatlar",
-    inactive: "Faol emas",
+    inactive,
     loadFailed: "Xizmatlar yuklanmadi",
     locale: "uz",
     name: "Nomi",

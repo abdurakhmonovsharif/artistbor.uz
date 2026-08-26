@@ -38,13 +38,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed right-4 top-4 z-50 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3">
+      <div
+        className="fixed right-4 top-4 z-50 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {toasts.map((toast) => {
           const Icon = toast.tone === "success" ? CheckCircle2 : XCircle;
           return (
             <div
               key={toast.id}
-              className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-2xl shadow-slate-900/10 dark:border-white/10 dark:bg-slate-950 dark:text-white"
+              className="flex items-center gap-3 rounded-[18px] border border-artistbor-border bg-artistbor-surface px-4 py-3 text-sm font-semibold text-artistbor-primary shadow-[var(--artistbor-surface-shadow)]"
+              role={toast.tone === "error" ? "alert" : "status"}
             >
               <Icon
                 className={
@@ -65,4 +70,3 @@ export function useToast() {
   if (!context) throw new Error("useToast must be used inside ToastProvider");
   return context;
 }
-

@@ -1,8 +1,18 @@
 import { apiClient, unwrapData } from "@/lib/api/client";
+import {
+  APPLICATION_DETAIL_EXPAND,
+  normalizeArtistApplication,
+} from "@/lib/artist-application-details";
+import type { ArtistBusySlotPayload as ArtistBusySlotRequest } from "@/lib/artist-busy-slot";
+import type { VerifyOrderPaymentPayload as VerifyOrderPaymentRequest } from "@/lib/order-payment-verification";
+import { resolveContractSearch } from "@/lib/contract-search";
+import { resolveArtistIdSearch } from "@/lib/artist-search";
 import type {
   ArtistApplication,
   ArtistBalanceRecord,
   ArtistAvailabilityRecord,
+  AuditLogMeta,
+  AuditLogRecord,
   ArtistGalleryRecord,
   ArtistProfile,
   ArtistServiceRecord,
@@ -15,6 +25,8 @@ import type {
   ListResult,
   NotificationRecord,
   OrderRecord,
+  OrderContract,
+  OrderContractResponse,
   PaginationMeta,
   RatingRecord,
   Region,
@@ -193,20 +205,26 @@ export type UpdateArtistPayload = {
   phone?: string;
   email?: string;
   status?: number;
+  region_id?: number;
+  district_id?: number;
   category_ids?: number[];
   bio?: string;
+  gender?: "male" | "female" | "other";
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;
   profile_photo_id?: number;
   is_top?: boolean;
-  card_last_four?: string;
-  card_token?: string;
+  rating?: number;
+  card_number?: string;
+  card_holder_name?: string;
+  albums_count?: number;
 };
 
 export type ArtistServiceRegionPricePayload = {
   region_id: number;
   price: number;
+  advance_amount?: number | null;
 };
 
 export type ArtistServiceAssignmentPayload = {
@@ -240,6 +258,8 @@ export type CreateArtistPayload = {
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;
+  card_number?: string;
+  card_holder_name?: string;
   albums_count?: number;
   fans_count?: number;
   profile_photo_id?: number;
@@ -264,6 +284,8 @@ export type UploadedFileRecord = UnknownRecord & {
 
 export type ApplicationFilters = {
   status?: string | number;
+  search?: string;
+  q?: string;
   page?: number;
   limit?: number;
 };
@@ -280,6 +302,7 @@ export type UpdateApplicationPayload = {
 };
 
 export type OrderFilters = {
+  q?: string;
   status?: string;
   payment_status?: string;
   artist_id?: string;
@@ -336,11 +359,10 @@ export type ConfirmOrderPayload = Partial<{
   deadline_minutes: number;
 }>;
 
-export type VerifyOrderPaymentPayload = {
-  payment_id: number;
-};
+export type VerifyOrderPaymentPayload = VerifyOrderPaymentRequest;
 
-export type RejectOrderPaymentPayload = VerifyOrderPaymentPayload & {
+export type RejectOrderPaymentPayload = {
+  payment_id: number;
   reason?: string;
 };
 
@@ -396,11 +418,40 @@ export type ArtistRegionPriceRecord = UnknownRecord & {
   region_id?: number;
   region_name?: string;
   price?: number | string;
+  advance_amount?: number | string | null;
+  advance_effective?: number | string | null;
+  advance_label?: string | null;
+  is_advance_custom?: boolean;
 };
 
 export type ArtistRegionPricePayload = {
   region_id: number;
   price: number;
+  advance_amount?: number | null;
+};
+
+export type AuditLogFilters = {
+  admin_id?: string;
+  admin_role?: string;
+  action?: string;
+  entity_type?: string;
+  entity_id?: string;
+  date_from?: string;
+  date_to?: string;
+  q?: string;
+  page?: number;
+  per_page?: number;
+};
+
+export type ContractFilters = {
+  status?: string;
+  artist_id?: string;
+  client_id?: string;
+  date_from?: string;
+  date_to?: string;
+  q?: string;
+  page?: number;
+  per_page?: number;
 };
 
 export type ArtistAvailabilityFilters = {
@@ -408,12 +459,7 @@ export type ArtistAvailabilityFilters = {
   date_to?: string;
 };
 
-export type ArtistBusySlotPayload = {
-  date: string;
-  time_from: string;
-  time_to: string;
-  reason?: string;
-};
+export type ArtistBusySlotPayload = ArtistBusySlotRequest;
 
 export type ArtistGalleryFilters = {
   artist_id?: number;
@@ -423,13 +469,24 @@ export type ArtistVideoFilters = {
   artist_id?: number | string;
 };
 
+export type CreateArtistVideoPayload = {
+  artist_id: number;
+  youtube_url: string;
+  title?: string;
+  title_uz?: string;
+  title_ru?: string;
+  sort_order?: number;
+  is_active?: boolean;
+};
+
+export type UpdateArtistVideoPayload = Partial<
+  Pick<CreateArtistVideoPayload, "youtube_url" | "title" | "sort_order" | "is_active">
+>;
+
 export type NotificationFilters = {
   type?: string;
   date_from?: string;
   date_to?: string;
-  sort?: string;
-  page?: number;
-  limit?: number;
 };
 
 export type DashboardPeriod = "today" | "week" | "month" | "custom";
@@ -475,6 +532,7 @@ export type DashboardStats = {
   };
   top_artists?: {
     id?: number;
+    public_id?: string;
     full_name?: string;
     avatar_url?: string | null;
     rating?: number;
@@ -755,6 +813,13 @@ export const staffApi = {
 
 export const artistsApi = {
   async list(filters: ArtistFilters) {
+    const artistId = resolveArtistIdSearch(filters.search);
+    if (artistId) {
+      const response = await apiClient.get(`/v1/admin/artist/${artistId}`);
+      const artist = unwrapData<ArtistProfile>(response.data);
+      return { items: [artist], raw: artist } satisfies ListResult<ArtistProfile>;
+    }
+
     const response = await apiClient.get("/v1/admin/artists", {
       params: compactParams(filters),
     });
@@ -765,8 +830,9 @@ export const artistsApi = {
     return unwrapData<ArtistProfile>(response.data);
   },
   async detail(id: number) {
-    // TODO: Swagger documents this endpoint but omits the concrete response schema.
-    const response = await apiClient.get(`/v1/admin/artist/${id}`);
+    const response = await apiClient.get(`/v1/admin/artist/${id}`, {
+      params: { expand: "artistCategories,region,district" },
+    });
     return unwrapData<ArtistProfile>(response.data);
   },
   async balance(id: number) {
@@ -856,6 +922,19 @@ export const artistGalleryApi = {
     });
     return normalizeList<ArtistGalleryRecord>(response.data);
   },
+  async upload(artistId: number, files: File[], type: "image" | "video" | "document" | "audio" = "image") {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    formData.append("type", type);
+    const response = await apiClient.post(`/v1/admin/artist-gallery/${artistId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return unwrapData<ArtistGalleryRecord[] | ArtistGalleryRecord | UnknownRecord>(response.data);
+  },
+  async delete(id: number) {
+    const response = await apiClient.delete(`/v1/admin/artist-gallery/${id}`);
+    return unwrapData<unknown>(response.data);
+  },
 };
 
 export const artistVideosApi = {
@@ -866,6 +945,18 @@ export const artistVideosApi = {
     });
     return normalizeList<ArtistVideoRecord>(response.data);
   },
+  async create(payload: CreateArtistVideoPayload) {
+    const response = await apiClient.post("/v1/admin/artist-videos", payload);
+    return unwrapData<ArtistVideoRecord>(response.data);
+  },
+  async update(id: number, payload: UpdateArtistVideoPayload) {
+    const response = await apiClient.put(`/v1/admin/artist-videos/${id}`, payload);
+    return unwrapData<ArtistVideoRecord>(response.data);
+  },
+  async delete(id: number) {
+    const response = await apiClient.delete(`/v1/admin/artist-videos/${id}`);
+    return unwrapData<unknown>(response.data);
+  },
 };
 
 export const applicationsApi = {
@@ -874,17 +965,18 @@ export const applicationsApi = {
     const response = await apiClient.get("/v1/admin/application", {
       params: compactParams(normalizeApplicationFilters(filters)),
     });
-    return normalizeList<ArtistApplication>(response.data);
+    const result = normalizeList<ArtistApplication>(response.data);
+    return { ...result, items: result.items.map(normalizeArtistApplication) };
   },
   async detail(id: number) {
     try {
       const response = await apiClient.get(`/v1/admin/application/${id}`, {
-        params: { expand: "user" },
+        params: { expand: APPLICATION_DETAIL_EXPAND },
       });
-      return unwrapData<ArtistApplication>(response.data);
+      return normalizeArtistApplication(unwrapData<ArtistApplication>(response.data));
     } catch {
       const response = await apiClient.get(`/v1/admin/application/${id}`);
-      return unwrapData<ArtistApplication>(response.data);
+      return normalizeArtistApplication(unwrapData<ArtistApplication>(response.data));
     }
   },
   async update(id: number, payload: UpdateApplicationPayload) {
@@ -976,6 +1068,72 @@ export const ordersApi = {
     // TODO: Swagger omits conflicts response body shape.
     const response = await apiClient.get(`/v1/admin/order/${id}/conflicts`);
     return unwrapData<unknown>(response.data);
+  },
+  async contract(id: number) {
+    const response = await apiClient.get(`/v1/admin/order/${id}/contract`);
+    return unwrapData<OrderContractResponse>(response.data);
+  },
+};
+
+export const auditLogsApi = {
+  async list(filters: AuditLogFilters) {
+    const response = await apiClient.get("/v1/admin/audit-log", {
+      params: compactParams(filters),
+    });
+    return normalizeList<AuditLogRecord>(response.data);
+  },
+  async detail(id: number) {
+    const response = await apiClient.get(`/v1/admin/audit-log/${id}`);
+    return unwrapData<AuditLogRecord>(response.data);
+  },
+  async meta() {
+    const response = await apiClient.get("/v1/admin/audit-log/meta");
+    return unwrapData<AuditLogMeta>(response.data);
+  },
+};
+
+export const contractsApi = {
+  async list(filters: ContractFilters): Promise<ListResult<OrderContract>> {
+    const target = resolveContractSearch(filters.q);
+
+    if (target?.kind === "contract") {
+      const response = await apiClient.get(`/v1/admin/contracts/${target.id}`);
+      const contract = unwrapData<OrderContract>(response.data);
+      return { items: [contract], raw: contract } satisfies ListResult<OrderContract>;
+    }
+
+    if (target?.kind === "order") {
+      const response = await apiClient.get(`/v1/admin/order/${target.id}/contract`);
+      const result = unwrapData<OrderContractResponse>(response.data);
+      const contract = result.contract
+        ? {
+            ...result.contract,
+            order_id: result.contract.order_id ?? result.order_id,
+            order_public_id: result.contract.order_public_id ?? result.order_public_id,
+          }
+        : null;
+      return { items: contract ? [contract] : [], raw: result } satisfies ListResult<OrderContract>;
+    }
+
+    const response = await apiClient.get("/v1/admin/contracts", {
+      params: compactParams(filters),
+    });
+    return normalizeList<OrderContract>(response.data);
+  },
+  async detail(id: number) {
+    const response = await apiClient.get(`/v1/admin/contracts/${id}`);
+    return unwrapData<OrderContract>(response.data);
+  },
+  async download(id: number, disposition: "inline" | "attachment" = "inline") {
+    const response = await apiClient.get<Blob>(`/v1/admin/contracts/${id}/download`, {
+      params: disposition === "attachment" ? { disposition } : undefined,
+      responseType: "blob",
+      headers: { Accept: "application/pdf" },
+    });
+    return {
+      blob: response.data,
+      contentDisposition: response.headers["content-disposition"] as string | undefined,
+    };
   },
 };
 

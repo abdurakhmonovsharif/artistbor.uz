@@ -3,7 +3,7 @@
 import { Eye, Phone } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ArtistApplication } from "@/types/api";
-import { cn, toDisplay } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { ApplicationActionsDropdown } from "@/components/admin/applications/application-actions-dropdown";
 import { ApplicationStatusBadge } from "@/components/admin/applications/application-status-badge";
 import { getApplicationLabels } from "@/components/admin/applications/application-labels";
@@ -20,8 +20,6 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 export function ApplicationsTable({
   rows,
   categoryMap,
-  page,
-  pageSize,
   onOpenDetail,
   onOpenContact,
   onApprove,
@@ -29,8 +27,6 @@ export function ApplicationsTable({
 }: {
   rows: ArtistApplication[];
   categoryMap: CategoryMap;
-  page: number;
-  pageSize: number;
   onOpenDetail: (application: ArtistApplication) => void;
   onOpenContact: (application: ArtistApplication) => void;
   onApprove: (application: ArtistApplication) => void;
@@ -40,9 +36,9 @@ export function ApplicationsTable({
   const labels = getApplicationLabels(locale);
 
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-slate-950">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
+      <div className="admin-table-scroll artistbor-applications-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.pageTitle}>
+        <table aria-label={labels.pageTitle} className="w-full min-w-[1080px] border-separate border-spacing-0">
           <colgroup>
             <col className="w-14" />
             <col className="w-[300px]" />
@@ -53,8 +49,8 @@ export function ApplicationsTable({
             <col className="w-[120px]" />
           </colgroup>
           <thead>
-            <tr className="h-11 bg-[#f8fafc] text-left dark:bg-white/[0.03]">
-              <TableHead className="w-14">#</TableHead>
+            <tr className="h-11 bg-artistbor-surface-subtle text-left">
+              <TableHead className="w-28">Public ID</TableHead>
               <TableHead>{labels.tableApplication}</TableHead>
               <TableHead>{labels.tableCategory}</TableHead>
               <TableHead>{labels.tableStatus}</TableHead>
@@ -70,10 +66,10 @@ export function ApplicationsTable({
               return (
                 <tr
                   key={String(application.id ?? index)}
-                  className="h-16 transition hover:bg-[#fffaf3] dark:hover:bg-amber-500/[0.04]"
+                  className="h-16 transition-colors duration-200 hover:bg-amber-50/60 dark:hover:bg-amber-500/[0.04]"
                 >
-                  <TableCell className="font-semibold text-[#64748b] dark:text-slate-400">
-                    {(page - 1) * pageSize + index + 1}
+                  <TableCell className="whitespace-nowrap font-semibold text-artistbor-secondary">
+                    {application.public_id ?? "—"}
                   </TableCell>
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -154,7 +150,7 @@ function ApplicationAvatar({ application }: { application: ArtistApplication }) 
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={avatar}
-      alt={labels.drawerTitle(toDisplay(application.id))}
+      alt={labels.drawerTitle(application.public_id ?? "—")}
       className="size-9 shrink-0 rounded-[10px] object-cover ring-1 ring-[#e6ebf2] dark:ring-white/10"
     />
   );
@@ -164,7 +160,7 @@ function TableHead({ children, className }: { children: ReactNode; className?: s
   return (
     <th
       className={cn(
-        "border-b border-[#e6ebf2] px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-[#64748b] dark:border-white/10 dark:text-slate-400",
+        "border-b border-artistbor-border px-3.5 py-0 text-[10px] font-bold uppercase leading-3 tracking-[1.2px] text-artistbor-secondary",
         className,
       )}
     >
@@ -174,5 +170,5 @@ function TableHead({ children, className }: { children: ReactNode; className?: s
 }
 
 function TableCell({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn("border-b border-[#edf2f7] px-3.5 py-[9px] align-middle text-[13px] font-medium leading-[18px] text-[#334155] dark:border-white/10 dark:text-slate-100", className)}>{children}</td>;
+  return <td className={cn("border-b border-artistbor-border px-3.5 py-[9px] align-middle text-[13px] font-normal leading-[18px] text-artistbor-primary", className)}>{children}</td>;
 }

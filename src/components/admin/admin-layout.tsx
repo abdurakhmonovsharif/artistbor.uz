@@ -8,6 +8,7 @@ import { LoadingState } from "@/components/ui/states";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { canAccessAdminRoute } from "@/lib/auth/permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
 import { useToast } from "@/components/ui/toast";
 import { dashboardApi, ordersApi, type DashboardQuickStats } from "@/lib/api/admin-content";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [quickStats, setQuickStats] = useState<DashboardQuickStats | null>(null);
   const { user, loading, logout } = useAuth();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const toast = useToast();
   const pathname = usePathname();
   const router = useRouter();
@@ -51,10 +52,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             ? getListCount(pendingOrdersResult.value)
             : statsResult.value.pending_orders;
 
-        setQuickStats({
+        const nextQuickStats = {
           ...statsResult.value,
           pending_orders: pendingOrders,
-        });
+        };
+
+        setQuickStats((current) =>
+          areQuickStatsEqual(current, nextQuickStats) ? current : nextQuickStats,
+        );
       } catch {
         if (active) setQuickStats(null);
       }
@@ -72,7 +77,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     try {
       await logout();
-      toast.success(t("admin.logoutSuccess"));
+      toast.success(getDashboardNotification("logoutSuccess", locale));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("admin.logoutFailed"));
     }
@@ -89,7 +94,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-50 dark:bg-[#0f172a]">
+      <div className="grid min-h-screen place-items-center bg-background">
         <LoadingState label={t("admin.loadingSession")} />
       </div>
     );
@@ -100,7 +105,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "artistbor-admin-shell mx-auto min-h-screen w-full max-w-[2600px] overflow-x-hidden bg-[#f7f9fc] text-slate-950 transition-[grid-template-columns] duration-200 dark:bg-[#0f172a] dark:text-slate-100 lg:grid lg:min-w-[1280px] [--artistbor-main-padding:14px] [--artistbor-sidebar-width:220px] sm:[--artistbor-main-padding:18px] min-[1366px]:[--artistbor-main-padding:22px] min-[1366px]:[--artistbor-sidebar-width:228px] min-[1440px]:[--artistbor-main-padding:24px] min-[1440px]:[--artistbor-sidebar-width:240px] min-[1536px]:[--artistbor-main-padding:32px] min-[1536px]:[--artistbor-sidebar-width:248px] min-[1920px]:[--artistbor-main-padding:40px] min-[1920px]:[--artistbor-sidebar-width:264px] min-[2400px]:[--artistbor-main-padding:48px] min-[2400px]:[--artistbor-sidebar-width:280px]",
+        "artistbor-admin-shell mx-auto min-h-screen min-w-0 w-full max-w-[2600px] bg-background text-foreground transition-[grid-template-columns] duration-200 lg:grid [--artistbor-main-padding:14px] [--artistbor-sidebar-width:220px] sm:[--artistbor-main-padding:18px] min-[1366px]:[--artistbor-main-padding:22px] min-[1366px]:[--artistbor-sidebar-width:228px] min-[1440px]:[--artistbor-main-padding:24px] min-[1440px]:[--artistbor-sidebar-width:240px] min-[1536px]:[--artistbor-main-padding:32px] min-[1536px]:[--artistbor-sidebar-width:248px] min-[1920px]:[--artistbor-main-padding:40px] min-[1920px]:[--artistbor-sidebar-width:264px] min-[2400px]:[--artistbor-main-padding:48px] min-[2400px]:[--artistbor-sidebar-width:280px]",
         sidebarCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[var(--artistbor-sidebar-width)_1fr]",
       )}
     >
@@ -123,6 +128,20 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <main className="px-[var(--artistbor-main-padding)] pb-[calc(var(--artistbor-main-padding)+24px)] pt-2 sm:py-[var(--artistbor-main-padding)]">{children}</main>
       </div>
     </div>
+  );
+}
+
+function areQuickStatsEqual(
+  current: DashboardQuickStats | null,
+  next: DashboardQuickStats,
+) {
+  if (!current) return false;
+  return (
+    current.pending_orders === next.pending_orders &&
+    current.pending_applications === next.pending_applications &&
+    current.pending_comments === next.pending_comments &&
+    current.unpaid_invoices === next.unpaid_invoices &&
+    current.today_orders === next.today_orders
   );
 }
 

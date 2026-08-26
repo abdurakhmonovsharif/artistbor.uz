@@ -44,7 +44,7 @@ export function DateFilterSelect({
   );
 
   return (
-    <div className={cn("flex min-w-0 flex-nowrap items-center gap-2", className)}>
+    <div className={cn("artistbor-date-filter flex min-w-0 flex-wrap items-center gap-2", className)}>
       <Select
         className={cn("artistbor-compact-select artistbor-table-filter-control !h-10 !w-[190px] shrink-0", selectClassName)}
         value={mode}
@@ -64,7 +64,7 @@ export function DateFilterSelect({
       />
 
       {mode === "custom" ? (
-        <div className={cn("flex min-w-0 flex-nowrap items-center gap-2", rangeClassName)}>
+        <div className={cn("artistbor-date-filter-range flex min-w-0 flex-wrap items-center gap-2", rangeClassName)}>
           <Input
             type="date"
             value={value.date_from}
