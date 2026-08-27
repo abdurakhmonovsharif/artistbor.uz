@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { Button, Drawer, Input, Select } from "antd";
-import { ArrowDownUp, Ban, Pencil, Plus, RotateCcw, Search, Unlock, X } from "lucide-react";
+import { Button, Drawer, Input, Modal, Select } from "antd";
+import { ArrowDownUp, Ban, KeyRound, Pencil, Plus, RotateCcw, Search, Unlock, X } from "lucide-react";
 import {
   adminActionButtonLargeClass,
   adminDangerActionButtonClass,
@@ -39,6 +39,7 @@ import type { ListResult, User } from "@/types/api";
 type DialogState =
   | { type: "create" }
   | { type: "edit"; user: User }
+  | { type: "reset-password"; user: User }
   | { type: "block"; user: User }
   | { type: "unblock"; user: User }
   | null;
@@ -201,19 +202,30 @@ export default function OperatorsPage() {
     }
   };
 
-  const updateOperatorWithPassword = async (user: User, payload: UpdateStaffPayload, password?: string) => {
+  const updateOperator = async (user: User, payload: UpdateStaffPayload) => {
     if (!user.id) return;
     setSubmitting(true);
     try {
       await staffApi.update(user.id, payload);
-      if (password) {
-        await staffApi.resetPassword(user.id, password);
-      }
-      toast.success(password ? labels.updatedWithPassword : labels.updated);
+      toast.success(labels.updated);
       setDialog(null);
       void fetchStaff({ background: true });
     } catch (caught) {
       toast.error(caught instanceof Error ? caught.message : labels.updateFailed);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetOperatorPassword = async (user: User, password: string) => {
+    if (!user.id) return;
+    setSubmitting(true);
+    try {
+      await staffApi.resetPassword(user.id, password);
+      toast.success(labels.passwordResetSuccess);
+      setDialog(null);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : labels.passwordResetFailed);
     } finally {
       setSubmitting(false);
     }
@@ -227,7 +239,7 @@ export default function OperatorsPage() {
       : undefined);
 
   return (
-    <section className="artistbor-admin-page w-full space-y-4">
+    <section className="artistbor-admin-page artistbor-responsive-data-page w-full space-y-4">
       <AdminPageHeader
         eyebrow={labels.eyebrow}
         title={labels.title}
@@ -304,6 +316,7 @@ export default function OperatorsPage() {
           rows={rows}
           labels={labels}
           onEdit={(row) => setDialog({ type: "edit", user: row })}
+          onResetPassword={(row) => setDialog({ type: "reset-password", user: row })}
           onBlock={(row) => setDialog({ type: "block", user: row })}
           onUnblock={(row) => setDialog({ type: "unblock", user: row })}
         />
@@ -337,10 +350,20 @@ export default function OperatorsPage() {
           loading={submitting}
           onClose={() => setDialog(null)}
           onSubmitCreate={createOperator}
-          onSubmitUpdate={(payload, password) => {
+          onSubmitUpdate={(payload) => {
             if (dialog.type !== "edit") return Promise.resolve();
-            return updateOperatorWithPassword(dialog.user, payload, password);
+            return updateOperator(dialog.user, payload);
           }}
+        />
+      ) : null}
+
+      {dialog?.type === "reset-password" ? (
+        <OperatorPasswordResetModal
+          user={dialog.user}
+          labels={labels}
+          loading={submitting}
+          onClose={() => setDialog(null)}
+          onSubmit={(password) => resetOperatorPassword(dialog.user, password)}
         />
       ) : null}
 
@@ -374,26 +397,28 @@ function OperatorsTable({
   rows,
   labels,
   onEdit,
+  onResetPassword,
   onBlock,
   onUnblock,
 }: {
   rows: User[];
   labels: OperatorLabels;
   onEdit: (row: User) => void;
+  onResetPassword: (row: User) => void;
   onBlock: (row: User) => void;
   onUnblock: (row: User) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
       <div className="admin-table-scroll artistbor-people-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
-        <table aria-label={labels.title} className="w-full min-w-[1156px] border-separate border-spacing-0">
+        <table aria-label={labels.title} className="w-full min-w-[1156px] table-fixed border-separate border-spacing-0">
           <colgroup>
-            <col className="w-14" />
-            <col className="w-[340px]" />
+            <col className="w-32" />
+            <col className="w-[300px]" />
             <col className="w-[280px]" />
-            <col className="w-[140px]" />
-            <col className="w-[190px]" />
-            <col className="w-[150px]" />
+            <col className="w-[120px]" />
+            <col className="w-[180px]" />
+            <col className="w-[132px]" />
           </colgroup>
           <thead>
             <tr className="h-11 bg-[#f8fafc] dark:bg-white/[0.03]">
@@ -427,6 +452,9 @@ function OperatorsTable({
                   <div className="flex items-center justify-end gap-1.5">
                     <OperatorTableActionButton label={labels.editTitle} onClick={() => onEdit(row)}>
                       <Pencil className="size-4" />
+                    </OperatorTableActionButton>
+                    <OperatorTableActionButton label={labels.resetPasswordAction} onClick={() => onResetPassword(row)}>
+                      <KeyRound className="size-4" />
                     </OperatorTableActionButton>
                     {isBlockedUser(row) ? (
                       <OperatorTableActionButton tone="success" label={labels.unblockAction} onClick={() => onUnblock(row)}>
@@ -573,7 +601,7 @@ function StaffDrawer({
   loading: boolean;
   onClose: () => void;
   onSubmitCreate?: (payload: CreateStaffPayload) => Promise<void>;
-  onSubmitUpdate?: (payload: UpdateStaffPayload, password?: string) => Promise<void>;
+  onSubmitUpdate?: (payload: UpdateStaffPayload) => Promise<void>;
 }) {
   const [values, setValues] = useState({
     phone: formatPhoneInput(user?.phone),
@@ -615,7 +643,7 @@ function StaffDrawer({
       email: values.email || undefined,
       role: 20,
       status: Number(values.status),
-    }, values.password.trim() || undefined);
+    });
   };
 
   return (
@@ -669,9 +697,6 @@ function StaffDrawer({
             />
           ) : null}
           <FormField compact autoComplete="off" label="Email" value={values.email} onChange={(email) => setValues((current) => ({ ...current, email }))} />
-          {mode === "edit" ? (
-            <FormField compact autoComplete="new-password" label={labels.newPassword} type="password" value={values.password} error={errors.password} onChange={(password) => setValues((current) => ({ ...current, password }))} />
-          ) : null}
         </div>
       </form>
     </Drawer>
@@ -700,6 +725,92 @@ function DrawerActionButton({
       {icon}
       <span className="truncate">{label}</span>
     </button>
+  );
+}
+
+function OperatorPasswordResetModal({
+  user,
+  labels,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  user: User;
+  labels: OperatorLabels;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: (password: string) => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextErrors: Record<string, string> = {};
+
+    if (!password.trim()) nextErrors.password = labels.requiredField;
+    else if (password.length < 6) nextErrors.password = labels.passwordMinLength;
+    if (password !== confirmPassword) nextErrors.confirmPassword = labels.passwordMismatch;
+
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    await onSubmit(password);
+  };
+
+  return (
+    <Modal
+      open
+      title={labels.resetPasswordTitle}
+      onCancel={onClose}
+      rootClassName="artistbor-confirm-modal"
+      footer={null}
+      destroyOnHidden
+      centered
+    >
+      <form className="space-y-4 pt-2" onSubmit={submit}>
+        <p className="text-sm leading-5 text-slate-400">
+          {labels.resetPasswordDescription(getOperatorName(user, labels))}
+        </p>
+        <FormField
+          compact
+          required
+          label={labels.newPassword}
+          type="password"
+          value={password}
+          error={errors.password}
+          autoComplete="new-password"
+          onChange={setPassword}
+        />
+        <FormField
+          compact
+          required
+          label={labels.confirmPassword}
+          type="password"
+          value={confirmPassword}
+          error={errors.confirmPassword}
+          autoComplete="new-password"
+          onChange={setConfirmPassword}
+        />
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="artistbor-modal-action artistbor-modal-action--neutral text-sm font-bold"
+          >
+            {labels.cancel}
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="artistbor-modal-action artistbor-modal-action--warning text-sm font-bold"
+          >
+            {loading ? labels.saving : labels.resetPasswordAction}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -812,6 +923,7 @@ function getOperatorLabels(locale: string) {
       blockedStatus: accountStatus(20),
       blockTitle: "Блокировка оператора",
       cancel: "Закрыть",
+      confirmPassword: "Подтвердите пароль",
       clear: "Сбросить",
       contact: "Контакт",
       createAction: "Создать оператора",
@@ -836,7 +948,14 @@ function getOperatorLabels(locale: string) {
       oldest: "Старые",
       operator: "Оператор",
       password: "Пароль",
+      passwordMinLength: "Пароль должен быть не меньше 6 символов",
+      passwordMismatch: "Пароли не совпадают",
+      passwordResetFailed: "Не удалось изменить пароль",
+      passwordResetSuccess: "Пароль оператора изменен",
       phone: "Телефон",
+      resetPasswordAction: "Сменить пароль",
+      resetPasswordDescription: (name: string) => `Новый пароль будет установлен для ${name}.`,
+      resetPasswordTitle: "Сменить пароль оператора",
       requiredField: "Обязательное поле",
       save: "Сохранить",
       saving: "Сохранение...",
@@ -866,6 +985,7 @@ function getOperatorLabels(locale: string) {
     blockedStatus: accountStatus(20),
     blockTitle: "Operatorni bloklash",
     cancel: "Yopish",
+    confirmPassword: "Parolni tasdiqlang",
     clear: "Tozalash",
     contact: "Aloqa",
     createAction: "Operator yaratish",
@@ -890,7 +1010,14 @@ function getOperatorLabels(locale: string) {
     oldest: "Eng eskilari",
     operator: "Operator",
     password: "Parol",
+    passwordMinLength: "Parol kamida 6 belgidan iborat bo'lishi kerak",
+    passwordMismatch: "Parollar mos emas",
+    passwordResetFailed: "Parolni almashtirib bo'lmadi",
+    passwordResetSuccess: "Operator paroli almashtirildi",
     phone: "Telefon",
+    resetPasswordAction: "Parolni almashtirish",
+    resetPasswordDescription: (name: string) => `${name} uchun yangi parol o'rnatiladi.`,
+    resetPasswordTitle: "Operator parolini almashtirish",
     requiredField: "Majburiy maydon",
     save: "Saqlash",
     saving: "Saqlanmoqda...",

@@ -91,6 +91,14 @@ test("legacy data pages use the shared responsive filters and keyboard-scrollabl
   assert.match(css, /\.artistbor-applications-data-table table\s*\{[^}]*min-width:\s*760px/s);
 });
 
+test("operators activate their container layout and keep detail and password actions available", () => {
+  assert.match(operatorsPage, /artistbor-admin-page artistbor-responsive-data-page/);
+  assert.match(operatorsPage, /min-w-\[1156px\] table-fixed/);
+  assert.match(operatorsPage, /onResetPassword/);
+  assert.match(operatorsPage, /OperatorPasswordResetModal/);
+  assert.match(operatorsPage, /staffApi\.resetPassword/);
+});
+
 test("service draft editor stays empty until a service is assigned", () => {
   const start = artistsPage.indexOf("function ArtistServiceDraftEditor");
   const end = artistsPage.indexOf("function ArtistServiceRegionPriceDraftFields");
