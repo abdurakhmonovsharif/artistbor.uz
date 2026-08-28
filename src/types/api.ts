@@ -152,6 +152,7 @@ export type OrderRecord = UnknownRecord & {
   status_label?: string;
   status_code?: number;
   advance_amount?: string | number | null;
+  currency?: string | null;
   advance_source?: string | null;
   is_advance_custom?: boolean;
   payment_deadline?: number | null;
@@ -222,6 +223,7 @@ export type OrderPaymentRecord = UnknownRecord & {
   receipt_file_id?: number | null;
   receipt_file_url?: string | null;
   paid_amount?: string | number | null;
+  currency?: string | null;
   notes?: string | null;
   verified_by?: number | null;
   verified_at?: number | null;

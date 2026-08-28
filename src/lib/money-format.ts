@@ -51,6 +51,16 @@ export function formatMoneyWithCurrency(value: unknown, locale?: Locale | string
   return amount ? `${amount} ${currency}` : "";
 }
 
+export function currencyFromRecord(record: unknown, fallback = MONEY_CURRENCY_LABEL) {
+  if (!record || typeof record !== "object") return fallback;
+
+  const source = record as Record<string, unknown>;
+  const currency = source.currency ?? source.currency_code ?? source.currencyCode;
+  if (typeof currency !== "string" || !currency.trim()) return fallback;
+
+  return currency.trim().toUpperCase();
+}
+
 export function parseMoneyInput(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? String(Math.trunc(value)) : "";
   if (typeof value !== "string") return "";

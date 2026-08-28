@@ -76,7 +76,7 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
   formatMoneyWithCurrency,
   formatSignedMoneyInput,
-  MONEY_CURRENCY_LABEL,
+  currencyFromRecord,
   positiveMoneyAmount,
 } from "@/lib/money-format";
 import {
@@ -946,7 +946,7 @@ function OrdersTable({ initialOrderFilters }: { initialOrderFilters: OrderFilter
           danger
           loading={submitting}
           title={labels.partialPaymentDialogTitle}
-          message={partialPaymentDialogMessage(dialog.payment, labels)}
+          message={partialPaymentDialogMessage(dialog.payment, dialog.order, labels)}
           confirmLabel={labels.partialPaymentConfirmAction}
           onCancel={() => setDialog(null)}
           onConfirm={() => runVerifyPayment(true)}
@@ -1164,7 +1164,7 @@ function OrderPaymentsPanel({
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <PaymentMetaItem label={labels.advanceAmountLabel}>
-          <MoneyText value={order.advance_amount} emptyLabel={labels.priceNotSet} locale={labels.locale} />
+          <MoneyText value={order.advance_amount} currency={currencyFromRecord(order)} emptyLabel={labels.priceNotSet} locale={labels.locale} />
         </PaymentMetaItem>
         <PaymentMetaItem label={labels.paymentDeadlineLabel}>
           {formatPaymentDeadline(order)}
@@ -1184,7 +1184,7 @@ function OrderPaymentsPanel({
                     {payment.type ? toDisplay(payment.type) : labels.paymentReceiptLabel}
                   </p>
                   <p className="mt-1 text-sm font-bold text-slate-950 dark:text-white">
-                    <MoneyText value={payment.paid_amount ?? payment.amount} emptyLabel={labels.priceNotSet} locale={labels.locale} />
+                    <MoneyText value={payment.paid_amount ?? payment.amount} currency={currencyFromRecord(payment, currencyFromRecord(order))} emptyLabel={labels.priceNotSet} locale={labels.locale} />
                   </p>
                 </div>
                 <PaymentRecordStatusBadge payment={payment} labels={labels} />
@@ -1449,8 +1449,8 @@ function OrderDetailDrawer({
                     <OrderInfoCell icon={<CalendarDays className="size-4" />} label={labels.dateLabel} value={formatBookingDate(order.date)} />
                     <OrderInfoCell icon={<CalendarClock className="size-4" />} label={labels.timeLabel} value={timeRange.primary} />
                     <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.paymentLabel} value={<PaymentStatusBadge order={order} labels={labels} />} />
-                    <OrderInfoCell icon={<WalletCards className="size-4" />} label={labels.priceLabel} value={<MoneyText value={order.total_price} emptyLabel={labels.priceNotSet} locale={labels.locale} />} />
-                    <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.advanceAmountLabel} value={<MoneyText value={order.advance_amount} emptyLabel={labels.priceNotSet} locale={labels.locale} />} />
+                    <OrderInfoCell icon={<WalletCards className="size-4" />} label={labels.priceLabel} value={<MoneyText value={order.total_price} currency={currencyFromRecord(order)} emptyLabel={labels.priceNotSet} locale={labels.locale} />} />
+                    <OrderInfoCell icon={<CreditCard className="size-4" />} label={labels.advanceAmountLabel} value={<MoneyText value={order.advance_amount} currency={currencyFromRecord(order)} emptyLabel={labels.priceNotSet} locale={labels.locale} />} />
                     <OrderInfoCell icon={<CalendarClock className="size-4" />} label={labels.paymentDeadlineLabel} value={formatPaymentDeadline(order)} />
                     <OrderInfoCell icon={<MapPin className="size-4" />} label={labels.regionLabel} value={formatLocationText(region, district)} />
                     <OrderInfoCell
@@ -2249,6 +2249,7 @@ function EditOrderDrawer({
   });
   const selectedServiceId = numberKey(values.service_id);
   const selectedRegionId = numberKey(values.region_id);
+  const orderCurrency = currencyFromRecord(order);
   const serviceOptions = createOrderSelectOptions(
     services.filter((service) => service.parent_id === null || service.parent_id === undefined),
     labels.locale,
@@ -2344,7 +2345,7 @@ function EditOrderDrawer({
             compact
             label={labels.priceLabel}
             placeholder="1 500 000"
-            suffix={MONEY_CURRENCY_LABEL}
+            suffix={orderCurrency}
             value={values.total_price}
             onChange={(total_price) => setValues((current) => ({ ...current, total_price: formatNumberInput(total_price) }))}
           />
@@ -2543,6 +2544,7 @@ function ConfirmOrderModal({
   const [deadlineMinutes, setDeadlineMinutes] = useState("30");
   const [totalPriceError, setTotalPriceError] = useState("");
   const [deadlineError, setDeadlineError] = useState("");
+  const orderCurrency = currencyFromRecord(order);
   const formId = "order-confirm-form";
 
   const submit = async (event: FormEvent) => {
@@ -2598,7 +2600,7 @@ function ConfirmOrderModal({
           label={labels.priceLabel}
           inputMode="numeric"
           placeholder="1 500 000"
-          suffix={MONEY_CURRENCY_LABEL}
+          suffix={orderCurrency}
           value={totalPrice}
           error={totalPriceError}
           onChange={(value) => {
@@ -3052,9 +3054,10 @@ function findPendingOrderPayment(order: OrderRecord) {
   return getOrderPayments(order).find((payment) => normalizePaymentRecordStatus(payment.status) === "pending");
 }
 
-function partialPaymentDialogMessage(payment: OrderPaymentRecord, labels: OrderLabels) {
-  const paidAmount = formatMoneyWithCurrency(payment.paid_amount, labels.locale) || undefined;
-  const expectedAmount = formatMoneyWithCurrency(payment.amount, labels.locale) || labels.priceNotSet;
+function partialPaymentDialogMessage(payment: OrderPaymentRecord, order: OrderRecord, labels: OrderLabels) {
+  const currency = currencyFromRecord(payment, currencyFromRecord(order));
+  const paidAmount = formatMoneyWithCurrency(payment.paid_amount, labels.locale, currency) || undefined;
+  const expectedAmount = formatMoneyWithCurrency(payment.amount, labels.locale, currency) || labels.priceNotSet;
   return labels.partialPaymentDialogMessage(paidAmount, expectedAmount);
 }
 

@@ -98,6 +98,7 @@ import {
 import {
   formatMoneyInput,
   formatMoneyWithCurrency,
+  currencyFromRecord,
   parseMoneyInput,
 } from "@/lib/money-format";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
@@ -4872,7 +4873,7 @@ function ArtistServiceRegionPrices({
                         type="text"
                         inputMode="numeric"
                         value={formatMoneyInput(row.advance_amount, labels.locale)}
-                        placeholder={row.advance_effective ? formatMoneyWithCurrency(row.advance_effective, labels.locale) : labels.advanceAmount}
+                        placeholder={row.advance_effective ? formatMoneyWithCurrency(row.advance_effective, labels.locale, row.currency) : labels.advanceAmount}
                         onChange={(event) => updateRow(row.localId, { advance_amount: parseMoneyInput(event.target.value) })}
                         className={cn(
                           "artistbor-table-filter-control h-10 w-full rounded-xl border border-[#e6ebf2] bg-[#f8fafc] px-3 pr-14 text-[13px] font-bold text-[#475569] shadow-none outline-none transition focus:border-orange-500/45 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200",
@@ -4992,11 +4993,11 @@ function ArtistFinanceTab({
       <div className="grid gap-3 md:grid-cols-2">
         <ArtistFinanceMetric
           label={labels.balance}
-          value={formatMoneyWithCurrency(balance.balance ?? balance.current_balance ?? 0, labels.locale) || "—"}
+          value={formatMoneyWithCurrency(balance.balance ?? balance.current_balance ?? 0, labels.locale, currencyFromRecord(balance)) || "—"}
         />
         <ArtistFinanceMetric
           label={labels.debt}
-          value={formatMoneyWithCurrency(balance.debt ?? balance.current_debt ?? 0, labels.locale) || "—"}
+          value={formatMoneyWithCurrency(balance.debt ?? balance.current_debt ?? 0, labels.locale, currencyFromRecord(balance)) || "—"}
           tone="danger"
         />
       </div>
@@ -5043,12 +5044,13 @@ function ArtistTransactionCard({
   const balanceAfter = firstMeaningfulValue(transaction, ["balance_after"]);
   const orderId = firstMeaningfulValue(transaction, ["order_id", "orderId"]);
   const description = firstMeaningfulValue(transaction, ["description", "note"]);
+  const currency = currencyFromRecord(transaction);
   const metaItems = [
     balanceBefore !== undefined
-      ? `${labels.balanceBefore}: ${formatMoneyWithCurrency(balanceBefore, labels.locale) || toDisplay(balanceBefore)}`
+      ? `${labels.balanceBefore}: ${formatMoneyWithCurrency(balanceBefore, labels.locale, currency) || toDisplay(balanceBefore)}`
       : "",
     balanceAfter !== undefined
-      ? `${labels.balanceAfter}: ${formatMoneyWithCurrency(balanceAfter, labels.locale) || toDisplay(balanceAfter)}`
+      ? `${labels.balanceAfter}: ${formatMoneyWithCurrency(balanceAfter, labels.locale, currency) || toDisplay(balanceAfter)}`
       : "",
     orderId !== undefined ? `${labels.orderId}: ${toDisplay(orderId)}` : "",
   ].filter(Boolean);
@@ -5068,7 +5070,7 @@ function ArtistTransactionCard({
         </div>
         {amount !== undefined ? (
           <p className="shrink-0 text-sm font-black text-slate-950 dark:text-white">
-            {formatMoneyWithCurrency(amount, labels.locale) || toDisplay(amount)}
+            {formatMoneyWithCurrency(amount, labels.locale, currency) || toDisplay(amount)}
           </p>
         ) : null}
       </div>
@@ -6339,7 +6341,7 @@ function getArtistServiceChips(service: UnknownRecord, labels: ArtistsLabels) {
   const chips: string[] = [];
   const price = firstMeaningfulValue(service, ["price", "amount"]);
   const duration = firstMeaningfulValue(service, ["duration_minutes", "duration"]);
-  const priceText = formatMoneyWithCurrency(price, labels.locale);
+  const priceText = formatMoneyWithCurrency(price, labels.locale, currencyFromRecord(service));
 
   if (priceText) chips.push(`${labels.price}: ${priceText}`);
   if (duration) chips.push(`${labels.duration}: ${toDisplay(duration)} ${labels.minutesShort}`);

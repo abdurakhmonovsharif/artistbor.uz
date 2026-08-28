@@ -59,10 +59,12 @@ export function EntityName({
 
 export function MoneyText({
   value,
+  currency,
   emptyLabel,
   locale,
 }: {
   value: unknown;
+  currency?: string;
   emptyLabel?: string;
   locale?: "uz" | "ru";
 }) {
@@ -74,7 +76,7 @@ export function MoneyText({
     return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{resolvedEmptyLabel}</span>;
   }
 
-  const amount = formatMoneyWithCurrency(value, resolvedLocale);
+  const amount = formatMoneyWithCurrency(value, resolvedLocale, currency);
   if (!amount) {
     return <span className="text-xs font-medium leading-4 text-[#64748b] dark:text-slate-400">{resolvedEmptyLabel}</span>;
   }
