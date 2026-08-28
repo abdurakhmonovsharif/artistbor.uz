@@ -259,7 +259,6 @@ export type CreateArtistPayload = {
   bio?: string;
   birth_date?: string;
   gender?: "male" | "female" | "other";
-  artist_bio?: string;
   extra_phone?: string;
   administrator_name?: string;
   administrator_phone?: string;

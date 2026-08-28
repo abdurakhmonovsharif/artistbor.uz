@@ -1728,7 +1728,6 @@ function CreateArtistDrawer({
                         onChange={(category_ids) => setValues((current) => ({ ...current, category_ids }))}
                       />
                       <FormField compact label={labels.bio} type="textarea" rows={5} value={values.bio} placeholder={labels.bio} onChange={(bio) => setValues((current) => ({ ...current, bio }))} />
-                      <FormField compact label={labels.artistBio} type="textarea" rows={5} value={values.artist_bio} placeholder={labels.artistBio} onChange={(artist_bio) => setValues((current) => ({ ...current, artist_bio }))} />
                       <ArtistPhotoField disabled={uploading || loading} error={uploadError} labels={labels} photoId={profilePhotoId} photoUrl={profilePhotoUrl} uploading={uploading} onFile={uploadProfilePhoto} />
                     </div>
                   </ArtistFormSection>
@@ -7562,7 +7561,6 @@ function initialCreateArtistValues() {
     region_id: "",
     district_id: "",
     bio: "",
-    artist_bio: "",
     birth_date: "",
     gender: "male",
     extra_phone: "",
@@ -7619,7 +7617,6 @@ function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistV
   if (values.gender === "male" || values.gender === "female" || values.gender === "other") {
     payload.gender = values.gender;
   }
-  assignString(payload, "artist_bio", values.artist_bio);
   assignPhone(payload, "extra_phone", values.extra_phone);
   assignString(payload, "administrator_name", values.administrator_name);
   assignPhone(payload, "administrator_phone", values.administrator_phone);
@@ -7970,7 +7967,6 @@ function getArtistsLabels(locale: string) {
 	      cardNumber: "Номер карты",
 	      cardNumberFormatError: "Номер карты может содержать только цифры, пробелы и дефисы.",
 	      cardNumberLengthError: "Номер карты должен содержать от 16 до 19 цифр.",
-	      artistBio: "Bio артиста",
       birthDate: "Дата рождения",
       cancel: "Закрыть",
       category: "Категории",
@@ -8390,7 +8386,6 @@ function getArtistsLabels(locale: string) {
 	    cardNumber: "Karta raqami",
 	    cardNumberFormatError: "Karta raqamida faqat raqam, bo'sh joy va defis bo'lishi mumkin.",
 	    cardNumberLengthError: "Karta raqami 16–19 ta raqamdan iborat bo'lishi kerak.",
-	    artistBio: "Sanatkor bio",
     birthDate: "Tug'ilgan sana",
     cancel: "Yopish",
     category: "Kategoriya",
