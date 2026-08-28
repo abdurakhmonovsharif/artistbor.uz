@@ -225,18 +225,23 @@ export type ArtistServiceRegionPricePayload = {
   region_id: number;
   price: number;
   advance_amount?: number | null;
+  currency?: string;
 };
 
 export type ArtistServiceAssignmentPayload = {
   artist_id: number;
   service_id: number;
   price: number;
+  advance_amount?: number | null;
+  currency?: string;
   note?: string;
   region_prices?: ArtistServiceRegionPricePayload[];
 };
 
 export type ArtistServiceUpdatePayload = Partial<{
   price: number;
+  advance_amount: number | null;
+  currency: string;
   note: string;
   status: number;
   region_prices: ArtistServiceRegionPricePayload[];
@@ -269,6 +274,8 @@ export type CreateArtistPayload = {
   services?: Array<{
     service_id: number;
     price: number;
+    advance_amount?: number | null;
+    currency?: string;
     note?: string;
     region_prices?: ArtistServiceRegionPricePayload[];
   }>;
@@ -418,6 +425,7 @@ export type ArtistRegionPriceRecord = UnknownRecord & {
   region_id?: number;
   region_name?: string;
   price?: number | string;
+  currency?: string | null;
   advance_amount?: number | string | null;
   advance_effective?: number | string | null;
   advance_label?: string | null;
@@ -428,6 +436,7 @@ export type ArtistRegionPricePayload = {
   region_id: number;
   price: number;
   advance_amount?: number | null;
+  currency?: string;
 };
 
 export type AuditLogFilters = {

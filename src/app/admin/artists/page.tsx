@@ -17,7 +17,6 @@ import {
   Folder,
   IdCard,
   ImagePlus,
-  KeyRound,
   Languages,
   ListChecks,
   Loader2,
@@ -66,7 +65,6 @@ import {
   ratingsApi,
   regionsApi,
   servicesApi,
-  staffApi,
   usersApi,
   type CreateArtistPayload,
   type ArtistFilters,
@@ -100,7 +98,6 @@ import {
 import {
   formatMoneyInput,
   formatMoneyWithCurrency,
-  MONEY_CURRENCY_LABEL,
   parseMoneyInput,
 } from "@/lib/money-format";
 import { formatPhone, normalizePhoneForApi } from "@/lib/phone-format";
@@ -542,9 +539,9 @@ function ArtistsTable({
         aria-label={labels.tableRegionLabel}
         className="admin-table-scroll artistbor-artists-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent"
       >
-        <table className="w-full border-separate border-spacing-0">
+        <table className="min-w-full w-full table-fixed border-separate border-spacing-0">
           <colgroup>
-            <col className="w-12" />
+            <col className="w-[72px]" />
             <col className="w-[280px]" />
             <col className="w-[170px]" />
             <col className="w-28" />
@@ -992,7 +989,6 @@ function ArtistDrawer({
   const resourceRequestIds = useRef<Record<ResourceTab, number>>(createResourceRequestIds());
   const [scheduleDrawer, setScheduleDrawer] = useState<ScheduleDrawerState | null>(null);
   const [serviceManagementOpen, setServiceManagementOpen] = useState(false);
-  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
   const artistId = artist ? getArtistId(artist) : undefined;
   const hasArtist = Boolean(artist);
   const formId = artistId ? `artist-edit-form-${artistId}` : "artist-edit-form";
@@ -1404,7 +1400,6 @@ function ArtistDrawer({
           mode={mode}
           onClose={onClose}
           onEdit={() => onEdit(artist)}
-          onResetPassword={() => setPasswordResetOpen(true)}
         />
       }
       styles={adminDrawerStyles}
@@ -1523,14 +1518,6 @@ function ArtistDrawer({
       onClose={() => setScheduleDrawer(null)}
       onChanged={reloadAvailability}
     />
-    {passwordResetOpen ? (
-      <ArtistPasswordResetModal
-        artist={artist}
-        labels={labels}
-        open={passwordResetOpen}
-        onClose={() => setPasswordResetOpen(false)}
-      />
-    ) : null}
     </>
   );
 }
@@ -1631,7 +1618,6 @@ function CreateArtistDrawer({
     const nextErrors: Partial<Record<keyof ReturnType<typeof initialCreateArtistValues>, string>> = {};
     if (!values.first_name.trim()) nextErrors.first_name = labels.requiredField(labels.firstName);
     if (!values.phone.trim()) nextErrors.phone = labels.requiredField(labels.phone);
-    if (!values.password.trim()) nextErrors.password = labels.requiredField(labels.password);
     if (!parseIdList(values.category_ids).length) nextErrors.category_ids = labels.requiredField(labels.category);
     const servicesError = validateArtistServiceDrafts(values.services, labels);
     if (servicesError) nextErrors.services = servicesError;
@@ -1647,7 +1633,15 @@ function CreateArtistDrawer({
       return;
     }
 
-    await onSubmit(buildCreateArtistPayload(values));
+    let payload: CreateArtistPayload;
+    try {
+      payload = buildCreateArtistPayload(values);
+    } catch {
+      toast.error(labels.passwordGenerationFailed);
+      return;
+    }
+
+    await onSubmit(payload);
   };
 
   return (
@@ -1771,7 +1765,6 @@ function CreateArtistDrawer({
                   </ArtistFormSection>
                   <ArtistFormSection title={labels.accountStatus}>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <FormField compact label={labels.password} type="password" required value={values.password} error={errors.password} placeholder={labels.password} autoComplete="new-password" onChange={(password) => setValues((current) => ({ ...current, password }))} />
                       <FormField compact label={labels.status} type="select" value={values.status} options={artistStatusOptions(labels)} onChange={(status) => setValues((current) => ({ ...current, status }))} />
                       <ArtistToggleField label={labels.verified} checked={values.is_verified} labels={labels} onChange={(is_verified) => setValues((current) => ({ ...current, is_verified }))} />
                       <ArtistToggleField label={labels.topArtist} checked={values.is_top} labels={labels} onChange={(is_top) => setValues((current) => ({ ...current, is_top }))} />
@@ -1963,18 +1956,14 @@ function ArtistDrawerActions({
   formId,
   onClose,
   onEdit,
-  onResetPassword,
 }: {
   mode: "view" | "edit";
   loading: boolean;
   formId: string;
   onClose: () => void;
   onEdit: () => void;
-  onResetPassword: () => void;
 }) {
   const { t } = useI18n();
-  const { locale } = useI18n();
-  const labels = getArtistsLabels(locale);
 
   if (mode === "edit") {
     return (
@@ -1997,17 +1986,11 @@ function ArtistDrawerActions({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+    <div className="grid grid-cols-2 gap-2">
       <ArtistDrawerActionButton
         icon={<X className="size-4" />}
         label={t("actions.close")}
         onClick={onClose}
-      />
-      <ArtistDrawerActionButton
-        icon={<KeyRound className="size-4" />}
-        label={labels.resetPasswordAction}
-        tone="warning"
-        onClick={onResetPassword}
       />
       <ArtistDrawerActionButton
         icon={<Pencil className="size-4" />}
@@ -2061,103 +2044,6 @@ function ArtistDrawerActionButton({
       {icon}
       <span className="truncate">{label}</span>
     </button>
-  );
-}
-
-function ArtistPasswordResetModal({
-  artist,
-  labels,
-  open,
-  onClose,
-}: {
-  artist: ArtistProfile;
-  labels: ArtistsLabels;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const toast = useToast();
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const nextErrors: Record<string, string> = {};
-    const nextPassword = password.trim();
-    const artistId = getArtistId(artist);
-
-    if (!artistId) nextErrors.password = labels.artistIdMissing;
-    if (!nextPassword) nextErrors.password = labels.requiredField(labels.newPassword);
-    if (nextPassword && nextPassword.length < 6) nextErrors.password = labels.passwordMinLength;
-    if (nextPassword !== confirmPassword.trim()) nextErrors.confirmPassword = labels.passwordMismatch;
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
-
-    setSubmitting(true);
-    try {
-      await staffApi.resetPassword(Number(artistId), nextPassword);
-      toast.success(labels.passwordResetSuccess);
-      onClose();
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : labels.passwordResetFailed);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      title={labels.resetPasswordTitle}
-      onCancel={onClose}
-      rootClassName="artistbor-confirm-modal"
-      footer={null}
-      destroyOnHidden
-      centered
-    >
-      <form className="space-y-4 pt-2" onSubmit={submit}>
-        <p className="text-sm leading-5 text-slate-400">
-          {labels.resetPasswordDescription(getArtistName(artist, labels))}
-        </p>
-        <FormField
-          compact
-          required
-          label={labels.newPassword}
-          type="password"
-          value={password}
-          error={errors.password}
-          autoComplete="new-password"
-          onChange={setPassword}
-        />
-        <FormField
-          compact
-          required
-          label={labels.confirmPassword}
-          type="password"
-          value={confirmPassword}
-          error={errors.confirmPassword}
-          autoComplete="new-password"
-          onChange={setConfirmPassword}
-        />
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="artistbor-modal-action artistbor-modal-action--neutral text-sm font-bold"
-          >
-            {labels.cancel}
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="artistbor-modal-action artistbor-modal-action--warning text-sm font-bold"
-          >
-            {submitting ? labels.saving : labels.resetPasswordAction}
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 
@@ -2828,7 +2714,7 @@ function ArtistToggleField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="block">
+                    <label className="relative block">
       <span className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
         {label}
       </span>
@@ -3007,6 +2893,13 @@ function serviceOptions(services: Service[], labels: ArtistsLabels): FormFieldOp
     label: getLocalizedEntityName(service, labels.locale),
     value: String(service.id ?? ""),
   }));
+}
+
+function currencyOptions(): FormFieldOption[] {
+  return [
+    { label: "UZS — so'm", value: "UZS" },
+    { label: "USD — US Dollar", value: "USD" },
+  ];
 }
 
 function artistServiceStatusOptions(labels: ArtistsLabels): FormFieldOption[] {
@@ -4434,6 +4327,8 @@ type ArtistServiceFormMode =
 type ArtistServiceFormValues = {
   service_id: string;
   price: string;
+  advance_amount: string;
+  currency: string;
   note: string;
   status: string;
   region_prices: RegionPriceRow[];
@@ -4507,8 +4402,23 @@ function ArtistServiceForm({
           label={labels.price}
           required
           value={formatMoneyInput(values.price, labels.locale)}
-          suffix={MONEY_CURRENCY_LABEL}
+          suffix={values.currency}
           onChange={(price) => setValues((current) => ({ ...current, price: parseMoneyInput(price) }))}
+        />
+        <FormField
+          compact
+          label={labels.advanceAmount}
+          value={formatMoneyInput(values.advance_amount, labels.locale)}
+          suffix={values.currency}
+          onChange={(advance_amount) => setValues((current) => ({ ...current, advance_amount: parseMoneyInput(advance_amount) }))}
+        />
+        <FormField
+          compact
+          label={labels.currency}
+          type="select"
+          value={values.currency}
+          options={currencyOptions()}
+          onChange={(currency) => setValues((current) => ({ ...current, currency }))}
         />
         {mode.type === "edit" ? (
           <FormField
@@ -4622,8 +4532,23 @@ function ArtistServiceDraftEditor({
                   compact
                   label={labels.price}
                   value={formatMoneyInput(draft.price, labels.locale)}
-                  suffix={MONEY_CURRENCY_LABEL}
+                  suffix={draft.currency}
                   onChange={(price) => updateDraft(draft.localId, { price: parseMoneyInput(price) })}
+                />
+                <FormField
+                  compact
+                  label={labels.advanceAmount}
+                  value={formatMoneyInput(draft.advance_amount, labels.locale)}
+                  suffix={draft.currency}
+                  onChange={(advance_amount) => updateDraft(draft.localId, { advance_amount: parseMoneyInput(advance_amount) })}
+                />
+                <FormField
+                  compact
+                  label={labels.currency}
+                  type="select"
+                  value={draft.currency}
+                  options={currencyOptions()}
+                  onChange={(currency) => updateDraft(draft.localId, { currency })}
                 />
               </div>
               <ArtistServiceRegionPriceDraftFields
@@ -4674,7 +4599,7 @@ function ArtistServiceRegionPriceDraftFields({
       {value.length ? (
         <div className="mt-3 space-y-2">
           {value.map((row) => (
-            <div key={row.localId} className="grid gap-2 rounded-[10px] border border-[#e6ebf2] bg-white p-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_minmax(140px,180px)_auto] dark:border-white/10 dark:bg-slate-950">
+            <div key={row.localId} className="grid gap-2 rounded-[10px] border border-[#e6ebf2] bg-white p-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_minmax(100px,120px)_minmax(140px,180px)_auto] dark:border-white/10 dark:bg-slate-950">
               <FormField
                 compact
                 hideLabel
@@ -4691,8 +4616,17 @@ function ArtistServiceRegionPriceDraftFields({
                 label={labels.price}
                 value={formatMoneyInput(row.price, labels.locale)}
                 placeholder={labels.price}
-                suffix={MONEY_CURRENCY_LABEL}
+                suffix={row.currency}
                 onChange={(price) => updateRow(row.localId, { price: parseMoneyInput(price) })}
+              />
+              <FormField
+                compact
+                hideLabel
+                label={labels.currency}
+                type="select"
+                value={row.currency}
+                options={currencyOptions()}
+                onChange={(currency) => updateRow(row.localId, { currency })}
               />
               <div>
                 <FormField
@@ -4700,11 +4634,11 @@ function ArtistServiceRegionPriceDraftFields({
                   hideLabel
                   label={labels.advanceAmount}
                   value={formatMoneyInput(row.advance_amount, labels.locale)}
-                  placeholder={row.advance_effective ? formatMoneyWithCurrency(row.advance_effective, labels.locale) : labels.advanceAmount}
-                  suffix={MONEY_CURRENCY_LABEL}
+                  placeholder={row.advance_effective ? formatMoneyWithCurrency(row.advance_effective, labels.locale, row.currency) : labels.advanceAmount}
+                  suffix={row.currency}
                   onChange={(advance_amount) => updateRow(row.localId, { advance_amount: parseMoneyInput(advance_amount) })}
                 />
-                {!row.advance_amount && row.advance_effective ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{labels.effectiveAdvance}: {formatMoneyWithCurrency(row.advance_effective, labels.locale)}</p> : null}
+                {!row.advance_amount && row.advance_effective ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{labels.effectiveAdvance}: {formatMoneyWithCurrency(row.advance_effective, labels.locale, row.currency)}</p> : null}
               </div>
               <button
                 type="button"
@@ -4733,6 +4667,7 @@ type RegionPriceRow = {
   region_id: string;
   region_name?: string;
   price: string;
+  currency: string;
   advance_amount: string;
   advance_effective?: string;
   is_advance_custom?: boolean;
@@ -4793,6 +4728,7 @@ function ArtistServiceRegionPrices({
       {
         localId: `new-${Date.now()}`,
         advance_amount: "",
+        currency: "UZS",
         editing: true,
         price: "",
         region_id: "",
@@ -4841,6 +4777,7 @@ function ArtistServiceRegionPrices({
     try {
       const savedRecord = await artistServicesApi.upsertRegionPrice(serviceId, {
         advance_amount: advanceAmount,
+        currency: row.currency,
         price,
         region_id: regionId,
       });
@@ -4912,7 +4849,7 @@ function ArtistServiceRegionPrices({
             const options = regionPriceOptions(regions, row, labels);
             return (
               <div key={row.localId} className="rounded-lg bg-slate-50 p-2 dark:bg-white/[0.04]">
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_minmax(140px,180px)_auto]">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_minmax(100px,120px)_minmax(140px,180px)_auto]">
                   <label className="block">
                     <span className="sr-only">{labels.region}</span>
                     <Select
@@ -4943,10 +4880,21 @@ function ArtistServiceRegionPrices({
                           readOnly && "border-transparent bg-transparent px-0 dark:border-transparent dark:bg-transparent",
                         )}
                       />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#94a3b8] dark:text-slate-500">{MONEY_CURRENCY_LABEL}</span>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#94a3b8] dark:text-slate-500">{row.currency}</span>
                     </label>
-                    {!row.advance_amount && row.advance_effective ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{labels.effectiveAdvance}: {formatMoneyWithCurrency(row.advance_effective, labels.locale)}</p> : null}
+                    {!row.advance_amount && row.advance_effective ? <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{labels.effectiveAdvance}: {formatMoneyWithCurrency(row.advance_effective, labels.locale, row.currency)}</p> : null}
                   </div>
+                  <label className="block">
+                    <span className="sr-only">{labels.currency}</span>
+                    <Select
+                      className="artistbor-region-price-select w-full"
+                      size="large"
+                      disabled={disabled || !editing}
+                      value={row.currency}
+                      onChange={(currency) => updateRow(row.localId, { currency: String(currency) })}
+                      options={currencyOptions().map((option) => ({ value: option.value, label: option.label }))}
+                    />
+                  </label>
                   <label className="relative block">
                     <span className="sr-only">{labels.price}</span>
                     <input
@@ -4962,7 +4910,7 @@ function ArtistServiceRegionPrices({
                       )}
                     />
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#94a3b8] dark:text-slate-500">
-                      {MONEY_CURRENCY_LABEL}
+                      {row.currency}
                     </span>
                   </label>
                   {!readOnly ? (
@@ -6427,6 +6375,7 @@ function regionPriceRowsFromRecords(records: ArtistRegionPriceRecord[]): RegionP
     return {
       advance_amount: record.advance_amount === undefined || record.advance_amount === null ? "" : String(record.advance_amount),
       advance_effective: record.advance_effective === undefined || record.advance_effective === null ? undefined : String(record.advance_effective),
+      currency: typeof record.currency === "string" && record.currency.trim() ? record.currency : "UZS",
       id,
       is_advance_custom: record.is_advance_custom,
       localId: id ? `saved-${id}` : `loaded-${index}-${regionId ?? "unknown"}`,
@@ -7609,7 +7558,6 @@ function initialCreateArtistValues() {
     last_name: "",
     phone: "",
     email: "",
-    password: "",
     status: "10",
     region_id: "",
     district_id: "",
@@ -7630,14 +7578,35 @@ function initialCreateArtistValues() {
 	    is_top: false,
 	    category_ids: "",
 	    services: [] as ArtistServiceDraft[],
-	  };
-	}
+  };
+}
+
+const GENERATED_ARTIST_PASSWORD_LENGTH = 24;
+const GENERATED_ARTIST_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*_-";
+
+function generateArtistPassword() {
+  const alphabetLength = GENERATED_ARTIST_PASSWORD_ALPHABET.length;
+  const maximumUnbiasedByte = 256 - (256 % alphabetLength);
+  let password = "";
+  const bytes = new Uint8Array(GENERATED_ARTIST_PASSWORD_LENGTH * 2);
+
+  while (password.length < GENERATED_ARTIST_PASSWORD_LENGTH) {
+    globalThis.crypto.getRandomValues(bytes);
+    for (const byte of bytes) {
+      if (byte >= maximumUnbiasedByte) continue;
+      password += GENERATED_ARTIST_PASSWORD_ALPHABET[byte % alphabetLength];
+      if (password.length === GENERATED_ARTIST_PASSWORD_LENGTH) return password;
+    }
+  }
+
+  return password;
+}
 
 function buildCreateArtistPayload(values: ReturnType<typeof initialCreateArtistValues>): CreateArtistPayload {
   const payload: CreateArtistPayload = {
     first_name: values.first_name.trim(),
     phone: normalizePhoneForApi(values.phone),
-    password: values.password,
+    password: generateArtistPassword(),
   };
 
   assignString(payload, "last_name", values.last_name);
@@ -7676,6 +7645,8 @@ function createArtistServiceDraft(): ArtistServiceDraft {
     localId: `service-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     service_id: "",
     price: "",
+    advance_amount: "",
+    currency: "UZS",
     note: "",
     status: "1",
     region_prices: [],
@@ -7688,6 +7659,7 @@ function createRegionPriceRow(): RegionPriceRow {
     localId: `region-price-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     region_id: "",
     price: "",
+    currency: "UZS",
     editing: true,
   };
 }
@@ -7697,6 +7669,8 @@ function artistServiceFormValuesFromMode(mode: ArtistServiceFormMode): ArtistSer
     return {
       service_id: "",
       price: "",
+      advance_amount: "",
+      currency: "UZS",
       note: "",
       status: "1",
       region_prices: [],
@@ -7707,6 +7681,8 @@ function artistServiceFormValuesFromMode(mode: ArtistServiceFormMode): ArtistSer
   return {
     service_id: attachedServiceId ? String(attachedServiceId) : "",
     price: firstMeaningfulValue(mode.service, ["price", "amount"])?.toString() ?? "",
+    advance_amount: firstMeaningfulValue(mode.service, ["advance_amount"])?.toString() ?? "",
+    currency: firstMeaningfulValue(mode.service, ["currency"])?.toString() ?? "UZS",
     note: firstMeaningfulValue(mode.service, ["note", "comment", "description"])?.toString() ?? "",
     status: firstMeaningfulValue(mode.service, ["status"])?.toString() ?? "1",
     region_prices: regionPriceRowsFromService(mode.service).map((row) => ({
@@ -7725,6 +7701,8 @@ function buildArtistServiceAssignmentPayload(
     artist_id: artistId,
     service_id: Number(values.service_id),
     price: Number(values.price),
+    advance_amount: values.advance_amount === "" ? null : Number(values.advance_amount),
+    currency: values.currency,
   };
   const note = values.note.trim();
   if (note) payload.note = note;
@@ -7736,6 +7714,8 @@ function buildArtistServiceAssignmentPayload(
 function buildArtistServiceUpdatePayload(values: ArtistServiceFormValues): ArtistServiceUpdatePayload {
   const payload: ArtistServiceUpdatePayload = {
     price: Number(values.price),
+    advance_amount: values.advance_amount === "" ? null : Number(values.advance_amount),
+    currency: values.currency,
     region_prices: buildArtistServiceRegionPricePayload(values.region_prices),
   };
   const note = values.note.trim();
@@ -7752,6 +7732,8 @@ function buildCreateArtistServices(values: ArtistServiceDraft[]): NonNullable<Cr
       const service: NonNullable<CreateArtistPayload["services"]>[number] = {
         service_id: Number(item.service_id),
         price: Number(item.price),
+        advance_amount: item.advance_amount === "" ? null : Number(item.advance_amount),
+        currency: item.currency,
       };
       const note = item.note.trim();
       if (note) service.note = note;
@@ -7765,6 +7747,7 @@ function buildArtistServiceRegionPricePayload(rows: RegionPriceRow[]): ArtistSer
   return rows
     .map((row) => ({
       advance_amount: row.advance_amount === "" ? null : Number(row.advance_amount),
+      currency: row.currency,
       region_id: Number(row.region_id),
       price: Number(row.price),
     }))
@@ -7774,6 +7757,10 @@ function buildArtistServiceRegionPricePayload(rows: RegionPriceRow[]): ArtistSer
 function validateArtistServiceForm(values: ArtistServiceFormValues, labels: ArtistsLabels) {
   if (!Number.isFinite(Number(values.service_id)) || Number(values.service_id) <= 0) return labels.requiredField(labels.services);
   if (!Number.isFinite(Number(values.price)) || Number(values.price) <= 0) return labels.requiredField(labels.price);
+  if (!values.currency) return labels.requiredField(labels.currency);
+  const advanceAmount = values.advance_amount === "" ? null : Number(values.advance_amount);
+  if (advanceAmount !== null && (!Number.isFinite(advanceAmount) || advanceAmount < 0)) return labels.regionAdvanceInvalid;
+  if (advanceAmount !== null && advanceAmount > Number(values.price)) return labels.regionAdvanceExceedsPrice;
   return validateRegionPriceRows(values.region_prices, labels);
 }
 
@@ -7812,6 +7799,7 @@ function validateRegionPriceRows(rows: RegionPriceRow[], labels: ArtistsLabels) 
     if (!hasAnyValue) continue;
     if (!Number.isFinite(Number(row.region_id)) || Number(row.region_id) <= 0) return labels.regionPriceRegionRequired;
     if (!Number.isFinite(Number(row.price)) || Number(row.price) <= 0) return labels.regionPricePriceRequired;
+    if (!row.currency) return labels.requiredField(labels.currency);
     if (row.advance_amount !== "" && (!Number.isFinite(Number(row.advance_amount)) || Number(row.advance_amount) < 0)) return labels.regionAdvanceInvalid;
     if (row.advance_amount !== "" && Number(row.advance_amount) > Number(row.price)) return labels.regionAdvanceExceedsPrice;
   }
@@ -8159,6 +8147,7 @@ function getArtistsLabels(locale: string) {
 	      orderId: "ID заказа",
       page: "Страница",
       password: "Пароль",
+      passwordGenerationFailed: "Не удалось подготовить безопасный пароль.",
       newPassword: "Новый пароль",
       confirmPassword: "Подтвердите пароль",
       passwordMismatch: "Пароли не совпадают",
@@ -8171,6 +8160,7 @@ function getArtistsLabels(locale: string) {
       phone: "Телефон",
       pendingStatus: genericStatus("pending"),
       price: "Цена",
+      currency: "Валюта",
       profile: "Профиль",
       regionPriceDeleted: notification("regionPriceDeleted"),
       advanceAmount: "Аванс",
@@ -8574,7 +8564,8 @@ function getArtistsLabels(locale: string) {
 	    openVideo: "Ochish",
 	    orderId: "Buyurtma ID",
 	    page: "Sahifa",
-    password: "Parol",
+      password: "Parol",
+      passwordGenerationFailed: "Xavfsiz parolni tayyorlab bo'lmadi.",
     newPassword: "Yangi parol",
     confirmPassword: "Parolni tasdiqlash",
     passwordMismatch: "Parollar mos emas",
@@ -8587,6 +8578,7 @@ function getArtistsLabels(locale: string) {
     phone: "Telefon",
     pendingStatus: genericStatus("pending"),
     price: "Narx",
+    currency: "Valyuta",
     profile: "Profil",
     regionPriceDeleted: notification("regionPriceDeleted"),
     advanceAmount: "Avans",

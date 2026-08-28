@@ -46,9 +46,9 @@ export function formatMoneyAmount(value: unknown, locale?: Locale | string) {
   return formatterFor(locale).format(Math.round(amount));
 }
 
-export function formatMoneyWithCurrency(value: unknown, locale?: Locale | string) {
+export function formatMoneyWithCurrency(value: unknown, locale?: Locale | string, currency = MONEY_CURRENCY_LABEL) {
   const amount = formatMoneyAmount(value, locale);
-  return amount ? `${amount} ${MONEY_CURRENCY_LABEL}` : "";
+  return amount ? `${amount} ${currency}` : "";
 }
 
 export function parseMoneyInput(value: unknown) {

@@ -616,17 +616,19 @@ input[type="time"] {
 }
 
 .artistbor-artists-data-table table {
-  min-width: 680px;
+  min-width: 760px;
 }
 
-.artistbor-artists-data-table col:nth-child(3),
+.artistbor-artists-data-table col:nth-child(2) {
+  width: auto;
+}
+
 .artistbor-artists-data-table col:nth-child(6) {
+  display: none;
   visibility: collapse;
   width: 0;
 }
 
-.artistbor-artists-data-table th:nth-child(3),
-.artistbor-artists-data-table td:nth-child(3),
 .artistbor-artists-data-table th:nth-child(6),
 .artistbor-artists-data-table td:nth-child(6) {
   display: none;
