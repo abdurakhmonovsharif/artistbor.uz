@@ -66,7 +66,7 @@ test("artist filters wrap and the table exposes compact and full column modes", 
   assert.match(artistsPage, /aria-label=\{labels\.tableRegionLabel\}/);
   assert.match(artistsPage, /whitespace-nowrap[\s\S]{0,300}\{toDisplay\(row\.public_id\)\}/);
   assert.match(css, /\.artistbor-responsive-filter-panel\s*\{[^}]*flex-wrap:\s*wrap/s);
-  assert.match(css, /\.artistbor-artists-data-table table\s*\{[^}]*min-width:\s*680px/s);
+  assert.match(css, /\.artistbor-artists-data-table table\s*\{[^}]*min-width:\s*760px/s);
   assert.match(css, /\.artistbor-artists-data-table table\s*\{[^}]*min-width:\s*1012px/s);
 });
 
@@ -91,12 +91,41 @@ test("legacy data pages use the shared responsive filters and keyboard-scrollabl
   assert.match(css, /\.artistbor-applications-data-table table\s*\{[^}]*min-width:\s*760px/s);
 });
 
+test("people and hierarchy tables preserve their action columns in compact mode", () => {
+  assert.match(
+    css,
+    /\.artistbor-people-data-table col:nth-child\(5\)\s*\{\s*visibility:\s*collapse/s,
+  );
+  assert.match(
+    css,
+    /\.artistbor-hierarchy-data-table col:nth-child\(4\),[\s\S]*?\.artistbor-hierarchy-data-table col:nth-child\(6\)\s*\{\s*visibility:\s*collapse/s,
+  );
+  assert.doesNotMatch(css, /\.artistbor-people-data-table th:nth-child\(5\)[\s\S]{0,180}display:\s*none/);
+  assert.match(css, /\.artistbor-hierarchy-managed-table th:nth-child\(4\)[\s\S]{0,300}display:\s*table-cell/);
+  assert.match(css, /\.artistbor-users-data-table,[\s\S]*?\.artistbor-operators-data-table\s*\{\s*min-width:\s*100%/);
+  assert.match(css, /@media \(max-width:\s*639px\)[\s\S]*?\.artistbor-users-data-table,[\s\S]*?min-width:\s*640px/);
+});
+
 test("operators activate their container layout and keep detail and password actions available", () => {
   assert.match(operatorsPage, /artistbor-admin-page artistbor-responsive-data-page/);
-  assert.match(operatorsPage, /min-w-\[1156px\] table-fixed/);
+  assert.match(operatorsPage, /artistbor-operators-data-table w-full min-w-\[1156px\] table-fixed/);
   assert.match(operatorsPage, /onResetPassword/);
   assert.match(operatorsPage, /OperatorPasswordResetModal/);
   assert.match(operatorsPage, /staffApi\.resetPassword/);
+});
+
+test("users activate their responsive desktop columns and avoid repeating the phone as a name", () => {
+  assert.match(usersPage, /artistbor-admin-page artistbor-responsive-data-page/);
+  assert.match(usersPage, /artistbor-users-data-table w-full min-w-\[1156px\] table-fixed/);
+  assert.match(usersPage, /user\.full_name\?\.trim\(\)/);
+  assert.doesNotMatch(usersPage, /return fromParts \|\| user\.email \|\| formatPhone\(user\.phone\)/);
+});
+
+test("categories activate their responsive hierarchy layout, including nested table scrolling", () => {
+  assert.match(categoriesPage, /artistbor-admin-page artistbor-responsive-data-page/);
+  assert.match(categoriesPage, /artistbor-hierarchy-managed-table w-full min-w-\[1040px\] table-fixed/);
+  assert.match(categoriesPage, /admin-table-scroll artistbor-hierarchy-data-table overflow-x-auto rounded-\[18px\]/);
+  assert.match(categoriesPage, /aria-label=\{labels\.subcategory\}/);
 });
 
 test("service draft editor stays empty until a service is assigned", () => {

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { API_BASE_URL } from "@/lib/api/client";
+import { API_BASE_URL, unwrapData } from "@/lib/api/client";
+import { normalizeAuthUser } from "@/lib/api/auth-normalize";
+import { canUseAdminAction, type AdminAction } from "@/lib/auth/permissions";
 import { clearAdminSessionToken, getAdminSessionToken } from "@/lib/auth/server-session";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +39,17 @@ async function proxyAdminRequest(request: Request, context: ProxyContext) {
     return NextResponse.json({ code: "ENDPOINT_FORBIDDEN", message: "Endpoint ruxsat etilmagan" }, { status: 403 });
   }
 
+  const requiredAction = getRequiredAdminAction(path);
+  const authorization = requiredAction ? await authorizeAdminAction(token, requiredAction) : "allowed";
+  if (authorization !== "allowed") {
+    return NextResponse.json(
+      authorization === "unauthenticated"
+        ? { code: "SESSION_INVALID", message: "Sessiya tasdiqlanmadi" }
+        : { code: "ACTION_FORBIDDEN", message: "Bu amal uchun ruxsat yo'q" },
+      { status: authorization === "unauthenticated" ? 401 : 403 },
+    );
+  }
+
   const targetUrl = new URL(`${API_BASE_URL}/${path.map(encodeURIComponent).join("/")}`);
   const requestUrl = new URL(request.url);
   targetUrl.search = requestUrl.search;
@@ -59,6 +72,44 @@ async function proxyAdminRequest(request: Request, context: ProxyContext) {
 
 function isAllowedAdminPath(path: string[]) {
   return path[0] === "v1" && path[1] === "admin";
+}
+
+function getRequiredAdminAction(path: string[]): AdminAction | null {
+  const isArtistQuotaPath =
+    path[0] === "v1" &&
+    path[1] === "admin" &&
+    path[2] === "artist" &&
+    /^\d+$/.test(path[3]) &&
+    path[4] === "quota";
+
+  return isArtistQuotaPath ? "artistQuotaManage" : null;
+}
+
+async function authorizeAdminAction(
+  token: string,
+  action: AdminAction,
+): Promise<"allowed" | "forbidden" | "unauthenticated"> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/me`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (response.status === 401) {
+      await clearAdminSessionToken();
+      return "unauthenticated";
+    }
+    if (!response.ok) return "forbidden";
+
+    const payload = await response.json().catch(() => null);
+    const user = normalizeAuthUser(unwrapData<unknown>(payload));
+    return user && canUseAdminAction(user.role, action) ? "allowed" : "forbidden";
+  } catch {
+    return "forbidden";
+  }
 }
 
 function shouldForwardBody(method: string) {

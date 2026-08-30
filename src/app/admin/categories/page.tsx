@@ -190,7 +190,7 @@ export default function CategoriesPage() {
   };
 
   return (
-    <section className="artistbor-admin-page w-full space-y-4">
+    <section className="artistbor-admin-page artistbor-responsive-data-page w-full space-y-4">
       <AdminPageHeader
         eyebrow={labels.eyebrow}
         title={labels.title}
@@ -359,7 +359,7 @@ function CategoryHierarchyTable({
   return (
     <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
       <div className="admin-table-scroll artistbor-hierarchy-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
-        <table aria-label={labels.title} className="w-full min-w-[1040px] border-separate border-spacing-0">
+        <table aria-label={labels.title} className="artistbor-hierarchy-managed-table w-full min-w-[1040px] table-fixed border-separate border-spacing-0">
           <colgroup>
             <col className="w-12" />
             <col className="w-16" />
@@ -446,8 +446,13 @@ function CategoryRowGroup({
       {expanded ? (
         <tr className="bg-[#f8fafc]/70 dark:bg-white/[0.02]">
           <td colSpan={7} className="border-b border-[#edf2f7] px-3.5 py-2.5 dark:border-white/10">
-            <div className="overflow-hidden rounded-[18px] border border-[#e6ebf2] bg-white dark:border-white/10 dark:bg-slate-950">
-              <table className="w-full min-w-[1040px] border-separate border-spacing-0">
+            <div
+              className="admin-table-scroll artistbor-hierarchy-data-table overflow-x-auto rounded-[18px] border border-[#e6ebf2] bg-white dark:border-white/10 dark:bg-slate-950"
+              role="region"
+              tabIndex={0}
+              aria-label={labels.subcategory}
+            >
+              <table className="artistbor-hierarchy-managed-table w-full min-w-[1040px] table-fixed border-separate border-spacing-0">
                 <colgroup>
                   <col className="w-12" />
                   <col className="w-16" />

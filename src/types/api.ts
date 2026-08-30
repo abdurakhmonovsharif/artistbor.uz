@@ -31,6 +31,7 @@ export type User = {
   phone?: string;
   first_name?: string;
   last_name?: string;
+  full_name?: string | null;
   email?: string;
   role?: "client" | "artist" | "admin" | "moderator" | "operator" | string | number;
   region_id?: number;

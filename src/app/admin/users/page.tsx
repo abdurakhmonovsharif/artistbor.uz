@@ -211,7 +211,7 @@ export default function UsersPage() {
       : undefined);
 
   return (
-    <section className="artistbor-admin-page w-full space-y-4">
+    <section className="artistbor-admin-page artistbor-responsive-data-page w-full space-y-4">
       <AdminPageHeader eyebrow={labels.eyebrow} title={labels.title} description={labels.description} />
 
       <form
@@ -363,7 +363,7 @@ function UsersTable({
   return (
     <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
       <div className="admin-table-scroll artistbor-people-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
-        <table aria-label={labels.title} className="w-full min-w-[1156px] border-separate border-spacing-0">
+        <table aria-label={labels.title} className="artistbor-users-data-table w-full min-w-[1156px] table-fixed border-separate border-spacing-0">
           <colgroup>
             <col className="w-14" />
             <col className="w-[340px]" />
@@ -389,7 +389,7 @@ function UsersTable({
                   {row.public_id ?? "—"}
                 </td>
                 <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
-                  <UserIdentityCell user={row} labels={labels} />
+                  <UserIdentityCell user={row} />
                 </td>
                 <td className="border-b border-[#edf2f7] px-3.5 py-[9px] align-middle dark:border-white/10">
                   <UserContactCell user={row} />
@@ -449,12 +449,15 @@ function UsersTableHead({
   );
 }
 
-function UserIdentityCell({ user, labels }: { user: User; labels: UserLabels }) {
-  const name = getUserName(user, labels);
+function UserIdentityCell({ user }: { user: User }) {
+  const name = getUserName(user);
 
   return (
-    <p className="truncate text-[13px] font-semibold leading-[18px] text-[#0f172a] dark:text-white">
-      {name}
+    <p className={cn(
+      "truncate text-[13px] font-semibold leading-[18px]",
+      name ? "text-[#0f172a] dark:text-white" : "text-[#94a3b8] dark:text-slate-500",
+    )}>
+      {name || "—"}
     </p>
   );
 }
@@ -642,9 +645,9 @@ function getUserStatusDisplay(user: User, labels: UserLabels) {
   return { label: status.label, tone: status.tone };
 }
 
-function getUserName(user: User, labels: UserLabels) {
+function getUserName(user: User) {
   const fromParts = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-  return fromParts || user.email || formatPhone(user.phone) || `${labels.user} ${user.public_id ?? "—"}`;
+  return fromParts || user.full_name?.trim() || "";
 }
 
 function formatUserDate(value: unknown) {

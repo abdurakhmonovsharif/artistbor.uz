@@ -3,6 +3,7 @@ import {
   BookOpenCheck,
   ClipboardList,
   FolderTree,
+  Gauge,
   HelpCircle,
   Home,
   MessageSquare,
@@ -52,6 +53,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     labelKey: "menu.usersGroup",
     children: [
       { labelKey: "menu.artists", href: "/admin/artists", icon: Paintbrush },
+      { labelKey: "menu.artistQuotas", href: "/admin/artist-quotas", icon: Gauge, roles: [ADMIN_ROLE] },
       { labelKey: "menu.users", href: "/admin/users", icon: Users, roles: [ADMIN_ROLE] },
       { labelKey: "menu.operators", href: "/admin/operators", icon: UserCog, roles: [ADMIN_ROLE] },
       { labelKey: "menu.applications", href: "/admin/applications", icon: ClipboardList },

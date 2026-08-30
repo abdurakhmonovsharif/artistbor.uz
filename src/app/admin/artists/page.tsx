@@ -17,7 +17,6 @@ import {
   Folder,
   IdCard,
   ImagePlus,
-  Languages,
   ListChecks,
   Loader2,
   LockKeyhole,
@@ -78,6 +77,11 @@ import {
   type UploadedFileRecord,
 } from "@/lib/api/admin-content";
 import { buildArtistBusySlotPayload } from "@/lib/artist-busy-slot";
+import {
+  artistProfileBoolean,
+  artistProfileCategoryLabels,
+  artistProfileValue,
+} from "@/lib/artist-profile-display";
 import {
   findOverlappingArtistAvailabilityInterval,
   formatArtistAvailabilityMonth,
@@ -985,6 +989,7 @@ function ArtistDrawer({
   const [resources, setResources] = useState<Record<ResourceTab, DetailResourceState>>(
     createDetailResources,
   );
+  const [categoryCatalog, setCategoryCatalog] = useState<Category[]>([]);
   const loadedResourceTabs = useRef<Set<ResourceTab>>(new Set());
   const resourceArtistId = useRef<number | undefined>(undefined);
   const resourceRequestIds = useRef<Record<ResourceTab, number>>(createResourceRequestIds());
@@ -994,6 +999,24 @@ function ArtistDrawer({
   const hasArtist = Boolean(artist);
   const formId = artistId ? `artist-edit-form-${artistId}` : "artist-edit-form";
   const toast = useToast();
+
+  useEffect(() => {
+    if (!open || mode !== "view") return;
+
+    let ignore = false;
+
+    void categoriesApi.list({ page: 1, limit: 1000 })
+      .then((result) => {
+        if (!ignore) setCategoryCatalog(result.items);
+      })
+      .catch(() => {
+        if (!ignore) setCategoryCatalog([]);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [mode, open]);
 
   const startResourceRequest = useCallback((key: ResourceTab, currentArtistId: number) => {
     const requestId = ++resourceRequestIds.current[key];
@@ -1391,7 +1414,7 @@ function ArtistDrawer({
             label={formatEnumValue("status", artist.status ?? artist.status_label, labels)}
             tone={isDeletedArtist(artist) ? "danger" : "neutral"}
           />
-          {artist.is_top ? <ArtistHeaderBadge label={labels.top} tone="warning" /> : null}
+          {artistProfileBoolean(artist, ["is_top"]) ? <ArtistHeaderBadge label={labels.top} tone="warning" /> : null}
         </div>
       }
       footer={
@@ -1430,7 +1453,7 @@ function ArtistDrawer({
               ),
               children:
                 tab.key === "profile" ? (
-                  <ArtistProfileTab artist={artist} labels={labels} />
+                  <ArtistProfileTab artist={artist} categoryCatalog={categoryCatalog} labels={labels} />
                 ) : tab.key === "services" ? (
                   <ArtistServicesTab
                     artistId={artistId}
@@ -2049,34 +2072,55 @@ function ArtistDrawerActionButton({
 
 function ArtistInfoGrid({
   artist,
+  categoryCatalog,
   labels,
 }: {
   artist: ArtistProfile;
+  categoryCatalog: Category[];
   labels: ArtistsLabels;
 }) {
+  const profileValue = (keys: string[]) => artistProfileValue(artist, keys);
+  const profileText = (keys: string[]) => artistProfileText(profileValue(keys));
+  const firstName = profileText(["first_name"]);
+  const lastName = profileText(["last_name"]);
+  const fullName = profileText(["full_name"]);
+  const category = artistProfileCategoryLabels(artist, categoryCatalog, labels.locale).join(", ") || undefined;
+  const regionId = profileValue(["region_id"]);
+  const districtId = profileValue(["district_id"]);
+  const verified = artistProfileBoolean(artist, ["is_verified", "verified", "is_confirmed"]);
+  const isTop = artistProfileBoolean(artist, ["is_top"]);
+  const cardNumberMasked = profileText(["card_number_masked"]);
+  const cardHolderName = profileText(["card_holder_name"]);
   const cells = [
-    { icon: <User className="size-4" />, label: labels.fullName, value: [artist.first_name, artist.last_name].filter(Boolean).join(" ") || getArtistName(artist, labels), always: true },
-    { icon: <Star className="size-4" />, label: labels.stageName, value: artist.stage_name },
-    { icon: <Clock className="size-4" />, label: labels.experienceYears, value: artist.experience_years === undefined ? undefined : `${artist.experience_years} ${labels.years}` },
-    { icon: <Phone className="size-4" />, label: labels.phone, value: formatPhone(artist.phone), always: true },
-    { icon: <Mail className="size-4" />, label: labels.email, value: artist.email },
-    { icon: <Languages className="size-4" />, label: labels.language, value: artist.badges?.join(", ") },
+    { icon: <User className="size-4" />, label: labels.fullName, value: [firstName, lastName].filter((value): value is string => typeof value === "string" && Boolean(value.trim())).join(" ") || fullName || getArtistName(artist, labels), always: true },
+    { icon: <Star className="size-4" />, label: labels.stageName, value: profileText(["stage_name"]) },
+    { icon: <Clock className="size-4" />, label: labels.experienceYears, value: artistExperienceText(profileValue(["experience_years"]), labels) },
+    { icon: <Phone className="size-4" />, label: labels.phone, value: formatPhone(profileValue(["phone"])), always: true },
+    { icon: <Phone className="size-4" />, label: labels.extraPhone, value: formatPhone(profileValue(["extra_phone"])) },
+    { icon: <Mail className="size-4" />, label: labels.email, value: profileText(["email"]) },
+    { icon: <ListChecks className="size-4" />, label: labels.category, value: category },
+    { icon: <CalendarDays className="size-4" />, label: labels.birthDate, value: profileText(["birth_date"]) },
+    { icon: <User className="size-4" />, label: labels.gender, value: artistGenderLabel(profileValue(["gender"]), labels) },
     {
       icon: <IdCard className="size-4" />,
       label: labels.region,
-      value: hasMeaningfulValue(artist.region_id) ? (
-        <LocationName fieldKey="region_id" value={artist.region_id} fallback={formatDisplayValue("region_id", artist.region_id, labels)} />
+      value: hasMeaningfulValue(regionId) ? (
+        <LocationName fieldKey="region_id" value={regionId} fallback={formatDisplayValue("region_id", regionId, labels)} />
       ) : undefined,
     },
     {
       icon: <IdCard className="size-4" />,
       label: labels.district,
-      value: hasMeaningfulValue(artist.district_id) ? (
-        <LocationName fieldKey="district_id" value={artist.district_id} fallback={formatDisplayValue("district_id", artist.district_id, labels)} />
+      value: hasMeaningfulValue(districtId) ? (
+        <LocationName fieldKey="district_id" value={districtId} fallback={formatDisplayValue("district_id", districtId, labels)} />
       ) : undefined,
     },
-    { icon: <Clock className="size-4" />, label: labels.timezone, value: "Asia/Tashkent", always: true },
-    { icon: <CalendarDays className="size-4" />, label: labels.createdAt, value: normalizeDate(artist.created_at), always: true },
+    { icon: <CheckCircle2 className="size-4" />, label: labels.verified, value: verified === undefined ? undefined : formatEnumValue("is_verified", verified, labels) },
+    { icon: <Star className="size-4" />, label: labels.topArtist, value: isTop === undefined ? undefined : formatEnumValue("is_top", isTop, labels) },
+    { icon: <IdCard className="size-4" />, label: labels.cardNumber, value: cardNumberMasked },
+    { icon: <User className="size-4" />, label: labels.cardHolderName, value: cardHolderName },
+    { icon: <Clock className="size-4" />, label: labels.timezone, value: profileText(["timezone"]) ?? "Asia/Tashkent", always: true },
+    { icon: <CalendarDays className="size-4" />, label: labels.createdAt, value: normalizeDate(profileValue(["created_at"])), always: true },
   ].filter((cell) => cell.always || hasMeaningfulValue(cell.value));
 
   return (
@@ -2092,6 +2136,29 @@ function ArtistInfoGrid({
       ))}
     </div>
   );
+}
+
+function artistExperienceText(value: unknown, labels: ArtistsLabels) {
+  const years = Number(value);
+  return Number.isFinite(years) ? `${years} ${labels.years}` : undefined;
+}
+
+function artistProfileText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function artistGenderLabel(value: unknown, labels: ArtistsLabels) {
+  const gender = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (gender === "male") return labels.genderMale;
+  if (gender === "female") return labels.genderFemale;
+  if (gender === "other") return labels.genderOther;
+  return undefined;
+}
+
+function artistStringList(value: unknown) {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
 }
 
 function ArtistInfoCell({
@@ -2124,29 +2191,39 @@ function ArtistInfoCell({
 
 function ArtistProfileTab({
   artist,
+  categoryCatalog,
   labels,
 }: {
   artist: ArtistProfile;
+  categoryCatalog: Category[];
   labels: ArtistsLabels;
 }) {
-  const hasAdmin = hasMeaningfulValue(artist.administrator_name) || hasMeaningfulValue(artist.administrator_phone);
-  const hasBio = hasMeaningfulValue(artist.bio);
-  const hasShortDescription = hasMeaningfulValue(artist.short_description);
-  const hasHighlights = Boolean(artist.titles?.length || artist.achievements?.length);
+  const profileValue = (keys: string[]) => artistProfileValue(artist, keys);
+  const profileText = (keys: string[]) => artistProfileText(profileValue(keys));
+  const administratorName = profileText(["administrator_name"]);
+  const administratorPhone = profileText(["administrator_phone"]);
+  const bio = profileText(["bio"]);
+  const shortDescription = profileText(["short_description"]);
+  const titles = artistStringList(profileValue(["titles"]));
+  const achievements = artistStringList(profileValue(["achievements"]));
+  const hasAdmin = hasMeaningfulValue(administratorName) || hasMeaningfulValue(administratorPhone);
+  const hasBio = hasMeaningfulValue(bio);
+  const hasShortDescription = hasMeaningfulValue(shortDescription);
+  const hasHighlights = Boolean(titles.length || achievements.length);
   const additionalEntries = additionalArtistEntries(artist);
   const hasAdditionalInfo = additionalEntries.length > 0 || hasStructuredAdditionalInfo(artist);
 
   return (
     <div className="space-y-3">
       <ArtistSection title={labels.mainInfo}>
-        <ArtistInfoGrid artist={artist} labels={labels} />
+        <ArtistInfoGrid artist={artist} categoryCatalog={categoryCatalog} labels={labels} />
       </ArtistSection>
       <ArtistStatsSection artist={artist} labels={labels} />
       {hasShortDescription ? (
         <ArtistSection title={labels.shortDescription}>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 dark:border-white/10 dark:bg-[#121a2a]">
             <p className="whitespace-pre-wrap break-words text-sm font-medium leading-5 text-slate-800 dark:text-slate-100">
-              {artist.short_description}
+              {shortDescription}
             </p>
           </div>
         </ArtistSection>
@@ -2154,19 +2231,19 @@ function ArtistProfileTab({
       {hasHighlights ? (
         <ArtistSection title={labels.titlesAndAchievements}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <ArtistTextList title={labels.titles} items={artist.titles ?? []} />
-            <ArtistTextList title={labels.achievements} items={artist.achievements ?? []} />
+            <ArtistTextList title={labels.titles} items={titles} />
+            <ArtistTextList title={labels.achievements} items={achievements} />
           </div>
         </ArtistSection>
       ) : null}
       {hasAdmin ? (
         <ArtistSection title={labels.administrator}>
           <div className="grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 dark:border-white/10 dark:bg-white/10 sm:grid-cols-2">
-            {hasMeaningfulValue(artist.administrator_name) ? (
-              <ArtistInfoCell icon={<User className="size-4" />} label={labels.adminName} value={artist.administrator_name} />
+            {hasMeaningfulValue(administratorName) ? (
+              <ArtistInfoCell icon={<User className="size-4" />} label={labels.adminName} value={administratorName} />
             ) : null}
-            {hasMeaningfulValue(artist.administrator_phone) ? (
-              <ArtistInfoCell icon={<Phone className="size-4" />} label={labels.adminPhone} value={formatPhone(artist.administrator_phone)} />
+            {hasMeaningfulValue(administratorPhone) ? (
+              <ArtistInfoCell icon={<Phone className="size-4" />} label={labels.adminPhone} value={formatPhone(administratorPhone)} />
             ) : null}
           </div>
         </ArtistSection>
@@ -2175,7 +2252,7 @@ function ArtistProfileTab({
         <ArtistSection title={labels.about}>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 dark:border-white/10 dark:bg-[#121a2a]">
             <p className="whitespace-pre-wrap break-words text-sm font-medium leading-5 text-slate-800 dark:text-slate-100">
-              {artist.bio}
+              {bio}
             </p>
           </div>
         </ArtistSection>
@@ -2342,21 +2419,22 @@ function ArtistStatsSection({
   artist: ArtistProfile;
   labels: ArtistsLabels;
 }) {
+  const profileValue = (keys: string[]) => artistProfileValue(artist, keys);
   const stats = [
     {
       icon: <Star className="size-4" />,
       label: labels.rating,
-      value: formatNumberValue(artist.rating, "0.00"),
+      value: formatNumberValue(profileValue(["rating"]), "0.00"),
     },
     {
       icon: <Users className="size-4" />,
       label: labels.fans,
-      value: toDisplay(artist.fans_count ?? 0),
+      value: toDisplay(profileValue(["fans_count"]) ?? 0),
     },
     {
       icon: <Folder className="size-4" />,
       label: labels.albums,
-      value: toDisplay(artist.albums_count ?? 0),
+      value: toDisplay(profileValue(["albums_count"]) ?? 0),
     },
   ];
 

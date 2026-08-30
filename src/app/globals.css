@@ -656,6 +656,13 @@ input[type="time"] {
   display: none;
 }
 
+.artistbor-hierarchy-data-table .artistbor-hierarchy-managed-table th:nth-child(4),
+.artistbor-hierarchy-data-table .artistbor-hierarchy-managed-table td:nth-child(4),
+.artistbor-hierarchy-data-table .artistbor-hierarchy-managed-table th:nth-child(6),
+.artistbor-hierarchy-data-table .artistbor-hierarchy-managed-table td:nth-child(6) {
+  display: table-cell;
+}
+
 .artistbor-hierarchy-data-table th,
 .artistbor-hierarchy-data-table td,
 .artistbor-people-data-table th,
@@ -672,11 +679,6 @@ input[type="time"] {
 .artistbor-people-data-table col:nth-child(5) {
   visibility: collapse;
   width: 0;
-}
-
-.artistbor-people-data-table th:nth-child(5),
-.artistbor-people-data-table td:nth-child(5) {
-  display: none;
 }
 
 .artistbor-people-data-table th:first-child,
@@ -701,6 +703,34 @@ input[type="time"] {
 .artistbor-applications-data-table th:nth-child(6),
 .artistbor-applications-data-table td:nth-child(6) {
   display: none;
+}
+
+.artistbor-people-data-table .artistbor-users-data-table,
+.artistbor-people-data-table .artistbor-operators-data-table {
+  min-width: 100%;
+}
+
+.artistbor-people-data-table .artistbor-users-data-table col:nth-child(2),
+.artistbor-people-data-table .artistbor-operators-data-table col:nth-child(2) {
+  width: auto;
+}
+
+.artistbor-people-data-table .artistbor-users-data-table col:nth-child(3),
+.artistbor-people-data-table .artistbor-operators-data-table col:nth-child(3) {
+  width: 170px;
+}
+
+.artistbor-people-data-table .artistbor-users-data-table col:nth-child(4),
+.artistbor-people-data-table .artistbor-operators-data-table col:nth-child(4) {
+  width: 88px;
+}
+
+.artistbor-people-data-table .artistbor-users-data-table col:nth-child(6) {
+  width: 104px;
+}
+
+.artistbor-people-data-table .artistbor-operators-data-table col:nth-child(6) {
+  width: 132px;
 }
 
 @container artistbor-data-page (max-width: 639px) {
@@ -850,6 +880,7 @@ input[type="time"] {
   .artistbor-applications-data-table th:nth-child(6),
   .artistbor-applications-data-table td:nth-child(6) {
     display: table-cell;
+    visibility: visible;
   }
 
   .artistbor-applications-data-table col:nth-child(3),
@@ -874,6 +905,40 @@ input[type="time"] {
     min-width: 1156px;
   }
 
+  .artistbor-people-data-table .artistbor-users-data-table,
+  .artistbor-people-data-table .artistbor-operators-data-table {
+    min-width: 1156px;
+  }
+
+  .artistbor-people-data-table .artistbor-users-data-table col:nth-child(2) {
+    width: 340px;
+  }
+
+  .artistbor-people-data-table .artistbor-operators-data-table col:nth-child(2) {
+    width: 300px;
+  }
+
+  .artistbor-people-data-table .artistbor-users-data-table col:nth-child(3),
+  .artistbor-people-data-table .artistbor-operators-data-table col:nth-child(3) {
+    width: 280px;
+  }
+
+  .artistbor-people-data-table .artistbor-users-data-table col:nth-child(4) {
+    width: 140px;
+  }
+
+  .artistbor-people-data-table .artistbor-operators-data-table col:nth-child(4) {
+    width: 120px;
+  }
+
+  .artistbor-people-data-table .artistbor-users-data-table col:nth-child(6) {
+    width: 150px;
+  }
+
+  .artistbor-people-data-table .artistbor-operators-data-table col:nth-child(6) {
+    width: 132px;
+  }
+
   .artistbor-people-data-table col:nth-child(5) {
     display: table-column;
     visibility: visible;
@@ -883,6 +948,7 @@ input[type="time"] {
   .artistbor-people-data-table th:nth-child(5),
   .artistbor-people-data-table td:nth-child(5) {
     display: table-cell;
+    visibility: visible;
   }
 }
 
@@ -1038,6 +1104,11 @@ input[type="time"] {
 
   .dashboard-page .ant-picker-range {
     max-width: 236px;
+  }
+
+  .artistbor-people-data-table .artistbor-users-data-table,
+  .artistbor-people-data-table .artistbor-operators-data-table {
+    min-width: 640px;
   }
 }
 

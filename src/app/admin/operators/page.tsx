@@ -411,7 +411,7 @@ function OperatorsTable({
   return (
     <div className="overflow-hidden rounded-[18px] border border-artistbor-border bg-artistbor-surface shadow-[var(--artistbor-surface-shadow)]">
       <div className="admin-table-scroll artistbor-people-data-table overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-artistbor-accent" role="region" tabIndex={0} aria-label={labels.title}>
-        <table aria-label={labels.title} className="w-full min-w-[1156px] table-fixed border-separate border-spacing-0">
+        <table aria-label={labels.title} className="artistbor-operators-data-table w-full min-w-[1156px] table-fixed border-separate border-spacing-0">
           <colgroup>
             <col className="w-32" />
             <col className="w-[300px]" />
