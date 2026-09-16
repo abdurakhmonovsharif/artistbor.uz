@@ -1,4 +1,5 @@
 import type { ArtistProfile, UnknownRecord } from "@/types/api";
+import type { Locale } from "@/lib/i18n/translations";
 
 type ArtistProfileSource = UnknownRecord;
 
@@ -31,7 +32,7 @@ export function artistProfileBoolean(artist: ArtistProfile, keys: string[]): boo
   return undefined;
 }
 
-export function artistProfileCategoryNames(artist: ArtistProfile, locale: "uz" | "ru"): string[] {
+export function artistProfileCategoryNames(artist: ArtistProfile, locale: Locale): string[] {
   const names = new Set<string>();
 
   for (const source of artistProfileSources(artist)) {
@@ -46,7 +47,7 @@ export function artistProfileCategoryNames(artist: ArtistProfile, locale: "uz" |
 export function artistProfileCategoryLabels(
   artist: ArtistProfile,
   categoryCatalog: readonly unknown[],
-  locale: "uz" | "ru",
+  locale: Locale,
 ): string[] {
   const labelsById = categoryCatalogLabels(categoryCatalog, locale);
   const catalogLabels = artistProfileCategoryIds(artist)
@@ -71,7 +72,7 @@ function artistProfileSources(artist: ArtistProfile): ArtistProfileSource[] {
   ].filter((source): source is ArtistProfileSource => Boolean(source));
 }
 
-function collectCategoryNames(value: unknown, locale: "uz" | "ru", names: Set<string>) {
+function collectCategoryNames(value: unknown, locale: Locale, names: Set<string>) {
   if (Array.isArray(value)) {
     value.forEach((item) => collectCategoryNames(item, locale, names));
     return;
@@ -130,7 +131,7 @@ function collectCategoryIds(value: unknown, ids: Set<string>) {
   }
 }
 
-function categoryCatalogLabels(categoryCatalog: readonly unknown[], locale: "uz" | "ru") {
+function categoryCatalogLabels(categoryCatalog: readonly unknown[], locale: Locale) {
   const labelsById = new Map<string, string>();
   categoryCatalog.forEach((category) => collectCatalogCategoryLabels(category, locale, labelsById));
   return labelsById;
@@ -138,7 +139,7 @@ function categoryCatalogLabels(categoryCatalog: readonly unknown[], locale: "uz"
 
 function collectCatalogCategoryLabels(
   value: unknown,
-  locale: "uz" | "ru",
+  locale: Locale,
   labelsById: Map<string, string>,
   parentLabel?: string,
 ) {
@@ -161,7 +162,7 @@ function collectCatalogCategoryLabels(
   }
 }
 
-function categoryName(record: UnknownRecord, locale: "uz" | "ru") {
+function categoryName(record: UnknownRecord, locale: Locale) {
   const preferred = locale === "ru" ? record.name_ru : record.name_uz;
   const name = preferred ?? record.name_uz ?? record.name_ru ?? record.name_en ?? record.name ?? record.title;
   return typeof name === "string" && name.trim() ? name.trim() : undefined;

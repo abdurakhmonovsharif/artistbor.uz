@@ -31,7 +31,7 @@ type StatusDefinition = {
   tone: DashboardStatusTone;
 };
 
-const text = (uz: string, ru: string): LocalizedText => ({ uz, ru });
+const text = (uz: string, ru: string): LocalizedText => ({ uz, ru, en: uz });
 
 export const dashboardStatusCatalog = {
   account: [
@@ -224,7 +224,7 @@ export function getDashboardStatus(
   if (definition) {
     return {
       key: definition.key,
-      label: definition.label[locale],
+      label: definition.label[locale] ?? definition.label[defaultLocale],
       tone: definition.tone,
     };
   }
@@ -254,11 +254,11 @@ export function getDashboardStatusDomain(fieldKey?: string): DashboardStatusDoma
 }
 
 export function getDashboardNotification(key: DashboardNotificationKey, locale: Locale = defaultLocale) {
-  return dashboardNotificationCatalog[key][locale];
+  return dashboardNotificationCatalog[key][locale] ?? dashboardNotificationCatalog[key][defaultLocale];
 }
 
 export function getDashboardApiError(key: DashboardApiErrorKey, locale: Locale = defaultLocale) {
-  return dashboardApiErrorCatalog[key][locale];
+  return dashboardApiErrorCatalog[key][locale] ?? dashboardApiErrorCatalog[key][defaultLocale];
 }
 
 export function getCurrentDashboardLocale(): Locale {

@@ -10,6 +10,7 @@ import {
 import type { OrderUiStatus } from "@/lib/order-status";
 import { formatMoneyWithCurrency } from "@/lib/money-format";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { Locale } from "@/lib/i18n/translations";
 
 export function StatusBadge({ status }: { status: OrderUiStatus }) {
   const toneClass: Record<OrderUiStatus["tone"], string> = {
@@ -66,7 +67,7 @@ export function MoneyText({
   value: unknown;
   currency?: string;
   emptyLabel?: string;
-  locale?: "uz" | "ru";
+  locale?: Locale;
 }) {
   const { locale: activeLocale, t } = useI18n();
   const resolvedLocale = locale ?? activeLocale;

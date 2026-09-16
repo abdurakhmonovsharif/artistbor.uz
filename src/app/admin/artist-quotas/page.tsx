@@ -13,6 +13,7 @@ import { artistsApi, type ArtistFilters } from "@/lib/api/admin-content";
 import { artistQuotasApi } from "@/lib/api/artist-quotas";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { canUseAdminAction } from "@/lib/auth/permissions";
+import type { Locale } from "@/lib/i18n/translations";
 import {
   buildMonthlyOrderLimitPayload,
   readArtistQuota,
@@ -296,7 +297,7 @@ function identifier(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : undefined;
 }
 
-function getLabels(locale: "uz" | "ru"): ArtistQuotaLabels & Record<string, string> {
+function getLabels(locale: Locale): ArtistQuotaLabels & Record<string, string> {
   if (locale === "ru") return {
     action: "Действия", active: "Активный", allStatuses: "Все статусы", allTime: "За все время", apply: "Применить", artistsOnPage: "Артистов на странице", blocked: "Заблокирован", cancel: "Отмена", countingOnly: "Только учет", customLimit: "Свой лимит", customLimitHelp: "Укажите целое число больше нуля.", customLimitInvalid: "Укажите лимит больше нуля или выберите безлимитный режим.", defaultLimit: "Системный", defaultLimitHelp: "Используется системное значение.", description: "Контроль подтвержденных заказов и индивидуальных месячных лимитов артистов.", detailLoadFailed: "Не удалось загрузить квоту артиста", edit: "Изменить", enforced: "Статус лимита", enforcedActive: "Включен", errorRetry: "Повторить", eyebrow: "Артисты", history: "История по месяцам", id: "ID", inactive: "Неактивный", limit: "Месячный лимит", limitOnlyCounts: "Сейчас лимит только учитывается: прием заказов не блокируется, пока серверный enforce-режим выключен.", limitedOnPage: "С лимитом на странице", loadFailed: "Не удалось загрузить лимиты артистов", loading: "Лимиты артистов загружаются...", noArtists: "Артисты по этим фильтрам не найдены", period: "Период", refresh: "Обновить", remaining: "Осталось", reset: "Сбросить", save: "Сохранить", saveFailed: "Не удалось сохранить лимит", saveSuccess: "Лимит артиста сохранен", saving: "Сохранение...", searchPlaceholder: "Имя артиста, telefon yoki ID", status: "Статус", title: "Лимиты артистов", total: "Артист", unlimited: "Безлимитный", unlimitedHelp: "Заказы не ограничиваются.", unlimitedOnPage: "Безлимитных на странице", used: "Использовано", usedOnPage: "Использовано на странице", view: "Просмотр" };
   return {

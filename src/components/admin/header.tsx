@@ -155,7 +155,7 @@ function HeaderLanguageControl() {
               onClick={() => selectLocale(item)}
               className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2.5 text-left text-sm font-bold text-slate-600 transition hover:bg-amber-50 hover:text-amber-700 aria-checked:bg-amber-400 aria-checked:text-slate-950 dark:text-slate-200 dark:hover:bg-amber-400/10 dark:hover:text-amber-300 dark:aria-checked:bg-amber-400 dark:aria-checked:text-slate-950"
             >
-              <span>{item === "uz" ? t("language.uz") : t("language.ru")}</span>
+              <span>{item === "uz" ? t("language.uz") : item === "ru" ? t("language.ru") : t("language.en")}</span>
               <span className="text-xs">{localeLabels[item]}</span>
             </button>
           ))}

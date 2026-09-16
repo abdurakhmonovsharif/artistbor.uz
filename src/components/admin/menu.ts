@@ -2,6 +2,7 @@ import {
   Bell,
   BookOpenCheck,
   ClipboardList,
+  FileUp,
   FolderTree,
   Gauge,
   HelpCircle,
@@ -91,6 +92,7 @@ export const adminMenuGroups: AdminMenuGroup[] = [
     key: "system",
     labelKey: "menu.system",
     children: [
+      { labelKey: "menu.fileUpload", href: "/admin/file-upload", icon: FileUp, roles: MODERATOR_OR_ADMIN_ROLES },
       { labelKey: "menu.settings", href: "/admin/settings", icon: Settings, roles: [ADMIN_ROLE] },
       { labelKey: "menu.auditLogs", href: "/admin/audit-logs", icon: ScrollText, roles: [ADMIN_ROLE] },
       { labelKey: "menu.trash", href: "/admin/trash", icon: Trash2, roles: [ADMIN_ROLE] },

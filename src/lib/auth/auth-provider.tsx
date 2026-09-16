@@ -8,6 +8,7 @@ import { staffApi, type StaffRole, type UpdateStaffPayload } from "@/lib/api/adm
 import { canAccessAdminPanel, normalizeStaffRole } from "@/lib/auth/permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { getCurrentDashboardLocale, getDashboardApiError } from "@/lib/i18n/dashboard-copy";
+import type { Locale } from "@/lib/i18n/translations";
 import type { User } from "@/types/api";
 
 export type AdminProfileUpdatePayload = {
@@ -133,7 +134,7 @@ export function useAuth() {
   return context;
 }
 
-function resolveStaffRole(role: User["role"], locale: "uz" | "ru"): StaffRole {
+function resolveStaffRole(role: User["role"], locale: Locale): StaffRole {
   const normalized = normalizeStaffRole(role);
   if (!normalized) throw new Error(getDashboardApiError("adminRoleInvalid", locale));
   return normalized;

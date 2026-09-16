@@ -33,8 +33,9 @@ const AVAILABILITY_MONTH_NAMES = {
   ],
 } as const;
 
-export function formatArtistAvailabilityMonth(date: Date, locale: "ru" | "uz") {
-  return `${AVAILABILITY_MONTH_NAMES[locale][date.getMonth()]} ${date.getFullYear()}`;
+export function formatArtistAvailabilityMonth(date: Date, locale: "ru" | "uz" | "en") {
+  const monthLocale = locale === "ru" ? "ru" : "uz";
+  return `${AVAILABILITY_MONTH_NAMES[monthLocale][date.getMonth()]} ${date.getFullYear()}`;
 }
 
 export function isEditableArtistAvailabilitySource(source: unknown) {

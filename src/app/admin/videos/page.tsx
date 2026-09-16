@@ -31,6 +31,7 @@ import {
 import { getArtistId, getArtistName, getArtistSelectOptions } from "@/lib/artist-display";
 import { getDashboardNotification } from "@/lib/i18n/dashboard-copy";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { Locale } from "@/lib/i18n/translations";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn, normalizeDate } from "@/lib/utils";
 import type { ArtistProfile, ArtistVideoRecord } from "@/types/api";
@@ -577,7 +578,7 @@ function VideoLink({ value, label }: { value: unknown; label: string }) {
   );
 }
 
-function getVideoLabels(locale: "uz" | "ru") {
+function getVideoLabels(locale: Locale) {
   const notification = <Key extends Parameters<typeof getDashboardNotification>[0]>(key: Key) =>
     getDashboardNotification(key, locale);
   return locale === "ru"

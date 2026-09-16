@@ -49,6 +49,7 @@ import {
 } from "@/lib/admin-notification";
 import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { Locale } from "@/lib/i18n/translations";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { normalizeDate, toDisplay } from "@/lib/utils";
 
@@ -315,7 +316,7 @@ function TargetedNotificationModal({
   onClose,
   onSubmit,
 }: {
-  locale: "uz" | "ru";
+  locale: Locale;
   labels: NotificationLabels;
   notificationTypes: Array<{ label: string; value: string }>;
   loading: boolean;
@@ -560,7 +561,7 @@ function NotificationBaseFields<T extends NotificationBaseValues>({
   );
 }
 
-function localizedLocationName(location: Region | District, locale: "uz" | "ru") {
+function localizedLocationName(location: Region | District, locale: Locale) {
   if (locale === "ru") return location.name_ru || location.name_uz || location.name_en || `#${location.id}`;
   return location.name_uz || location.name_ru || location.name_en || `#${location.id}`;
 }
@@ -604,7 +605,7 @@ function FormActions({
 
 type NotificationLabels = ReturnType<typeof getNotificationLabels>;
 
-function getNotificationTypes(locale: "uz" | "ru") {
+function getNotificationTypes(locale: Locale) {
   return [
     { label: getDashboardStatus("notification_type", "system", locale).label, value: "system" },
     { label: getDashboardStatus("notification_type", "order", locale).label, value: "order" },

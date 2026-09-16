@@ -36,6 +36,7 @@ import {
   type LocationFormValues,
 } from "@/lib/location-management";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { Locale } from "@/lib/i18n/translations";
 import { getDashboardNotification, getDashboardStatus } from "@/lib/i18n/dashboard-copy";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { cn, toDisplay } from "@/lib/utils";
@@ -676,7 +677,7 @@ function locationFormError(error: "regionRequired" | "nameRequired" | "sortOrder
   return labels.nameRequired;
 }
 
-function locationName(location: Region, locale: "uz" | "ru") {
+function locationName(location: Region, locale: Locale) {
   if (locale === "ru") return location.name_ru || location.name_uz || location.name_en || "—";
   return location.name_uz || location.name_ru || location.name_en || "—";
 }
@@ -685,7 +686,7 @@ function sortLocations<T extends Region>(rows: T[]) {
   return rows.toSorted((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0) || Number(left.id ?? 0) - Number(right.id ?? 0));
 }
 
-function getLabels(locale: "uz" | "ru") {
+function getLabels(locale: Locale) {
   const active = getDashboardStatus("resource", 1, locale).label;
   const inactive = getDashboardStatus("resource", 0, locale).label;
 

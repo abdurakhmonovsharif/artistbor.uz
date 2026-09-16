@@ -286,6 +286,8 @@ export type UploadedFileRecord = UnknownRecord & {
   url?: string;
   file_url?: string;
   path?: string;
+  mime_type?: string;
+  size?: number;
 };
 
 export type ApplicationFilters = {
@@ -861,11 +863,9 @@ export const artistsApi = {
 export const filesApi = {
   async upload(files: File[], category = "image") {
     const formData = new FormData();
-    files.forEach((file) => formData.append("files[]", file));
+    files.forEach((file) => formData.append("files", file));
     formData.append("category", category);
-    const response = await apiClient.post("/v1/admin/file/upload", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const response = await apiClient.post("/v1/admin/file/upload", formData);
     return unwrapData<UploadedFileRecord[] | UploadedFileRecord>(response.data);
   },
 };

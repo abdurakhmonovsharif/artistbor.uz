@@ -20,6 +20,7 @@ const STAFF_ROLE_LABELS: Record<string, StaffRole> = {
 
 export const ADMIN_ROUTE_RULES: AdminRouteRule[] = [
   { path: "/admin/comments", roles: MODERATOR_OR_ADMIN_ROLES },
+  { path: "/admin/file-upload", roles: MODERATOR_OR_ADMIN_ROLES },
   { path: "/admin/videos", roles: MODERATOR_OR_ADMIN_ROLES },
   { path: "/admin/users", roles: [ADMIN_ROLE] },
   { path: "/admin/operators", roles: [ADMIN_ROLE] },
