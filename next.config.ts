@@ -2,6 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/privacy-term",
+          destination: "/privacy-term.html",
+        },
+      ],
+    };
+  },
   images: {
     remotePatterns: [
       {

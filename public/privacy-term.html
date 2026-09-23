@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Artistbor Privacy Policy" />
+  <meta name="robots" content="index,follow" />
+  <meta name="theme-color" content="#111827" />
+  <title>Artistbor Privacy Policy</title>
+
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f9fafb;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #111827;
+      --accent-soft: #eef2ff;
+      --link: #2563eb;
+      --danger-soft: #fff7ed;
+      --danger-border: #fed7aa;
+      --success-soft: #f0fdf4;
+      --success-border: #bbf7d0;
+      --shadow: 0 10px 35px rgba(17, 24, 39, 0.08);
+      --radius: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 96px;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    a {
+      color: var(--link);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(14px);
+      background: rgba(246, 247, 251, 0.88);
+      border-bottom: 1px solid rgba(229, 231, 235, 0.95);
+    }
+
+    .topbar-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: #111827;
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn,
+    .lang-btn {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      min-height: 38px;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .btn:hover,
+    .lang-btn:hover {
+      border-color: #cbd5e1;
+      transform: translateY(-1px);
+    }
+
+    .lang-btn.active {
+      background: #111827;
+      color: white;
+      border-color: #111827;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 20px 72px;
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      gap: 28px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 92px;
+      align-self: start;
+      max-height: calc(100vh - 112px);
+      overflow: auto;
+      padding-right: 6px;
+    }
+
+    .sidebar-card,
+    .content-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+    }
+
+    .sidebar-card {
+      padding: 18px;
+    }
+
+    .sidebar h3 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .toc a {
+      display: block;
+      color: #374151;
+      padding: 7px 9px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .toc a:hover {
+      background: var(--surface-soft);
+      text-decoration: none;
+    }
+
+    .content-card {
+      padding: 34px;
+    }
+
+    .hero {
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    h1 {
+      margin: 8px 0 10px;
+      font-size: clamp(34px, 6vw, 54px);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .lead {
+      color: #4b5563;
+      font-size: 17px;
+      max-width: 760px;
+    }
+
+    .meta-grid {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .meta-box {
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      padding: 14px;
+      border-radius: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .meta-label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+
+    section {
+      margin: 34px 0;
+    }
+
+    section h2 {
+      font-size: 25px;
+      line-height: 1.2;
+      margin: 0 0 16px;
+      letter-spacing: -0.025em;
+    }
+
+    section h3 {
+      font-size: 18px;
+      margin: 22px 0 8px;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    ul {
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .notice {
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin: 18px 0;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+    }
+
+    .notice.orange {
+      background: var(--danger-soft);
+      border-color: var(--danger-border);
+    }
+
+    .notice.green {
+      background: var(--success-soft);
+      border-color: var(--success-border);
+    }
+
+    .contact-box {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #fff, #fafafa);
+      padding: 18px;
+      border-radius: 14px;
+    }
+
+    code {
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.92em;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    footer {
+      margin-top: 42px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .page {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        max-height: none;
+      }
+
+      .sidebar-card {
+        display: none;
+      }
+
+      .content-card {
+        padding: 24px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .top-actions {
+        width: 100%;
+      }
+
+      .meta-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .page {
+        padding: 18px 12px 48px;
+      }
+
+      .content-card {
+        border-radius: 14px;
+        padding: 20px;
+      }
+    }
+
+    @media print {
+      .topbar,
+      .sidebar {
+        display: none !important;
+      }
+
+      body {
+        background: white;
+      }
+
+      .page {
+        display: block;
+        max-width: none;
+        padding: 0;
+      }
+
+      .content-card {
+        box-shadow: none;
+        border: 0;
+        padding: 0;
+      }
+
+      a {
+        color: black;
+        text-decoration: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <span>Artistbor</span>
+      </div>
+
+      <div class="top-actions">
+        <button class="lang-btn active" data-lang="en" type="button">EN</button>
+        <button class="lang-btn" data-lang="uz" type="button">UZ</button>
+        <button class="lang-btn" data-lang="ru" type="button">RU</button>
+        <button class="btn" id="printBtn" type="button">Print / PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page">
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <h3>Contents</h3>
+        <nav class="toc">
+          <a href="#scope">1. Scope</a>
+          <a href="#collect">2. Information We Collect</a>
+          <a href="#permissions">3. Device Permissions</a>
+          <a href="#use">4. How We Use Information</a>
+          <a href="#visibility">5. Visibility Between Users</a>
+          <a href="#payments">6. Payment Confirmation</a>
+          <a href="#sharing">7. Sharing</a>
+          <a href="#firebase">8. Firebase & Notifications</a>
+          <a href="#maps">9. Maps & Location</a>
+          <a href="#retention">10. Retention</a>
+          <a href="#account-deletion">11. Account Deletion</a>
+          <a href="#rights">12. Your Rights</a>
+          <a href="#children">13. Children</a>
+          <a href="#security">14. Security</a>
+          <a href="#changes">15. Changes</a>
+          <a href="#contact">16. Contact</a>
+        </nav>
+      </div>
+    </aside>
+
+    <main class="content-card">
+      <!-- ENGLISH -->
+      <article data-content-lang="en">
+        <div class="hero">
+          <div class="eyebrow">Privacy Policy</div>
+          <h1>Artistbor Privacy Policy</h1>
+          <p class="lead">
+            This Privacy Policy explains how Artistbor collects, uses, stores,
+            shares, and protects personal information when you use the Artistbor
+            mobile application, website, and related services.
+          </p>
+
+          <div class="meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Effective date</span>
+              September 15, 2026
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Service region</span>
+              Republic of Uzbekistan
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Privacy contact</span>
+              <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Support</span>
+              <a href="https://artistbor.uz/help">https://artistbor.uz/help</a>
+            </div>
+          </div>
+        </div>
+
+        <section id="scope">
+          <h2>1. Scope</h2>
+          <p>
+            This Privacy Policy applies to the Artistbor Android and iOS
+            applications, Artistbor web services, artist and client accounts,
+            artist profiles, bookings and orders, uploaded media and documents,
+            payment-confirmation features, notifications, and customer-support
+            functionality.
+          </p>
+          <p>
+            Artistbor is intended for use in Uzbekistan and is available in
+            Uzbek, Russian, and English.
+          </p>
+        </section>
+
+        <section id="collect">
+          <h2>2. Information We Collect</h2>
+
+          <h3>2.1 Account and authentication information</h3>
+          <p>When you register or use Artistbor, we may collect:</p>
+          <ul>
+            <li>first name and last name;</li>
+            <li>phone number;</li>
+            <li>email address, if provided;</li>
+            <li>profile photo;</li>
+            <li>account role or type;</li>
+            <li>preferred language;</li>
+            <li>account and authentication identifiers; and</li>
+            <li>other information you voluntarily add to your account.</li>
+          </ul>
+
+          <p>
+            Artistbor currently uses phone-number registration with a one-time
+            verification code (OTP). During demo or testing stages, OTP
+            verification may be handled directly by Artistbor. If a third-party
+            SMS/OTP provider is introduced, this Privacy Policy will be updated
+            where appropriate.
+          </p>
+
+          <h3>2.2 Artist profile information</h3>
+          <p>Artist profiles may contain:</p>
+          <ul>
+            <li>name;</li>
+            <li>avatar or profile image;</li>
+            <li>biography;</li>
+            <li>services and service categories;</li>
+            <li>prices;</li>
+            <li>portfolio images or files;</li>
+            <li>rating and reviews;</li>
+            <li>region or service area; and</li>
+            <li>other professional information voluntarily provided by the artist.</li>
+          </ul>
+
+          <h3>2.3 Booking and order information</h3>
+          <p>For bookings and orders, Artistbor may process:</p>
+          <ul>
+            <li>selected artist and service;</li>
+            <li>booking date and time;</li>
+            <li>order status;</li>
+            <li>service price;</li>
+            <li>booking location or address;</li>
+            <li>payment status;</li>
+            <li>uploaded payment confirmation;</li>
+            <li>order history;</li>
+            <li>cancellation or rescheduling information; and</li>
+            <li>other information necessary to fulfil the order.</li>
+          </ul>
+
+          <h3>2.4 Uploaded images and files</h3>
+          <p>
+            Users may upload images and files, including profile images,
+            portfolio content, documents, booking-related files, or payment
+            confirmation images. Uploaded content is transmitted through the
+            Artistbor backend and stored on Artistbor-controlled server
+            infrastructure in Uzbekistan.
+          </p>
+
+          <h3>2.5 Technical information</h3>
+          <p>We may process technical information such as:</p>
+          <ul>
+            <li>device and operating-system information;</li>
+            <li>application version;</li>
+            <li>IP address;</li>
+            <li>push-notification token;</li>
+            <li>login and security events;</li>
+            <li>server and application logs; and</li>
+            <li>basic diagnostic information necessary to operate and secure the service.</li>
+          </ul>
+
+          <div class="notice green">
+            Artistbor currently does <strong>not</strong> use advertising SDKs,
+            personalised advertising, Firebase Analytics, or Firebase
+            Crashlytics.
+          </div>
+        </section>
+
+        <section id="permissions">
+          <h2>3. Device Permissions</h2>
+          <p>Artistbor may request the following permissions:</p>
+
+          <h3>Location</h3>
+          <p>
+            Location is requested only when a location-dependent feature is used,
+            such as selecting or determining a service location or finding
+            relevant nearby services. Artistbor does not require background
+            location access for normal operation.
+          </p>
+
+          <h3>Camera</h3>
+          <p>
+            Camera access may be used when you choose to capture an image for a
+            profile, portfolio, booking, document, or payment confirmation.
+          </p>
+
+          <h3>Photos, gallery, and files</h3>
+          <p>
+            Artistbor may access selected photos or files when you choose to
+            upload them.
+          </p>
+
+          <h3>Microphone</h3>
+          <p>Artistbor does not currently request microphone access.</p>
+
+          <h3>Notifications</h3>
+          <p>
+            Notification permission is used to send order updates, reminders,
+            service messages, new concert or event information, and relevant
+            discount or promotional notifications.
+          </p>
+
+          <p>
+            You may manage permissions at any time through your device settings.
+            Some features may not function without the relevant permission.
+          </p>
+        </section>
+
+        <section id="use">
+          <h2>4. How We Use Information</h2>
+          <p>Artistbor may use personal information to:</p>
+          <ul>
+            <li>create and manage accounts;</li>
+            <li>authenticate users;</li>
+            <li>display artist profiles and portfolios;</li>
+            <li>provide service search and booking functionality;</li>
+            <li>manage orders and booking status;</li>
+            <li>verify payment confirmations;</li>
+            <li>show relevant contact information after the required booking conditions are met;</li>
+            <li>send operational and promotional push notifications;</li>
+            <li>provide customer support;</li>
+            <li>prevent abuse, fraud, or fake payment confirmations;</li>
+            <li>maintain platform security;</li>
+            <li>resolve disputes; and</li>
+            <li>comply with applicable legal requirements.</li>
+          </ul>
+        </section>
+
+        <section id="visibility">
+          <h2>5. Visibility of Information Between Users</h2>
+
+          <h3>Artist information visible to clients</h3>
+          <p>
+            A client may see an artist's public profile information, including:
+            name, avatar, biography, services, prices, portfolio, rating, reviews,
+            region, and artist contact information made available through the
+            platform.
+          </p>
+
+          <p>
+            The artist's phone number may be visible to the client so that the
+            client can contact the artist regarding a service.
+          </p>
+
+          <h3>Client information visible to artists</h3>
+          <p>
+            A client's phone number becomes visible to the selected artist after
+            the booking has been confirmed and the required advance payment has
+            been completed or verified.
+          </p>
+
+          <p>
+            Artistbor does not currently provide an in-app client-to-artist chat
+            feature.
+          </p>
+        </section>
+
+        <section id="payments">
+          <h2>6. Payment and Payment Confirmation</h2>
+          <p>
+            Artistbor currently does not process card payments through an
+            integrated card-payment gateway.
+          </p>
+
+          <p>
+            Where advance payment is required, Artistbor may display payment
+            instructions or a card/account number. The client makes the transfer
+            using an external banking application or payment service and may then
+            upload a receipt, screenshot, or other payment confirmation to
+            Artistbor.
+          </p>
+
+          <p>Payment-confirmation information may include:</p>
+          <ul>
+            <li>payment amount;</li>
+            <li>payment date and time;</li>
+            <li>transaction/reference information;</li>
+            <li>payer or recipient information visible on the receipt;</li>
+            <li>masked account or card information visible on the receipt;</li>
+            <li>uploaded receipt image or file; and</li>
+            <li>the related order or booking identifier.</li>
+          </ul>
+
+          <div class="notice orange">
+            Artistbor does not ask users to provide CVV/CVC, PIN codes,
+            online-banking passwords, or other secret banking credentials.
+          </div>
+
+          <p>
+            A payment confirmation may be accessible to the client who uploaded
+            it, the relevant artist, and authorised Artistbor administrators or
+            operators where access is required for verification, order handling,
+            support, or dispute resolution.
+          </p>
+        </section>
+
+        <section id="sharing">
+          <h2>7. How We Share Information</h2>
+          <p>Artistbor does not sell personal information.</p>
+
+          <p>Information may be shared:</p>
+          <ul>
+            <li>between clients and artists where necessary to provide the booked service;</li>
+            <li>with authorised Artistbor administrators and operators;</li>
+            <li>with infrastructure or notification service providers where technically necessary;</li>
+            <li>where required by applicable law or a lawful request; or</li>
+            <li>with the user's consent.</li>
+          </ul>
+
+          <p>
+            Artistbor's backend and uploaded media/files are hosted on server
+            infrastructure located in Uzbekistan.
+          </p>
+        </section>
+
+        <section id="firebase">
+          <h2>8. Firebase Cloud Messaging and Push Notifications</h2>
+          <p>
+            Artistbor uses <strong>Firebase Cloud Messaging (FCM)</strong>, a
+            Google service, to deliver push notifications.
+          </p>
+
+          <p>For notification delivery, technical data may include:</p>
+          <ul>
+            <li>push-notification token;</li>
+            <li>application instance information;</li>
+            <li>device or operating-system information; and</li>
+            <li>information necessary to route and deliver the notification.</li>
+          </ul>
+
+          <p>Notifications may include:</p>
+          <ul>
+            <li>booking and order reminders;</li>
+            <li>booking status changes;</li>
+            <li>payment-related updates;</li>
+            <li>service notifications;</li>
+            <li>new concert or event information;</li>
+            <li>discounts or promotional announcements; and</li>
+            <li>important account or security messages.</li>
+          </ul>
+
+          <p>
+            Users may disable push notifications through device settings.
+          </p>
+        </section>
+
+        <section id="maps">
+          <h2>9. OpenStreetMap and Location</h2>
+          <p>
+            Artistbor uses map functionality based on
+            <strong>OpenStreetMap</strong> to support location-related features.
+          </p>
+
+          <p>
+            Location information is accessed only when the user requests or
+            enables a feature that needs location. Artistbor does not use
+            location for cross-app advertising tracking.
+          </p>
+        </section>
+
+        <section id="retention">
+          <h2>10. Data Retention</h2>
+          <p>
+            Artistbor retains personal information only for as long as reasonably
+            necessary for the purposes described in this Privacy Policy.
+          </p>
+
+          <ul>
+            <li>
+              <strong>Active account data:</strong> retained while the account is
+              active.
+            </li>
+            <li>
+              <strong>Soft-deleted accounts:</strong> retained in a disabled
+              state for up to 90 days.
+            </li>
+            <li>
+              <strong>Backups:</strong> generally retained on a rolling basis for
+              up to 30 days.
+            </li>
+            <li>
+              <strong>Payment confirmations:</strong> retained for as long as
+              reasonably necessary to verify the related payment, manage the
+              order, handle disputes, prevent fraud, and meet applicable
+              requirements.
+            </li>
+            <li>
+              <strong>Security and operational logs:</strong> retained for a
+              reasonable period necessary for platform security and diagnostics.
+            </li>
+          </ul>
+        </section>
+
+        <section data-section="account-deletion">
+          <h2>11. Account Deletion</h2>
+
+          <p>
+            Users can request account deletion from within the Artistbor app:
+          </p>
+
+          <p><code>Profile → Settings → Delete account</code></p>
+
+          <p>
+            Users can also review the account-deletion instructions at:
+            <a href="https://artistbor-uz.vercel.app/privacy-term#account-deletion">
+              https://artistbor-uz.vercel.app/privacy-term#account-deletion
+            </a>
+          </p>
+
+          <div class="notice">
+            <strong>Deletion process:</strong> after a user requests deletion,
+            the account is soft-deleted and access is disabled. The account may
+            remain in soft-deleted status for up to <strong>90 days</strong>.
+            After that period, personal information associated with the account
+            is permanently deleted or anonymised, except where limited retention
+            is necessary for fraud prevention, unresolved disputes, security,
+            or applicable legal obligations.
+          </div>
+
+          <p>
+            Backup copies may remain temporarily for up to 30 additional days
+            until the relevant backup cycle is overwritten.
+          </p>
+
+          <p>
+            A suspended, blocked, or temporarily disabled account is not the same
+            as a permanent account-deletion request.
+          </p>
+        </section>
+
+        <section id="rights">
+          <h2>12. Your Rights and Choices</h2>
+          <p>Depending on applicable law, you may request to:</p>
+          <ul>
+            <li>access information associated with your account;</li>
+            <li>correct or update account information;</li>
+            <li>delete your account and personal information;</li>
+            <li>withdraw device permissions;</li>
+            <li>disable push notifications;</li>
+            <li>request information about how your data is processed; and</li>
+            <li>contact Artistbor regarding a privacy concern.</li>
+          </ul>
+
+          <p>
+            Privacy requests may be sent to
+            <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>.
+          </p>
+        </section>
+
+        <section id="children">
+          <h2>13. Children's Privacy</h2>
+          <p>
+            Artistbor is intended for users aged <strong>13 and older</strong>.
+            Users aged 13 or older may register for an Artistbor account,
+            subject to applicable law.
+          </p>
+          <p>
+            Artistbor does not knowingly allow children under 13 to create an
+            account. If we become aware that personal information from a child
+            under 13 has been collected improperly, we will take reasonable
+            steps to delete it.
+          </p>
+        </section>
+
+        <section id="security">
+          <h2>14. Data Security</h2>
+          <p>
+            Artistbor uses reasonable technical and organisational safeguards
+            designed to protect personal information against unauthorised access,
+            disclosure, alteration, misuse, or loss.
+          </p>
+          <p>
+            These measures may include encrypted HTTPS communication,
+            authentication controls, restricted administrative access, server
+            access controls, logging, and other security measures appropriate to
+            the platform.
+          </p>
+          <p>
+            No internet transmission or electronic storage system can be
+            guaranteed to be completely secure.
+          </p>
+        </section>
+
+        <section id="changes">
+          <h2>15. Changes to This Privacy Policy</h2>
+          <p>
+            We may update this Privacy Policy when Artistbor features, data
+            practices, service providers, legal requirements, or app-store
+            requirements change.
+          </p>
+          <p>
+            The latest version will be published on this page with an updated
+            effective or last-updated date.
+          </p>
+        </section>
+
+        <section id="contact">
+          <h2>16. Contact</h2>
+          <div class="contact-box">
+            <p><strong>Artistbor</strong></p>
+            <p>
+              Support:
+              <a href="mailto:support@artistbor.uz">support@artistbor.uz</a>
+            </p>
+            <p>
+              Privacy:
+              <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>
+            </p>
+            <p>
+              Help Center:
+              <a href="https://artistbor.uz/help">https://artistbor.uz/help</a>
+            </p>
+            <p>
+              Account deletion:
+              <a href="https://artistbor-uz.vercel.app/privacy-term#account-deletion">
+                https://artistbor-uz.vercel.app/privacy-term#account-deletion
+              </a>
+            </p>
+            <p>Service region: Republic of Uzbekistan</p>
+          </div>
+        </section>
+
+        <footer>© 2026 Artistbor. All rights reserved.</footer>
+      </article>
+
+      <!-- UZBEK -->
+      <article data-content-lang="uz" class="hidden">
+        <div class="hero">
+          <div class="eyebrow">Maxfiylik siyosati</div>
+          <h1>Artistbor Maxfiylik Siyosati</h1>
+          <p class="lead">
+            Ushbu Maxfiylik siyosati Artistbor mobil ilovasi, veb-xizmatlari va
+            bog‘liq funksiyalaridan foydalanganda shaxsiy ma’lumotlar qanday
+            yig‘ilishi, ishlatilishi, saqlanishi, uzatilishi va himoya qilinishini
+            tushuntiradi.
+          </p>
+
+          <div class="meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Kuchga kirish sanasi</span>
+              15-sentabr, 2026
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Xizmat hududi</span>
+              O‘zbekiston Respublikasi
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Maxfiylik bo‘yicha aloqa</span>
+              <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Yordam markazi</span>
+              <a href="https://artistbor.uz/help">https://artistbor.uz/help</a>
+            </div>
+          </div>
+        </div>
+
+        <section>
+          <h2>1. Qo‘llanish doirasi</h2>
+          <p>
+            Ushbu siyosat Artistbor Android va iOS ilovalari, Artistbor veb-xizmatlari,
+            client va artist akkauntlari, artist profillari, buyurtmalar, yuklangan
+            rasmlar va fayllar, to‘lovni tasdiqlash funksiyasi, bildirishnomalar va
+            support xizmatlariga taalluqlidir.
+          </p>
+          <p>
+            Artistbor O‘zbekiston hududi uchun mo‘ljallangan va o‘zbek, rus hamda
+            ingliz tillarida ishlaydi.
+          </p>
+        </section>
+
+        <section>
+          <h2>2. Biz yig‘adigan ma’lumotlar</h2>
+
+          <h3>2.1 Akkaunt va autentifikatsiya ma’lumotlari</h3>
+          <ul>
+            <li>ism va familiya;</li>
+            <li>telefon raqami;</li>
+            <li>email, agar kiritilgan bo‘lsa;</li>
+            <li>profil rasmi;</li>
+            <li>akkaunt turi yoki roli;</li>
+            <li>tanlangan til;</li>
+            <li>autentifikatsiya identifikatorlari;</li>
+            <li>foydalanuvchi ixtiyoriy ravishda kiritgan boshqa ma’lumotlar.</li>
+          </ul>
+
+          <p>
+            Artistbor hozirda telefon raqami va bir martalik tasdiqlash kodi (OTP)
+            orqali ro‘yxatdan o‘tishni qo‘llaydi. Demo/test bosqichida OTP Artistbor
+            tomonidan bevosita boshqarilishi mumkin. Keyinchalik tashqi SMS/OTP
+            provayderi qo‘shilsa, ushbu siyosat zarur hollarda yangilanadi.
+          </p>
+
+          <h3>2.2 Artist profili</h3>
+          <ul>
+            <li>ism;</li>
+            <li>avatar;</li>
+            <li>bio;</li>
+            <li>xizmatlar;</li>
+            <li>narxlar;</li>
+            <li>portfolio;</li>
+            <li>rating va reviewlar;</li>
+            <li>region;</li>
+            <li>boshqa professional ma’lumotlar.</li>
+          </ul>
+
+          <h3>2.3 Buyurtma ma’lumotlari</h3>
+          <ul>
+            <li>tanlangan artist va xizmat;</li>
+            <li>sana va vaqt;</li>
+            <li>buyurtma statusi;</li>
+            <li>xizmat narxi;</li>
+            <li>manzil yoki location;</li>
+            <li>to‘lov statusi;</li>
+            <li>to‘lov cheki;</li>
+            <li>buyurtma tarixi;</li>
+            <li>bekor qilish yoki vaqtni o‘zgartirish ma’lumotlari.</li>
+          </ul>
+
+          <h3>2.4 Yuklangan rasm va fayllar</h3>
+          <p>
+            Foydalanuvchi profil rasmi, portfolio, hujjat, buyurtmaga oid fayl yoki
+            to‘lov cheki kabi rasm va fayllarni yuklashi mumkin. Ushbu fayllar
+            Artistbor backend orqali yuboriladi va O‘zbekistondagi Artistbor
+            server infratuzilmasida saqlanadi.
+          </p>
+
+          <h3>2.5 Texnik ma’lumotlar</h3>
+          <ul>
+            <li>qurilma va operatsion tizim ma’lumotlari;</li>
+            <li>ilova versiyasi;</li>
+            <li>IP manzil;</li>
+            <li>push notification token;</li>
+            <li>login va xavfsizlik loglari;</li>
+            <li>server va ilova loglari.</li>
+          </ul>
+
+          <div class="notice green">
+            Artistbor hozirda reklama SDKlari, personal reklama,
+            Firebase Analytics yoki Firebase Crashlytics ishlatmaydi.
+          </div>
+        </section>
+
+        <section>
+          <h2>3. Qurilma ruxsatlari</h2>
+
+          <h3>Location</h3>
+          <p>
+            Location faqat foydalanuvchi location kerak bo‘lgan funksiyani
+            ishlatganda so‘raladi. Oddiy ishlash uchun background location talab
+            qilinmaydi.
+          </p>
+
+          <h3>Camera</h3>
+          <p>
+            Profil, portfolio, buyurtma, hujjat yoki to‘lov cheki uchun rasm olish
+            kerak bo‘lganda camera ishlatilishi mumkin.
+          </p>
+
+          <h3>Gallery va Files</h3>
+          <p>
+            Foydalanuvchi o‘zi tanlagan rasm yoki faylni upload qilish uchun
+            gallery/files access ishlatilishi mumkin.
+          </p>
+
+          <h3>Microphone</h3>
+          <p>Artistbor hozirda mikrofon ruxsatini so‘ramaydi.</p>
+
+          <h3>Notifications</h3>
+          <p>
+            Buyurtma eslatmalari, status o‘zgarishlari, servis xabarlari, yangi
+            konsert/eventlar va chegirma yoki promo xabarlar uchun ishlatiladi.
+          </p>
+        </section>
+
+        <section>
+          <h2>4. Ma’lumotlardan qanday foydalanamiz</h2>
+          <ul>
+            <li>akkaunt yaratish va boshqarish;</li>
+            <li>foydalanuvchini autentifikatsiya qilish;</li>
+            <li>artist profili va portfoliosini ko‘rsatish;</li>
+            <li>xizmat qidirish va buyurtma qilish;</li>
+            <li>buyurtma statusini boshqarish;</li>
+            <li>to‘lov chekini tekshirish;</li>
+            <li>shart bajarilgandan keyin kerakli kontaktlarni ko‘rsatish;</li>
+            <li>push notification yuborish;</li>
+            <li>support ko‘rsatish;</li>
+            <li>firibgarlik va noto‘g‘ri cheklarni aniqlash;</li>
+            <li>xavfsizlikni ta’minlash;</li>
+            <li>nizolarni hal qilish.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>5. Client va artist o‘rtasida ko‘rinadigan ma’lumotlar</h2>
+
+          <h3>Client ko‘radigan artist ma’lumotlari</h3>
+          <p>
+            Client artistning ismi, avatari, bio, xizmatlari, narxlari, portfolio,
+            rating, review, region va platforma orqali ochiq qilingan kontakt
+            ma’lumotlarini ko‘rishi mumkin.
+          </p>
+
+          <p>
+            Artistning telefon raqami clientga aloqa qilish uchun ko‘rinishi
+            mumkin.
+          </p>
+
+          <h3>Artist ko‘radigan client ma’lumotlari</h3>
+          <p>
+            Client telefon raqami faqat buyurtma tasdiqlangandan va talab qilingan
+            avans to‘lovi amalga oshirilgandan yoki tasdiqlangandan keyin tanlangan
+            artistga ko‘rinadi.
+          </p>
+
+          <p>Artistbor ichida hozircha client-artist chat mavjud emas.</p>
+        </section>
+
+        <section>
+          <h2>6. To‘lov va to‘lovni tasdiqlash</h2>
+          <p>
+            Artistbor hozirda integratsiya qilingan bank-karta payment gateway
+            orqali to‘lov qabul qilmaydi.
+          </p>
+
+          <p>
+            Zarur holatda Artistbor karta yoki hisob raqamini ko‘rsatadi. Client
+            tashqi bank ilovasi yoki to‘lov servisi orqali pul o‘tkazadi va keyin
+            chek, screenshot yoki boshqa to‘lov tasdiqini Artistbor'ga yuklaydi.
+          </p>
+
+          <div class="notice orange">
+            Artistbor CVV/CVC, PIN, internet banking paroli yoki boshqa maxfiy
+            bank credentiallarini so‘ramaydi.
+          </div>
+
+          <p>
+            Yuklangan to‘lov cheki clientning o‘ziga, tegishli artistga hamda
+            tekshirish, support yoki nizoni hal qilish uchun vakolatli admin va
+            operatorlarga ko‘rinishi mumkin.
+          </p>
+        </section>
+
+        <section>
+          <h2>7. Ma’lumotlarni ulashish</h2>
+          <p>Artistbor shaxsiy ma’lumotlarni sotmaydi.</p>
+          <ul>
+            <li>buyurtmani bajarish uchun client va artist o‘rtasida;</li>
+            <li>vakolatli admin va operatorlarga;</li>
+            <li>texnik zarurat bo‘lsa infratuzilma yoki notification provayderlariga;</li>
+            <li>qonuniy talab mavjud bo‘lsa;</li>
+            <li>foydalanuvchi roziligi bilan.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>8. Firebase Cloud Messaging va push notification</h2>
+          <p>
+            Artistbor push notification yuborish uchun Google'ning
+            <strong>Firebase Cloud Messaging (FCM)</strong> xizmatidan foydalanadi.
+          </p>
+
+          <p>Notification yetkazish uchun quyidagi texnik ma’lumotlar ishlatilishi mumkin:</p>
+          <ul>
+            <li>push token;</li>
+            <li>app instance ma’lumotlari;</li>
+            <li>qurilma yoki OS ma’lumotlari;</li>
+            <li>notification yetkazish uchun zarur texnik ma’lumotlar.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>9. OpenStreetMap va Location</h2>
+          <p>
+            Artistbor location bilan bog‘liq funksiyalar uchun
+            <strong>OpenStreetMap</strong> asosidagi xarita funksiyasidan foydalanadi.
+          </p>
+          <p>
+            Location faqat foydalanuvchi location kerak bo‘lgan funksiyani
+            ishlatganda olinadi. Location reklama tracking uchun ishlatilmaydi.
+          </p>
+        </section>
+
+        <section>
+          <h2>10. Ma’lumotlarni saqlash muddati</h2>
+          <ul>
+            <li><strong>Aktiv akkaunt:</strong> akkaunt faol bo‘lgan vaqt davomida.</li>
+            <li><strong>Soft delete akkaunt:</strong> 90 kungacha.</li>
+            <li><strong>Backup:</strong> rolling backup shaklida 30 kungacha.</li>
+            <li>
+              <strong>To‘lov cheklari:</strong> to‘lovni tekshirish, buyurtmani
+              boshqarish, nizolarni hal qilish va fraud prevention uchun zarur
+              muddat davomida.
+            </li>
+            <li>
+              <strong>Security/operational loglar:</strong> platforma xavfsizligi
+              va diagnostika uchun oqilona zarur muddat davomida.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>11. Akkauntni o‘chirish</h2>
+          <p>Ilova ichida:</p>
+          <p><code>Profile → Settings → Delete account</code></p>
+
+          <p>
+            Tashqi sahifa:
+            <a href="https://artistbor-uz.vercel.app/privacy-term#account-deletion">
+              https://artistbor-uz.vercel.app/privacy-term#account-deletion
+            </a>
+          </p>
+
+          <div class="notice">
+            Delete account yuborilgandan keyin akkaunt soft-delete holatiga
+            o‘tkaziladi va foydalanish bloklanadi. Akkaunt
+            <strong>90 kungacha</strong> soft-delete holatida saqlanishi mumkin.
+            Ushbu muddat tugagach, foydalanuvchining shaxsiy ma’lumotlari permanent
+            o‘chiriladi yoki anonymize qilinadi, qonuniy, xavfsizlik, fraud
+            prevention yoki ochiq nizo sababli saqlash zarur bo‘lgan cheklangan
+            ma’lumotlar bundan mustasno.
+          </div>
+
+          <p>
+            Backupdagi ma’lumotlar backup sikliga ko‘ra qo‘shimcha ravishda
+            30 kungacha saqlanishi mumkin.
+          </p>
+        </section>
+
+        <section>
+          <h2>12. Foydalanuvchi huquqlari</h2>
+          <ul>
+            <li>akkaunt ma’lumotlariga kirish;</li>
+            <li>ma’lumotlarni tuzatish yoki yangilash;</li>
+            <li>akkaunt va shaxsiy ma’lumotlarni o‘chirishni so‘rash;</li>
+            <li>device permissionlarni bekor qilish;</li>
+            <li>push notificationlarni o‘chirish;</li>
+            <li>privacy bo‘yicha savol yoki murojaat yuborish.</li>
+          </ul>
+
+          <p>
+            Privacy murojaatlar:
+            <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>
+          </p>
+        </section>
+
+        <section>
+          <h2>13. Bolalar maxfiyligi</h2>
+          <p>
+            Artistbor <strong>13 yosh va undan katta</strong> foydalanuvchilar
+            uchun mo‘ljallangan. 13 yosh va undan katta foydalanuvchilar amaldagi
+            qonunchilik doirasida ro‘yxatdan o‘tishi mumkin.
+          </p>
+          <p>
+            13 yoshdan kichik bolalarning akkaunt yaratishiga ataylab ruxsat
+            berilmaydi.
+          </p>
+        </section>
+
+        <section>
+          <h2>14. Xavfsizlik</h2>
+          <p>
+            Artistbor ma’lumotlarni ruxsatsiz kirish, oshkor qilish, o‘zgartirish,
+            noto‘g‘ri ishlatish yoki yo‘qotishdan himoya qilish uchun oqilona
+            texnik va tashkiliy choralarni qo‘llaydi.
+          </p>
+          <p>
+            Bunga HTTPS, autentifikatsiya nazorati, cheklangan admin access,
+            server access control va logging kirishi mumkin.
+          </p>
+        </section>
+
+        <section>
+          <h2>15. Siyosatdagi o‘zgarishlar</h2>
+          <p>
+            Artistbor funksiyalari, ma’lumotlar bilan ishlash amaliyoti,
+            providerlar, qonunchilik yoki app-store talablari o‘zgarsa, ushbu
+            siyosat yangilanishi mumkin.
+          </p>
+        </section>
+
+        <section>
+          <h2>16. Aloqa</h2>
+          <div class="contact-box">
+            <p><strong>Artistbor</strong></p>
+            <p>Support: <a href="mailto:support@artistbor.uz">support@artistbor.uz</a></p>
+            <p>Privacy: <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a></p>
+            <p>Help Center: <a href="https://artistbor.uz/help">https://artistbor.uz/help</a></p>
+            <p>
+              Account deletion:
+              <a href="https://artistbor-uz.vercel.app/privacy-term#account-deletion">
+                https://artistbor-uz.vercel.app/privacy-term#account-deletion
+              </a>
+            </p>
+            <p>Xizmat hududi: O‘zbekiston Respublikasi</p>
+          </div>
+        </section>
+
+        <footer>© 2026 Artistbor. Barcha huquqlar himoyalangan.</footer>
+      </article>
+
+      <!-- RUSSIAN -->
+      <article data-content-lang="ru" class="hidden">
+        <div class="hero">
+          <div class="eyebrow">Политика конфиденциальности</div>
+          <h1>Политика конфиденциальности Artistbor</h1>
+          <p class="lead">
+            Настоящая Политика конфиденциальности описывает, как Artistbor
+            собирает, использует, хранит, передает и защищает персональные данные
+            при использовании мобильного приложения, веб-сервисов и связанных
+            функций Artistbor.
+          </p>
+
+          <div class="meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Дата вступления в силу</span>
+              15 сентября 2026 г.
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Регион сервиса</span>
+              Республика Узбекистан
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">По вопросам конфиденциальности</span>
+              <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Поддержка</span>
+              <a href="https://artistbor.uz/help">https://artistbor.uz/help</a>
+            </div>
+          </div>
+        </div>
+
+        <section>
+          <h2>1. Область действия</h2>
+          <p>
+            Настоящая Политика применяется к приложениям Artistbor для Android и
+            iOS, веб-сервисам Artistbor, аккаунтам клиентов и артистов, профилям
+            артистов, заказам, загружаемым изображениям и файлам, подтверждению
+            платежей, уведомлениям и службе поддержки.
+          </p>
+          <p>
+            Artistbor предназначен для использования в Узбекистане и доступен на
+            узбекском, русском и английском языках.
+          </p>
+        </section>
+
+        <section>
+          <h2>2. Какие данные мы собираем</h2>
+
+          <h3>2.1 Данные аккаунта и аутентификации</h3>
+          <ul>
+            <li>имя и фамилия;</li>
+            <li>номер телефона;</li>
+            <li>email, если указан;</li>
+            <li>фото профиля;</li>
+            <li>роль или тип аккаунта;</li>
+            <li>предпочитаемый язык;</li>
+            <li>идентификаторы аккаунта и аутентификации;</li>
+            <li>другие сведения, которые пользователь предоставляет добровольно.</li>
+          </ul>
+
+          <p>
+            Artistbor использует регистрацию по номеру телефона с одноразовым
+            кодом подтверждения (OTP). На этапе демо/тестирования OTP может
+            обрабатываться непосредственно Artistbor. При подключении внешнего
+            SMS/OTP-провайдера Политика будет обновлена при необходимости.
+          </p>
+
+          <h3>2.2 Данные профиля артиста</h3>
+          <ul>
+            <li>имя;</li>
+            <li>аватар;</li>
+            <li>биография;</li>
+            <li>услуги;</li>
+            <li>цены;</li>
+            <li>портфолио;</li>
+            <li>рейтинг и отзывы;</li>
+            <li>регион;</li>
+            <li>другие профессиональные данные.</li>
+          </ul>
+
+          <h3>2.3 Данные заказов</h3>
+          <ul>
+            <li>выбранный артист и услуга;</li>
+            <li>дата и время;</li>
+            <li>статус заказа;</li>
+            <li>стоимость услуги;</li>
+            <li>адрес или местоположение;</li>
+            <li>статус оплаты;</li>
+            <li>загруженное подтверждение оплаты;</li>
+            <li>история заказов;</li>
+            <li>данные отмены или переноса.</li>
+          </ul>
+
+          <h3>2.4 Загружаемые изображения и файлы</h3>
+          <p>
+            Пользователь может загружать фото профиля, портфолио, документы,
+            файлы, связанные с заказом, и подтверждения оплаты. Они передаются
+            через backend Artistbor и хранятся на серверной инфраструктуре
+            Artistbor в Узбекистане.
+          </p>
+
+          <h3>2.5 Технические данные</h3>
+          <ul>
+            <li>данные устройства и операционной системы;</li>
+            <li>версия приложения;</li>
+            <li>IP-адрес;</li>
+            <li>push-токен;</li>
+            <li>события входа и безопасности;</li>
+            <li>серверные и прикладные логи.</li>
+          </ul>
+
+          <div class="notice green">
+            В настоящее время Artistbor не использует рекламные SDK,
+            персонализированную рекламу, Firebase Analytics или Firebase
+            Crashlytics.
+          </div>
+        </section>
+
+        <section>
+          <h2>3. Разрешения устройства</h2>
+
+          <h3>Геолокация</h3>
+          <p>
+            Геолокация запрашивается только при использовании функции, которой
+            требуется местоположение. Для обычной работы фоновая геолокация не
+            требуется.
+          </p>
+
+          <h3>Камера</h3>
+          <p>
+            Камера может использоваться для создания фото профиля, портфолио,
+            заказа, документа или подтверждения оплаты.
+          </p>
+
+          <h3>Фото, галерея и файлы</h3>
+          <p>
+            Доступ используется только когда пользователь сам выбирает файл или
+            изображение для загрузки.
+          </p>
+
+          <h3>Микрофон</h3>
+          <p>Artistbor в настоящее время не запрашивает доступ к микрофону.</p>
+
+          <h3>Уведомления</h3>
+          <p>
+            Разрешение используется для напоминаний о заказах, изменения
+            статусов, сервисных сообщений, информации о новых концертах/событиях,
+            скидках и промо-уведомлениях.
+          </p>
+        </section>
+
+        <section>
+          <h2>4. Как мы используем данные</h2>
+          <ul>
+            <li>создание и управление аккаунтами;</li>
+            <li>аутентификация пользователей;</li>
+            <li>отображение профилей и портфолио артистов;</li>
+            <li>поиск услуг и бронирование;</li>
+            <li>управление заказами;</li>
+            <li>проверка подтверждений оплаты;</li>
+            <li>отображение контактных данных после выполнения необходимых условий;</li>
+            <li>отправка push-уведомлений;</li>
+            <li>работа поддержки;</li>
+            <li>предотвращение мошенничества и поддельных чеков;</li>
+            <li>обеспечение безопасности;</li>
+            <li>разрешение споров.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>5. Видимость данных между клиентом и артистом</h2>
+
+          <h3>Данные артиста, доступные клиенту</h3>
+          <p>
+            Клиент может видеть имя артиста, аватар, биографию, услуги, цены,
+            портфолио, рейтинг, отзывы, регион и контактные данные, доступные
+            через платформу.
+          </p>
+
+          <p>
+            Номер телефона артиста может быть доступен клиенту для связи по
+            поводу услуги.
+          </p>
+
+          <h3>Данные клиента, доступные артисту</h3>
+          <p>
+            Номер телефона клиента становится доступен выбранному артисту только
+            после подтверждения заказа и внесения или подтверждения необходимой
+            предоплаты.
+          </p>
+
+          <p>В Artistbor в настоящее время нет встроенного чата клиент–артист.</p>
+        </section>
+
+        <section>
+          <h2>6. Оплата и подтверждение оплаты</h2>
+          <p>
+            Artistbor в настоящее время не принимает банковские карты через
+            интегрированный платежный шлюз.
+          </p>
+          <p>
+            При необходимости Artistbor показывает номер карты или счета. Клиент
+            самостоятельно переводит средства через банковское приложение или
+            платежный сервис и затем загружает чек, скриншот или другое
+            подтверждение оплаты.
+          </p>
+
+          <div class="notice orange">
+            Artistbor не запрашивает CVV/CVC, PIN-код, пароль от интернет-банкинга
+            или иные секретные банковские данные.
+          </div>
+
+          <p>
+            Подтверждение оплаты может быть доступно самому клиенту, выбранному
+            артисту, а также авторизованным администраторам и операторам Artistbor
+            для проверки, поддержки и разрешения споров.
+          </p>
+        </section>
+
+        <section>
+          <h2>7. Передача данных</h2>
+          <p>Artistbor не продает персональные данные.</p>
+          <ul>
+            <li>между клиентом и артистом, когда это необходимо для оказания услуги;</li>
+            <li>авторизованным администраторам и операторам;</li>
+            <li>техническим сервис-провайдерам, когда это необходимо для работы сервиса;</li>
+            <li>если этого требует закон;</li>
+            <li>с согласия пользователя.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>8. Firebase Cloud Messaging и push-уведомления</h2>
+          <p>
+            Artistbor использует <strong>Firebase Cloud Messaging (FCM)</strong>
+            от Google для доставки push-уведомлений.
+          </p>
+          <ul>
+            <li>push-токен;</li>
+            <li>данные экземпляра приложения;</li>
+            <li>данные устройства/операционной системы;</li>
+            <li>иная техническая информация, необходимая для доставки уведомления.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>9. OpenStreetMap и геолокация</h2>
+          <p>
+            Artistbor использует картографическую функциональность на базе
+            <strong>OpenStreetMap</strong>.
+          </p>
+          <p>
+            Геолокация используется только когда пользователь включает функцию,
+            которой она требуется, и не используется для рекламного трекинга.
+          </p>
+        </section>
+
+        <section>
+          <h2>10. Сроки хранения</h2>
+          <ul>
+            <li><strong>Активный аккаунт:</strong> пока аккаунт активен.</li>
+            <li><strong>Soft-deleted аккаунт:</strong> до 90 дней.</li>
+            <li><strong>Резервные копии:</strong> до 30 дней по циклу резервного копирования.</li>
+            <li>
+              <strong>Подтверждения оплаты:</strong> столько, сколько разумно
+              необходимо для проверки платежа, обработки заказа, разрешения
+              споров и предотвращения мошенничества.
+            </li>
+            <li>
+              <strong>Системные логи:</strong> разумный срок, необходимый для
+              безопасности и диагностики.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>11. Удаление аккаунта</h2>
+          <p>В приложении:</p>
+          <p><code>Profile → Settings → Delete account</code></p>
+
+          <p>
+            Веб-страница:
+            <a href="https://artistbor-uz.vercel.app/privacy-term#account-deletion">
+              https://artistbor-uz.vercel.app/privacy-term#account-deletion
+            </a>
+          </p>
+
+          <div class="notice">
+            После запроса на удаление аккаунт переводится в soft-delete и доступ
+            к нему блокируется. Он может храниться в таком состоянии до
+            <strong>90 дней</strong>. После этого персональные данные удаляются
+            окончательно или анонимизируются, за исключением ограниченных данных,
+            которые необходимо сохранить для безопасности, предотвращения
+            мошенничества, незавершенных споров или выполнения применимых
+            требований.
+          </div>
+
+          <p>
+            Данные в резервных копиях могут временно сохраняться еще до 30 дней,
+            пока соответствующий backup не будет перезаписан.
+          </p>
+        </section>
+
+        <section>
+          <h2>12. Права и настройки пользователя</h2>
+          <ul>
+            <li>получить доступ к данным аккаунта;</li>
+            <li>обновить или исправить данные;</li>
+            <li>запросить удаление аккаунта;</li>
+            <li>отозвать разрешения устройства;</li>
+            <li>отключить push-уведомления;</li>
+            <li>обратиться по вопросам конфиденциальности.</li>
+          </ul>
+
+          <p>
+            Для запросов:
+            <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a>
+          </p>
+        </section>
+
+        <section>
+          <h2>13. Дети</h2>
+          <p>
+            Artistbor предназначен для пользователей в возрасте
+            <strong>13 лет и старше</strong>. Пользователи 13+ могут
+            регистрироваться с учетом требований применимого законодательства.
+          </p>
+          <p>
+            Artistbor не предоставляет аккаунты детям младше 13 лет намеренно.
+          </p>
+        </section>
+
+        <section>
+          <h2>14. Безопасность</h2>
+          <p>
+            Artistbor применяет разумные технические и организационные меры для
+            защиты данных от несанкционированного доступа, раскрытия, изменения,
+            неправильного использования или утраты.
+          </p>
+          <p>
+            Такие меры могут включать HTTPS, контроль аутентификации,
+            ограниченный административный доступ, контроль серверного доступа и
+            журналирование.
+          </p>
+        </section>
+
+        <section>
+          <h2>15. Изменения Политики</h2>
+          <p>
+            Политика может быть обновлена при изменении функций Artistbor,
+            практик обработки данных, сервис-провайдеров, законодательства или
+            требований магазинов приложений.
+          </p>
+        </section>
+
+        <section>
+          <h2>16. Контакты</h2>
+          <div class="contact-box">
+            <p><strong>Artistbor</strong></p>
+            <p>Поддержка: <a href="mailto:support@artistbor.uz">support@artistbor.uz</a></p>
+            <p>Конфиденциальность: <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a></p>
+            <p>Help Center: <a href="https://artistbor.uz/help">https://artistbor.uz/help</a></p>
+            <p>
+              Удаление аккаунта:
+              <a href="https://artistbor-uz.vercel.app/privacy-term#account-deletion">
+                https://artistbor-uz.vercel.app/privacy-term#account-deletion
+              </a>
+            </p>
+            <p>Регион сервиса: Республика Узбекистан</p>
+          </div>
+        </section>
+
+        <footer>© 2026 Artistbor. Все права защищены.</footer>
+      </article>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const langButtons = document.querySelectorAll("[data-lang]");
+      const langContents = document.querySelectorAll("[data-content-lang]");
+      const printBtn = document.getElementById("printBtn");
+
+      function setLanguage(lang) {
+        langButtons.forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.lang === lang);
+        });
+
+        langContents.forEach((content) => {
+          content.classList.toggle(
+            "hidden",
+            content.dataset.contentLang !== lang
+          );
+        });
+
+        document.querySelectorAll("[data-section='account-deletion']").forEach((section) => {
+          section.removeAttribute("id");
+        });
+        document
+          .querySelector(`[data-content-lang="${lang}"] [data-section="account-deletion"]`)
+          ?.setAttribute("id", "account-deletion");
+
+        document.documentElement.lang = lang;
+        localStorage.setItem("artistbor_privacy_lang", lang);
+      }
+
+      langButtons.forEach((btn) => {
+        btn.addEventListener("click", () => setLanguage(btn.dataset.lang));
+      });
+
+      printBtn.addEventListener("click", () => window.print());
+
+      const saved = localStorage.getItem("artistbor_privacy_lang");
+      const browserLang = (navigator.language || "en").slice(0, 2);
+      const supported = ["en", "uz", "ru"];
+
+      if (saved && supported.includes(saved)) {
+        setLanguage(saved);
+      } else if (supported.includes(browserLang)) {
+        setLanguage(browserLang);
+      } else {
+        setLanguage("en");
+      }
+
+      if (window.location.hash === "#account-deletion") {
+        const deletionSection = document.getElementById("account-deletion");
+        if (deletionSection) {
+          setTimeout(() => {
+            deletionSection.scrollIntoView({ behavior: "smooth" });
+          }, 150);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
