@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Artistbor Help Center" />
+  <meta name="robots" content="index,follow" />
+  <meta name="theme-color" content="#111827" />
+  <title>Artistbor Help Center</title>
+  <style>
+    :root { --bg: #f6f7fb; --surface: #fff; --text: #111827; --muted: #6b7280; --border: #e5e7eb; --link: #2563eb; --shadow: 0 10px 35px rgba(17,24,39,.08); }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
+    a { color: var(--link); }
+    .topbar { border-bottom: 1px solid var(--border); background: rgba(246,247,251,.92); }
+    .topbar-inner, main { max-width: 880px; margin: 0 auto; padding: 16px 20px; }
+    .topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; }
+    .brand-mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #111827; color: #fff; }
+    .languages { display: flex; gap: 8px; }
+    .lang-btn { min-height: 36px; border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+    .lang-btn.active { background: #111827; border-color: #111827; color: #fff; }
+    main { padding-top: 48px; padding-bottom: 72px; }
+    .card { border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); padding: clamp(24px, 5vw, 44px); }
+    .eyebrow { color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 8px 0 12px; font-size: clamp(34px, 6vw, 52px); line-height: 1.05; letter-spacing: -.04em; }
+    .lead { max-width: 650px; color: #4b5563; font-size: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 30px; }
+    .topic { border: 1px solid var(--border); border-radius: 14px; padding: 18px; background: #f9fafb; }
+    .topic h2 { margin: 0 0 8px; font-size: 18px; }
+    .topic p { margin: 0; color: #4b5563; }
+    .contact { margin-top: 22px; border-radius: 14px; padding: 20px; background: #eef2ff; }
+    .contact h2 { margin: 0 0 8px; font-size: 20px; }
+    .contact p { margin: 7px 0; }
+    .hidden { display: none !important; }
+    @media (max-width: 620px) { .topbar-inner { align-items: flex-start; flex-direction: column; } .grid { grid-template-columns: 1fr; } main { padding: 22px 12px 48px; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-mark">A</span><span>Artistbor</span></div>
+      <div class="languages" aria-label="Language">
+        <button class="lang-btn active" data-lang="en" type="button">EN</button>
+        <button class="lang-btn" data-lang="uz" type="button">UZ</button>
+        <button class="lang-btn" data-lang="ru" type="button">RU</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <article class="card" data-content-lang="en">
+      <div class="eyebrow">Support</div><h1>Artistbor Help Center</h1>
+      <p class="lead">Find the right contact for help with your Artistbor account, bookings, payments, or privacy.</p>
+      <div class="grid">
+        <section class="topic"><h2>Account and app</h2><p>For help using your account or the Artistbor app, contact our support team.</p></section>
+        <section class="topic"><h2>Bookings and payments</h2><p>For questions about a booking, order status, or payment confirmation, contact support.</p></section>
+        <section class="topic"><h2>Privacy and data</h2><p>For privacy questions or account-deletion information, contact our privacy team.</p></section>
+        <section class="topic"><h2>Account deletion</h2><p>Read the deletion process in our <a href="/privacy-term#account-deletion">Privacy Policy</a>.</p></section>
+      </div>
+      <section class="contact"><h2>Contact us</h2><p>Support: <a href="mailto:support@artistbor.uz">support@artistbor.uz</a></p><p>Privacy: <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a></p></section>
+    </article>
+
+    <article class="card hidden" data-content-lang="uz">
+      <div class="eyebrow">Yordam</div><h1>Artistbor Yordam Markazi</h1>
+      <p class="lead">Artistbor akkauntingiz, buyurtmalar, to‘lovlar yoki maxfiylik bo‘yicha kerakli aloqa kanalini toping.</p>
+      <div class="grid">
+        <section class="topic"><h2>Akkaunt va ilova</h2><p>Akkauntingiz yoki Artistbor ilovasidan foydalanish bo‘yicha yordam uchun qo‘llab-quvvatlash jamoasiga yozing.</p></section>
+        <section class="topic"><h2>Buyurtmalar va to‘lovlar</h2><p>Buyurtma, uning holati yoki to‘lov tasdig‘i bo‘yicha savollar uchun qo‘llab-quvvatlash jamoasiga murojaat qiling.</p></section>
+        <section class="topic"><h2>Maxfiylik va ma’lumotlar</h2><p>Maxfiylik bo‘yicha savollar yoki akkauntni o‘chirish ma’lumoti uchun maxfiylik jamoasiga yozing.</p></section>
+        <section class="topic"><h2>Akkauntni o‘chirish</h2><p>O‘chirish tartibini <a href="/privacy-term#account-deletion">Maxfiylik siyosati</a> sahifasida o‘qing.</p></section>
+      </div>
+      <section class="contact"><h2>Biz bilan bog‘laning</h2><p>Qo‘llab-quvvatlash: <a href="mailto:support@artistbor.uz">support@artistbor.uz</a></p><p>Maxfiylik: <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a></p></section>
+    </article>
+
+    <article class="card hidden" data-content-lang="ru">
+      <div class="eyebrow">Поддержка</div><h1>Центр поддержки Artistbor</h1>
+      <p class="lead">Выберите нужный контакт по вопросам аккаунта Artistbor, заказов, оплаты или конфиденциальности.</p>
+      <div class="grid">
+        <section class="topic"><h2>Аккаунт и приложение</h2><p>По вопросам аккаунта или использования приложения Artistbor обратитесь в службу поддержки.</p></section>
+        <section class="topic"><h2>Заказы и оплата</h2><p>По вопросам заказа, его статуса или подтверждения оплаты обратитесь в службу поддержки.</p></section>
+        <section class="topic"><h2>Конфиденциальность и данные</h2><p>По вопросам конфиденциальности или удаления аккаунта обратитесь к нашей команде по вопросам конфиденциальности.</p></section>
+        <section class="topic"><h2>Удаление аккаунта</h2><p>Ознакомьтесь с порядком удаления в <a href="/privacy-term#account-deletion">Политике конфиденциальности</a>.</p></section>
+      </div>
+      <section class="contact"><h2>Свяжитесь с нами</h2><p>Поддержка: <a href="mailto:support@artistbor.uz">support@artistbor.uz</a></p><p>Конфиденциальность: <a href="mailto:privacy@artistbor.uz">privacy@artistbor.uz</a></p></section>
+    </article>
+  </main>
+
+  <script>
+    (function () {
+      const buttons = document.querySelectorAll("[data-lang]");
+      const content = document.querySelectorAll("[data-content-lang]");
+      const supported = ["en", "uz", "ru"];
+
+      function setLanguage(lang) {
+        buttons.forEach((button) => button.classList.toggle("active", button.dataset.lang === lang));
+        content.forEach((article) => article.classList.toggle("hidden", article.dataset.contentLang !== lang));
+        document.documentElement.lang = lang;
+        localStorage.setItem("artistbor_privacy_lang", lang);
+      }
+
+      buttons.forEach((button) => button.addEventListener("click", () => setLanguage(button.dataset.lang)));
+      const saved = localStorage.getItem("artistbor_privacy_lang");
+      setLanguage(supported.includes(saved) ? saved : "en");
+    })();
+  </script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { positiveInteger } from "./admin-action-validation.ts";
 import { buildArtistBusySlotPayload } from "./artist-busy-slot.ts";
 import {
   formatSignedMoneyInput,
+  formatMoneyInput,
   positiveMoneyAmount,
 } from "./money-format.ts";
 
@@ -16,6 +17,11 @@ test("order confirmation accepts only a positive total price", () => {
   assert.equal(positiveMoneyAmount("-1"), null);
   assert.equal(positiveMoneyAmount("not-a-price"), null);
   assert.equal(formatSignedMoneyInput("-1"), "-1");
+});
+
+test("money inputs preserve whole API decimal amounts", () => {
+  assert.equal(formatMoneyInput("5000000.00"), "5,000,000");
+  assert.equal(formatSignedMoneyInput("2500000.00"), "2,500,000");
 });
 
 test("order confirmation accepts only positive whole deadline minutes", () => {

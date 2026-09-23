@@ -77,6 +77,7 @@ import {
   formatMoneyWithCurrency,
   formatSignedMoneyInput,
   currencyFromRecord,
+  moneyAmount,
   positiveMoneyAmount,
 } from "@/lib/money-format";
 import {
@@ -117,6 +118,7 @@ type DialogState =
 
 type ConfirmOrderFormPayload = {
   total_price: number;
+  advance_amount: number;
   deadline_minutes: number;
 };
 
@@ -2541,8 +2543,10 @@ function ConfirmOrderModal({
   onSubmit: (payload: ConfirmOrderFormPayload) => Promise<void>;
 }) {
   const [totalPrice, setTotalPrice] = useState(() => formatSignedMoneyInput(order.total_price));
+  const [advanceAmount, setAdvanceAmount] = useState(() => formatSignedMoneyInput(order.advance_amount));
   const [deadlineMinutes, setDeadlineMinutes] = useState("30");
   const [totalPriceError, setTotalPriceError] = useState("");
+  const [advanceAmountError, setAdvanceAmountError] = useState("");
   const [deadlineError, setDeadlineError] = useState("");
   const orderCurrency = currencyFromRecord(order);
   const formId = "order-confirm-form";
@@ -2550,15 +2554,30 @@ function ConfirmOrderModal({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const parsedTotalPrice = positiveMoneyAmount(totalPrice);
+    const parsedAdvanceAmount = moneyAmount(advanceAmount);
     const parsedDeadline = positiveInteger(deadlineMinutes.trim() || 30);
     const nextTotalPriceError = parsedTotalPrice === null ? labels.totalPriceRequired : "";
+    const nextAdvanceAmountError = parsedAdvanceAmount === null || parsedAdvanceAmount < 0
+      ? labels.advanceAmountRequired
+      : parsedTotalPrice !== null && parsedAdvanceAmount > parsedTotalPrice
+        ? labels.advanceAmountExceedsPrice
+        : "";
     const nextDeadlineError = parsedDeadline === null ? labels.requiredField : "";
     setTotalPriceError(nextTotalPriceError);
+    setAdvanceAmountError(nextAdvanceAmountError);
     setDeadlineError(nextDeadlineError);
-    if (nextTotalPriceError || nextDeadlineError || parsedTotalPrice === null || parsedDeadline === null) return;
+    if (
+      nextTotalPriceError
+      || nextAdvanceAmountError
+      || nextDeadlineError
+      || parsedTotalPrice === null
+      || parsedAdvanceAmount === null
+      || parsedDeadline === null
+    ) return;
 
     await onSubmit({
       total_price: parsedTotalPrice,
+      advance_amount: parsedAdvanceAmount,
       deadline_minutes: parsedDeadline,
     });
   };
@@ -2606,6 +2625,20 @@ function ConfirmOrderModal({
           onChange={(value) => {
             setTotalPrice(formatSignedMoneyInput(value));
             setTotalPriceError("");
+            onChange?.();
+          }}
+        />
+        <FormField
+          required
+          label={labels.advanceAmountLabel}
+          inputMode="numeric"
+          placeholder="300 000"
+          suffix={orderCurrency}
+          value={advanceAmount}
+          error={advanceAmountError}
+          onChange={(value) => {
+            setAdvanceAmount(formatSignedMoneyInput(value));
+            setAdvanceAmountError("");
             onChange?.();
           }}
         />
@@ -2956,6 +2989,7 @@ function buildConfirmOrderPayload(order: OrderRecord): ConfirmOrderPayload {
     address: stringValue(order.address),
     comment: stringValue(order.comment) ?? stringValue(order.notes),
     total_price: order.total_price === null || order.total_price === undefined || order.total_price === "" ? undefined : order.total_price,
+    advance_amount: order.advance_amount === null || order.advance_amount === undefined || order.advance_amount === "" ? undefined : order.advance_amount,
   });
 }
 
@@ -3467,6 +3501,8 @@ function getOrderLabels(locale: Locale) {
       actionsColumn: "Действия",
       actionsModalTitle: (id: unknown) => `Заказ #${id} действия`,
       advanceAmountLabel: "Аванс",
+      advanceAmountExceedsPrice: "Аванс не может превышать цену заказа.",
+      advanceAmountRequired: "Укажите сумму аванса, равную или больше нуля.",
       addressLabel: "Адрес",
       artistEmail: "Email артиста",
       artistAdministratorName: "Администратор артиста",
@@ -3641,6 +3677,8 @@ function getOrderLabels(locale: Locale) {
     actionsColumn: "Amallar",
     actionsModalTitle: (id: unknown) => `Buyurtma #${id} amallari`,
     advanceAmountLabel: "Avans",
+    advanceAmountExceedsPrice: "Avans buyurtma narxidan katta bo'lishi mumkin emas.",
+    advanceAmountRequired: "Avans summasini nol yoki undan katta qilib kiriting.",
     addressLabel: "Manzil",
     artistEmail: "Sanatkor email",
     artistAdministratorName: "Sanatkor administratori",

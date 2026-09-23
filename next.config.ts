@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
           source: "/privacy-term",
           destination: "/privacy-term.html",
         },
+        {
+          source: "/help",
+          destination: "/help.html",
+        },
       ],
     };
   },

@@ -65,6 +65,9 @@ export function parseMoneyInput(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? String(Math.trunc(value)) : "";
   if (typeof value !== "string") return "";
 
+  const apiDecimalAmount = value.trim().match(/^-?(\d+)\.0{2}$/);
+  if (apiDecimalAmount) return apiDecimalAmount[1];
+
   return value.replace(/\D/g, "");
 }
 

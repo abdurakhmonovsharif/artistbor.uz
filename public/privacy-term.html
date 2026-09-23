@@ -399,24 +399,24 @@
   <div class="page">
     <aside class="sidebar">
       <div class="sidebar-card">
-        <h3>Contents</h3>
+        <h3 id="contentsTitle">Contents</h3>
         <nav class="toc">
-          <a href="#scope">1. Scope</a>
-          <a href="#collect">2. Information We Collect</a>
-          <a href="#permissions">3. Device Permissions</a>
-          <a href="#use">4. How We Use Information</a>
-          <a href="#visibility">5. Visibility Between Users</a>
-          <a href="#payments">6. Payment Confirmation</a>
-          <a href="#sharing">7. Sharing</a>
-          <a href="#firebase">8. Firebase & Notifications</a>
-          <a href="#maps">9. Maps & Location</a>
-          <a href="#retention">10. Retention</a>
-          <a href="#account-deletion">11. Account Deletion</a>
-          <a href="#rights">12. Your Rights</a>
-          <a href="#children">13. Children</a>
-          <a href="#security">14. Security</a>
-          <a href="#changes">15. Changes</a>
-          <a href="#contact">16. Contact</a>
+          <a href="#scope" data-toc-section="scope">1. Scope</a>
+          <a href="#collect" data-toc-section="collect">2. Information We Collect</a>
+          <a href="#permissions" data-toc-section="permissions">3. Device Permissions</a>
+          <a href="#use" data-toc-section="use">4. How We Use Information</a>
+          <a href="#visibility" data-toc-section="visibility">5. Visibility Between Users</a>
+          <a href="#payments" data-toc-section="payments">6. Payment Confirmation</a>
+          <a href="#sharing" data-toc-section="sharing">7. Sharing</a>
+          <a href="#firebase" data-toc-section="firebase">8. Firebase & Notifications</a>
+          <a href="#maps" data-toc-section="maps">9. Maps & Location</a>
+          <a href="#retention" data-toc-section="retention">10. Retention</a>
+          <a href="#account-deletion" data-toc-section="account-deletion">11. Account Deletion</a>
+          <a href="#rights" data-toc-section="rights">12. Your Rights</a>
+          <a href="#children" data-toc-section="children">13. Children</a>
+          <a href="#security" data-toc-section="security">14. Security</a>
+          <a href="#changes" data-toc-section="changes">15. Changes</a>
+          <a href="#contact" data-toc-section="contact">16. Contact</a>
         </nav>
       </div>
     </aside>
@@ -1665,6 +1665,29 @@
       const langButtons = document.querySelectorAll("[data-lang]");
       const langContents = document.querySelectorAll("[data-content-lang]");
       const printBtn = document.getElementById("printBtn");
+      const contentsTitle = document.getElementById("contentsTitle");
+      const sectionIds = [
+        "scope", "collect", "permissions", "use", "visibility", "payments",
+        "sharing", "firebase", "maps", "retention", "account-deletion", "rights",
+        "children", "security", "changes", "contact"
+      ];
+      const uiCopy = {
+        en: {
+          contents: "Contents",
+          print: "Print / PDF",
+          sections: ["Scope", "Information We Collect", "Device Permissions", "How We Use Information", "Visibility Between Users", "Payment Confirmation", "Sharing", "Firebase & Notifications", "Maps & Location", "Retention", "Account Deletion", "Your Rights", "Children", "Security", "Changes", "Contact"]
+        },
+        uz: {
+          contents: "Mundarija",
+          print: "Chop etish / PDF",
+          sections: ["Qo‘llanish doirasi", "Biz yig‘adigan ma’lumotlar", "Qurilma ruxsatlari", "Ma’lumotlardan qanday foydalanamiz", "Client va artist o‘rtasida ko‘rinadigan ma’lumotlar", "To‘lov va to‘lovni tasdiqlash", "Ma’lumotlarni ulashish", "Firebase Cloud Messaging va push notification", "OpenStreetMap va Location", "Ma’lumotlarni saqlash muddati", "Akkauntni o‘chirish", "Foydalanuvchi huquqlari", "Bolalar maxfiyligi", "Xavfsizlik", "Siyosatdagi o‘zgarishlar", "Aloqa"]
+        },
+        ru: {
+          contents: "Содержание",
+          print: "Печать / PDF",
+          sections: ["Область действия", "Какие данные мы собираем", "Разрешения устройства", "Как мы используем данные", "Видимость данных между клиентом и артистом", "Оплата и подтверждение оплаты", "Передача данных", "Firebase Cloud Messaging и push-уведомления", "OpenStreetMap и геолокация", "Сроки хранения", "Удаление аккаунта", "Права и настройки пользователя", "Дети", "Безопасность", "Изменения Политики", "Контакты"]
+        }
+      };
 
       function setLanguage(lang) {
         langButtons.forEach((btn) => {
@@ -1672,18 +1695,29 @@
         });
 
         langContents.forEach((content) => {
+          const isActive = content.dataset.contentLang === lang;
           content.classList.toggle(
             "hidden",
-            content.dataset.contentLang !== lang
+            !isActive
           );
+          content.querySelectorAll("section").forEach((section, index) => {
+            const sectionId = sectionIds[index];
+            if (!sectionId) return;
+            section.dataset.section = sectionId;
+            if (isActive) {
+              section.id = sectionId;
+            } else {
+              section.removeAttribute("id");
+            }
+          });
         });
 
-        document.querySelectorAll("[data-section='account-deletion']").forEach((section) => {
-          section.removeAttribute("id");
+        const copy = uiCopy[lang];
+        contentsTitle.textContent = copy.contents;
+        printBtn.textContent = copy.print;
+        document.querySelectorAll("[data-toc-section]").forEach((link, index) => {
+          link.textContent = `${index + 1}. ${copy.sections[index]}`;
         });
-        document
-          .querySelector(`[data-content-lang="${lang}"] [data-section="account-deletion"]`)
-          ?.setAttribute("id", "account-deletion");
 
         document.documentElement.lang = lang;
         localStorage.setItem("artistbor_privacy_lang", lang);
@@ -1696,13 +1730,10 @@
       printBtn.addEventListener("click", () => window.print());
 
       const saved = localStorage.getItem("artistbor_privacy_lang");
-      const browserLang = (navigator.language || "en").slice(0, 2);
       const supported = ["en", "uz", "ru"];
 
       if (saved && supported.includes(saved)) {
         setLanguage(saved);
-      } else if (supported.includes(browserLang)) {
-        setLanguage(browserLang);
       } else {
         setLanguage("en");
       }

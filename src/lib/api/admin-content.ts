@@ -364,6 +364,7 @@ export type ConfirmOrderPayload = Partial<{
   address: string;
   comment: string;
   total_price: number | string;
+  advance_amount: number | string;
   deadline_minutes: number;
 }>;
 
